@@ -124,6 +124,10 @@ class Column : public Expr {
   /// asserted equal to b, a and c are also equal.
   void equals(ColumnCP other) const;
 
+  int32_t wholeColumnId() {
+    return wholeColumnId_;
+  }
+
   std::string toString() const override;
 
   struct Equivalence* equivalence() const {
@@ -145,12 +149,22 @@ class Column : public Expr {
   // column in the SchemaTable. Used for matching with
   // ordering/partitioning columns in the SchemaTable.
   ColumnCP schemaColumn_{nullptr};
+
+  // If column is of complex type and is used so as to require all
+  // subfields, 'wholeColumnId_' is added to the dependencies of using
+  // exprs. 0 if not applicable.
+  int32_t wholeColumnId_{0};
 };
 
 template <typename T>
 inline folly::Range<T*> toRange(const std::vector<T, QGAllocator<T>>& v) {
   return folly::Range<T const*>(v.data(), v.size());
 }
+
+class Subfield : public Expr {
+  PathCP path_;
+  ExprCP base_;
+};
 
 template <typename T, typename U>
 inline CPSpan<T> toRangeCast(U v) {
@@ -184,6 +198,34 @@ class FunctionSet {
 
  private:
   uint64_t set_;
+};
+
+struct LambdaInfo {
+  /// The ordinal of the lambda in the function's args
+  int32_t ordinal;
+  /// Getter applied to the collection given in corresponding 'argOrdinal' to
+  /// get each argument of the lambda.
+  std::vector<std::vector<Step>> argsteps;
+  /// Argument giving the collection
+  std::vector<int32_t> argOrdinal;
+};
+
+struct FunctionMetadata {
+  std::vector<LambdaInfo> lambdas;
+
+  /// If accessing a subfield on the result means that the same subfield is
+  /// required in an argument, this is the ordinal of the argument. This is 1
+  /// for transform_values, which means that transform_values(f, map)[1] implies
+  /// that key 1 is accessed in 'map'.
+  std::optional<int32_t> subfieldArg;
+  // A subfield in the result that corresponds to an argument. If this subfield
+  // is accessed in the result, then the subfield above this is required from
+  // the corresponding argument.  array[a, b, c][2].a means that c.a is
+  // accessed.
+  std::vector<Step> resultSubfield;
+  /// Ordinal of argument that produces the result subfield in the corresponding
+  /// element of 'resultSubfield'.
+  std::vector<int32_t> subfieldArg;
 };
 
 /// Represents a function call or a special form, any expression with
@@ -247,6 +289,24 @@ class Call : public Expr {
 };
 
 using CallCP = const Call*;
+
+/// Represents a lambda. May occur as an immediate argument of selected
+/// functions.
+class Lambda : public Expr {
+ public:
+  Lambda(ColumnVector args, ExprCP body) : args_(args), body_(body) {}
+  ColumnVector args() const {
+    return args;
+  }
+
+  ExprCP body() const {
+    return body_;
+  }
+
+ private:
+  ColumnVector args_;
+  ExprCP body_;
+};
 
 /// Represens a set of transitively equal columns.
 struct Equivalence {

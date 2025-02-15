@@ -62,10 +62,111 @@ struct TypeComparer {
   }
 };
 
+
 struct Plan;
 using PlanPtr = Plan*;
 class Optimization;
 
+/// STL compatible allocator that manages std:: containers allocated in the
+/// QueryGraphContext arena.
+template <class T>
+struct QGAllocator {
+  using value_type = T;
+  QGAllocator() = default;
+
+  template <typename U>
+  explicit QGAllocator(QGAllocator<U>) {}
+
+  T* allocate(std::size_t n);
+
+  void deallocate(T* p, std::size_t /*n*/) noexcept;
+
+  friend bool operator==(
+      const QGAllocator& /*lhs*/,
+      const QGAllocator& /*rhs*/) {
+    return true;
+  }
+
+  friend bool operator!=(const QGAllocator& lhs, const QGAllocator& rhs) {
+    return !(lhs == rhs);
+  }
+};
+
+/// Elements of subfield paths. The QueryGraphContext holds a dedupped
+/// collection of distinct paths.
+enum class StepKind : uint8_t { kField, kSubscript, kCardinality };
+
+struct Step {
+  StepKind kind;
+  Name field{nullptr};
+  int64_t id{0};
+  /// True if all fields/keys are accessed at this level but there is a subset of fields accessed at a child level.
+  bool allElements{false};
+  
+  bool operator==(const Step& other) const;
+  size_t hash() const;
+};
+
+class Path {
+public:
+  Path() = default;
+  
+  Path* field(const char* name) {
+    VELOX_CHECK(mutable_);
+    steps_.push_back(Step{.kind = StepKind::kField, .field = toName(name)});
+    return this;
+  }
+
+  Path* subscript(const char* name) {
+    VELOX_CHECK(mutable_);
+    steps_.push_back(Step{.kind = StepKind::kSubscript, .field = toName(name)});
+    return this;
+  }
+
+  Path* subscript(int64_t id) {
+    VELOX_CHECK(mutable_);
+    steps_.push_back(Step{.kind = StepKind::kSubscript, .id = id});
+    return this;
+  }
+  Path* cardinality() {
+    VELOX_CHECK(mutable_);
+    steps_.push_back(Step{.kind = StepKind::kCardinality});
+    return this;
+  }
+
+  std::vector<Step, QGAllocator<Step>>& steps() const {
+    return steps_;
+  }
+
+  bool operator==(const Path& other) const;
+
+  size_t hash() const;
+  
+  std::string toString() const;
+
+  void makeImmutable() {
+    mutable_ = false;
+  }
+  
+ private:
+  std::vector<Step, QGAllocator<Step>> steps_;
+  bool mutable_{true};
+};
+
+using PathCP = const Path*;
+
+struct PathHasher {
+  size_t operator()(const PathCP path) const {
+    return path->hash();
+  }
+};
+struct PathComparer {
+  bool operator()(const PathCP left, const PathCP right) const {
+    return *left == *right;
+  }
+};
+
+  
 /// Context for making a query plan. Owns all memory associated to
 /// planning, except for the input PlanNode tree. The result of
 /// planning is also owned by 'this', so the planning result must be
@@ -152,6 +253,8 @@ class QueryGraphContext {
   /// been previously returned by toType().
   const TypePtr& toTypePtr(const Type* type);
 
+  PathCP toPath(PathCP);
+
  private:
   TypePtr dedupType(const TypePtr& type);
 
@@ -173,12 +276,26 @@ class QueryGraphContext {
   // Maps raw Type* back to shared TypePtr. Used in toType()() and toTypePtr().
   std::unordered_map<const velox::Type*, velox::TypePtr> toTypePtr_;
 
+  std::unordered_set<PathCP, PathHasher, PathComparer> deduppedPaths_;
+
   Plan* contextPlan_{nullptr};
   Optimization* optimization_{nullptr};
 };
 
 /// Returns a mutable reference to the calling thread's QueryGraphContext.
 QueryGraphContext*& queryCtx();
+  
+  template <class T>  
+  T* QGAllocator<T>::allocate(std::size_t n) {
+    return reinterpret_cast<T*>(
+        queryCtx()->allocate(velox::checkedMultiply(n, sizeof(T)))); // NOLINT
+  }
+
+  template <class T>
+  void QGAllocator<T>::deallocate(T* p, std::size_t /*n*/) noexcept {
+    queryCtx()->free(p);
+  }
+
 
 template <class _Tp, class... _Args>
 inline _Tp* make(_Args&&... __args) {
@@ -199,36 +316,6 @@ Name toName(std::string_view string);
 const Type* toType(const TypePtr& type);
 /// Shorthand for toTypePtr() in thread's QueryGraphContext.
 const TypePtr& toTypePtr(const Type* type);
-
-/// STL compatible allocator that manages std:: containers allocated in the
-/// QueryGraphContext arena.
-template <class T>
-struct QGAllocator {
-  using value_type = T;
-  QGAllocator() = default;
-
-  template <typename U>
-  explicit QGAllocator(QGAllocator<U>) {}
-
-  T* allocate(std::size_t n) {
-    return reinterpret_cast<T*>(
-        queryCtx()->allocate(velox::checkedMultiply(n, sizeof(T)))); // NOLINT
-  }
-
-  void deallocate(T* p, std::size_t /*n*/) noexcept {
-    queryCtx()->free(p);
-  }
-
-  friend bool operator==(
-      const QGAllocator& /*lhs*/,
-      const QGAllocator& /*rhs*/) {
-    return true;
-  }
-
-  friend bool operator!=(const QGAllocator& lhs, const QGAllocator& rhs) {
-    return !(lhs == rhs);
-  }
-};
 
 // Forward declarations of common types and collections.
 class Expr;

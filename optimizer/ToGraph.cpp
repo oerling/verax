@@ -94,6 +94,15 @@ variant toVariant(BaseVector& constantVector) {
   VELOX_FAIL("Literal not of foldable type");
 }
 
+  std::shared_ptr<const ConstantExpr> Optimization::foldConstant(const TypedExprPtr& typedExpr) {
+  auto exprSet = evaluator_.compile(typedExpr);
+    auto first = exprSet->exprs().front().get();
+    if (auto constantExpr = dynamic_cast<const exec::ConstantExpr*>(first)) {
+      return std::dynamic_pointer_cast<ConstantExpr>(exprSet->exprs().front());
+    }
+    return nullptr;
+  }
+  
 ExprCP Optimization::tryFoldConstant(
     const core::CallTypedExpr* call,
     const core::CastTypedExpr* cast,
@@ -124,6 +133,43 @@ ExprCP Optimization::tryFoldConstant(
   }
 }
 
+  std::optional<StepKind> Optimization::subfieldKind(const core::TypedExpr* expr, Step& step, core::TypedExpr*& input) {
+  if (auto* field = dynamic_cast<const core::FieldAccessTypedExpr*>(expr)) {
+    auto* input = field->inputs()[0].get();
+    if (!input || dynamic_cast<const InputTypedExpr*>(input)) {
+      return std::nullopt;
+    }
+    step.kind = StepKind::kField;
+    step.field = toName(field->name());
+    return StepKind::kField;
+  }
+  if (auto* call = dynamic_cast<const core::CallTypedExpr*>(expr)) {
+    auto name = call->name();
+    if (name == "subscript") {
+      auto subscript = translateExpr(call->inputs()[1]); 
+      if (subscript->planType() == PlanType::kLiteral) {
+      step.kind = StepKind::kSubscript;
+      return StepKind::kSubscript;
+      }
+      return std::nullopt();
+      }
+    if (name == "cardinality") {
+      step.kind = StepKind::kCardinality;
+      return StepKind::kCardinality;
+    }
+  }
+  return std::nullopt;
+}
+  
+ExprCP Optimization::translateSubfield(const core::TypedExprPtr& expr) {
+  auto maybekind = subfieldKind(expr, );
+  if (!maybeKind.has_value) {
+    return nullptr;
+  }
+  auto kind = maybeKind.value();
+  
+}
+  
 ExprCP Optimization::translateExpr(const core::TypedExprPtr& expr) {
   if (auto name = columnName(expr)) {
     return translateColumn(*name);
@@ -137,6 +183,10 @@ ExprCP Optimization::translateExpr(const core::TypedExprPtr& expr) {
   auto it = exprDedup_.find(expr.get());
   if (it != exprDedup_.end()) {
     return it->second;
+  }
+  auto path = translateSubfield(expr);
+  if (path) {
+    return path;
   }
   ExprVector args{expr->inputs().size()};
   PlanObjectSet columns;

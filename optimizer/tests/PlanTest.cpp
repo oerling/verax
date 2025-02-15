@@ -148,6 +148,22 @@ TEST_F(PlanTest, queryGraph) {
 
   // Identical child types with different names get equal pointers.
   EXPECT_EQ(dedupRow1->childAt(0).get(), dedupDifferentNames->childAt(0).get());
+
+  auto* path = make<Path>()
+    ->subscript("field")
+    ->subscript(123)
+    path->field("f1")
+    path->cardinality();
+  auto interned = queryCtx()->toPath(path);
+  EXPECT_EQ(interned, path);
+  auto* path2 = make<Path>()
+    ->subscript("field")
+    ->subscript(123)
+    path->field("f1")
+    path->cardinality();
+  auto interned2 = queryCtx()->toPath(path2);
+  EXPECT_EQ(interned2, interned);
+  
 }
 
 TEST_F(PlanTest, q3) {

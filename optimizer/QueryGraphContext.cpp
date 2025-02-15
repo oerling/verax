@@ -102,4 +102,68 @@ const TypePtr& toTypePtr(const Type* type) {
   return queryCtx()->toTypePtr(type);
 }
 
+bool Step::operator==(const Step& other) const {
+  return kind == other.kind && field == other.field && id == other.id;
+}
+
+size_t Step::hash() const {
+  return 1 + static_cast<int32_t>(kind) + reinterpret_cast<size_t>(field) + id;
+}
+
+  size_t PathHasher::operator()(const Path& path) const {
+    return path.hash();
+}
+
+size_t Path::hash() const {
+  size_t h = 123;
+  for (auto& step : steps_) {
+    h = (h + 1921) * step.hash();
+  }
+  return h;
+}
+
+bool Path::operator==(const Path& other) const {
+  if (steps_.size() != other.steps_.size()) {
+    return false;
+  }
+  for (auto i = 0; i < steps_.size(); ++i) {
+    if (!(steps_[i] == other.steps_[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::string Path::toString() const {
+  std::stringstream out;
+  for (auto& step : steps_) {
+    switch (step.kind) {
+      case StepKind::kCardinality:
+        out << ".cardinality";
+        break;
+      case StepKind::kField:
+        out << "." << step.field;
+        break;
+      case StepKind::kSubscript:
+        if (step.field) {
+          out << "[" << step.field << "]";
+        } else {
+          out << "[" << step.id << "]";
+        }
+        break;
+    }
+  }
+  return out.str();
+}
+
+  PathCP QueryGraphContext::toPath(Path&& path) {
+        auto pair = deduppedPaths_.insert(path);
+	if (path != pair.first) {
+	  delete path;
+	}
+	pair.first->makeImmutable();
+	return pair.first;
+  }
+
+  
 } // namespace facebook::velox::optimizer

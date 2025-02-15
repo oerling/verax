@@ -46,6 +46,22 @@ using ExprDedupMap = folly::F14FastMap<
     ITypedExprHasher,
     ITypedExprComparer>;
 
+
+/// Set of accessed subfields given ordinal of output column or function argument.
+struct ResultAccess {
+  std::unordered_map<int32_t, std::unordered_set<PathCP>> resultPaths;
+};
+
+/// PlanNode output columns and function arguments with accessed subfields.
+struct PlanSubfields {
+  std::unordered_map<core::PlanNode*, ResultInfo> nodeFields; 
+  std::unordered_map<core::TypedExpr*, ResultInfo> argFields;
+    };
+
+struct  FunctionSubfields {
+};
+
+  
 struct Plan;
 struct PlanState;
 
@@ -720,6 +736,13 @@ class Optimization {
   // Must stay alive as long as the Plans and RelationOps are reeferenced.
   PlanState topState_{*this, nullptr};
 
+  // Column and subfield access info for filters, joins, grouping and other things affecting result row selection. 
+  PlanSubfields controlSubfields_;
+
+  // Column and subfield info for items that only affect column values.
+  PlanSubfields payloadSubfields_;
+  
+  
   // Controls tracing.
   int32_t traceFlags_{0};
 
