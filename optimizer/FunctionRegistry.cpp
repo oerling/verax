@@ -18,11 +18,10 @@
 
 namespace facebook::velox::optimizer {
 
-  //static
-  FunctionRegistry* FunctionRegistry::instance() {
-    static auto registry = std::make_unique<FunctionRegistry>();
-    return registry.get();
-  }
-  
-
+// static
+FunctionRegistry* FunctionRegistry::instance() {
+  static auto registry = std::make_unique<FunctionRegistry>();
+  return registry.get();
 }
+
+} // namespace facebook::velox::optimizer

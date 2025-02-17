@@ -23,7 +23,6 @@ namespace facebook::velox::optimizer {
 
 using namespace facebook::velox;
 
-
 using NodeSubfieldFunc = std::function<void(
     Optimization*,
     core::PlanNode* node,
@@ -66,13 +65,15 @@ void Optimization::markFieldAccessed(
     auto path = queryCtx()->toPath(make<Path>(std::move(reverse)));
     fields->nodeFields[source.planNode].resultPaths[ordinal].insert(path);
     if (name == "Project") {
-      auto* project = reinterpret_cast<const core::ProjectNode*>(source.planNode);
+      auto* project =
+          reinterpret_cast<const core::ProjectNode*>(source.planNode);
       markSubfields(
-		    project->projections()[ordinal].get(),
+          project->projections()[ordinal].get(),
           steps,
           isControl,
-		    std::vector<const RowType*>{project->outputType().get()},
-		    std::vector<ContextSource>{ContextSource{.planNode = project->sources()[0].get()}});
+          std::vector<const RowType*>{project->outputType().get()},
+          std::vector<ContextSource>{
+              ContextSource{.planNode = project->sources()[0].get()}});
       return;
     }
     auto& sources = source.planNode->sources();
@@ -95,7 +96,7 @@ void Optimization::markFieldAccessed(
 }
 
 void Optimization::markSubfields(
-				 const core::ITypedExpr* expr,
+    const core::ITypedExpr* expr,
     std::vector<Step>& steps,
     bool isControl,
     const std::vector<const RowType*> context,
@@ -103,14 +104,14 @@ void Optimization::markSubfields(
   if (auto* field = dynamic_cast<const core::FieldAccessTypedExpr*>(expr)) {
     auto* input = field->inputs().empty() ? nullptr : field->inputs()[0].get();
     bool isLeaf =
-      !input || dynamic_cast<const core::InputTypedExpr*>(input) != nullptr;
+        !input || dynamic_cast<const core::InputTypedExpr*>(input) != nullptr;
     if (isLeaf) {
       for (auto i = 0; i < sources.size(); ++i) {
         auto maybeIdx = context[i]->getChildIdxIfExists(field->name());
         if (maybeIdx.has_value())
           if (maybeIdx.has_value()) {
             auto source = sources[i];
-            markFieldAccessed(source,  maybeIdx.value(), steps, isControl);
+            markFieldAccessed(source, maybeIdx.value(), steps, isControl);
             return;
           }
       }
@@ -133,12 +134,13 @@ void Optimization::markSubfields(
       if (name == "subscript") {
         auto constant = foldConstant(call->inputs()[1]);
         if (!constant) {
-	  std::vector<Step> subSteps;
-          markSubfields(call->inputs()[1].get(), subSteps, isControl, context, sources);
+          std::vector<Step> subSteps;
+          markSubfields(
+              call->inputs()[1].get(), subSteps, isControl, context, sources);
           steps.push_back(
-			  Step{.kind = StepKind::kSubscript, .allFields = true});
-	  markSubfields(
-			call->inputs()[0].get(), steps, isControl, context, sources);
+              Step{.kind = StepKind::kSubscript, .allFields = true});
+          markSubfields(
+              call->inputs()[0].get(), steps, isControl, context, sources);
           steps.pop_back();
           return;
         }
@@ -163,11 +165,13 @@ void Optimization::markSubfields(
   }
 }
 
-  void Optimization::markTopOutputs(const RowType* type, const core::PlanNode* node) {
-    ContextSource source = {.planNode = node};
-    for (auto i = 0; i < type->size(); ++i) {
+void Optimization::markTopOutputs(
+    const RowType* type,
+    const core::PlanNode* node) {
+  ContextSource source = {.planNode = node};
+  for (auto i = 0; i < type->size(); ++i) {
     std::vector<Step> steps;
-      markFieldAccessed(source, i, steps, false);
+    markFieldAccessed(source, i, steps, false);
   }
 }
 

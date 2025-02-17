@@ -19,18 +19,14 @@
 
 namespace facebook::velox::optimizer {
 
-  
-  class FunctionRegistry {
-  public:
-    FunctionMetadata* metadata(Name name);
+class FunctionRegistry {
+ public:
+  FunctionMetadata* metadata(Name name);
 
-    void registerFunction(const std::string& function, std::unique_ptr<FunctionMetadata>  metadata);
-    
-    static FunctionRegistry* instance();
-  };
-}
+  void registerFunction(
+      const std::string& function,
+      std::unique_ptr<FunctionMetadata> metadata);
 
-
-
-
-
+  static FunctionRegistry* instance();
+};
+} // namespace facebook::velox::optimizer

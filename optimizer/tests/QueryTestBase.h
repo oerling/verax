@@ -16,30 +16,29 @@
 
 #include <folly/executors/CPUThreadPoolExecutor.h>
 #include <gflags/gflags.h>
-#include "optimizer/tests/ParquetTpchTest.h"
 #include "optimizer/SchemaResolver.h"
 #include "optimizer/VeloxHistory.h"
 #include "optimizer/connectors/hive/LocalHiveConnectorMetadata.h" //@manual
-#include "velox/runner/LocalRunner.h"
+#include "optimizer/tests/ParquetTpchTest.h"
 #include "velox/exec/tests/utils/LocalRunnerTestBase.h"
 #include "velox/parse/QueryPlanner.h"
-
+#include "velox/runner/LocalRunner.h"
 
 namespace facebook::velox::optimizer::test {
 
-  class QueryTestBase : public exec::test::LocalRunnerTestBase {
+class QueryTestBase : public exec::test::LocalRunnerTestBase {
  protected:
-    void SetUp() override;
+  void SetUp() override;
 
-    // reads the data directory and picks up new tables.
-    void tablesCreated();
+  // reads the data directory and picks up new tables.
+  void tablesCreated();
 
-    core::PlanNodePtr toTableScan(
+  core::PlanNodePtr toTableScan(
       const std::string& id,
       const std::string& name,
       const RowTypePtr& rowType,
       const std::vector<std::string>& columnNames);
-    
+
   std::shared_ptr<runner::LocalRunner> runSql(
       const std::string& sql,
       std::vector<RowVectorPtr>* resultVector = nullptr,
@@ -54,12 +53,12 @@ namespace facebook::velox::optimizer::test {
   std::shared_ptr<memory::MemoryPool> schemaPool_;
   std::shared_ptr<memory::MemoryPool> schemaRootPool_;
   std::shared_ptr<folly::IOThreadPoolExecutor> spillExecutor_;
-   std::shared_ptr<core::QueryCtx> schemaQueryCtx_;
-   std::shared_ptr<connector::ConnectorQueryCtx> connectorQueryCtx_;
-    std::shared_ptr<connector::Connector> connector_;
-    std::shared_ptr<optimizer::SchemaResolver> schema_;
+  std::shared_ptr<core::QueryCtx> schemaQueryCtx_;
+  std::shared_ptr<connector::ConnectorQueryCtx> connectorQueryCtx_;
+  std::shared_ptr<connector::Connector> connector_;
+  std::shared_ptr<optimizer::SchemaResolver> schema_;
   std::unique_ptr<facebook::velox::optimizer::VeloxHistory> history_;
   std::unique_ptr<core::DuckDbQueryPlanner> planner_;
-  inline static int32_t queryCounter_ {0};
+  inline static int32_t queryCounter_{0};
 };
-} // namespace facebook::velox::optimizer
+} // namespace facebook::velox::optimizer::test

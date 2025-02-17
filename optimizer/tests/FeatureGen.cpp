@@ -44,8 +44,11 @@ std::vector<RowVectorPtr> makeFeatures(
   velox::test::VectorMaker vectorMaker(pool);
 
   for (auto batchIdx = 0; batchIdx < numBatches; ++batchIdx) {
-    auto uids = vectorMaker.flatVector<int64_t>(batchSize, [&](auto row) { return row +  batchIdx * batchSize;}); 
-    auto tss = vectorMaker.flatVector<int64_t>(batchSize, [&](auto row) { return 100 * (row  +  batchIdx * batchSize);});
+    auto uids = vectorMaker.flatVector<int64_t>(
+        batchSize, [&](auto row) { return row + batchIdx * batchSize; });
+    auto tss = vectorMaker.flatVector<int64_t>(batchSize, [&](auto row) {
+      return 100 * (row + batchIdx * batchSize);
+    });
     auto floatKeys = vectorMaker.flatVector<int32_t>(
         batchSize * opts.numFloat,
         [&](int32_t row) { return (row % opts.numFloat) * 100 + 10000; });
@@ -83,7 +86,7 @@ std::vector<RowVectorPtr> makeFeatures(
         pool,
         MAP(INTEGER(), ARRAY(BIGINT())),
         nullptr,
-	batchSize,
+        batchSize,
         evenOffsets(batchSize, opts.numIdList, pool),
         evenSizes(batchSize, opts.numIdList, pool),
         idListKeys,
@@ -97,8 +100,8 @@ std::vector<RowVectorPtr> makeFeatures(
         [&](auto row) { return idListSize[row % opts.numIdScoreList]; },
         [&](int32_t row, int32_t idx) {
           auto nthArray = (row / opts.numIdScoreList) * opts.numIdList;
-          return idLists->as < SimpleVector<int32_t>>()->valueAt(
-                                   idLists->offsetAt(nthArray) + idx);
+          return idLists->as<SimpleVector<int32_t>>()->valueAt(
+              idLists->offsetAt(nthArray) + idx);
         },
         [&](int32_t row, int32_t idx) { return 1.2 * row / idx; });
     auto scoreListFeatures = std::make_shared<MapVector>(
@@ -110,9 +113,13 @@ std::vector<RowVectorPtr> makeFeatures(
         evenSizes(batchSize, opts.numIdScoreList, pool),
         scoreKeys,
         scores);
-    auto row =
-      vectorMaker.rowVector({"uid", "ts", "float_features", "id_list_features", "id_score_list_features"},
-	  {uids, tss, floatFeatures, idListFeatures, scoreListFeatures});
+    auto row = vectorMaker.rowVector(
+        {"uid",
+         "ts",
+         "float_features",
+         "id_list_features",
+         "id_score_list_features"},
+        {uids, tss, floatFeatures, idListFeatures, scoreListFeatures});
     result.push_back(std::move(row));
   }
 }
