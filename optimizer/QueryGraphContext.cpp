@@ -110,9 +110,6 @@ size_t Step::hash() const {
   return 1 + static_cast<int32_t>(kind) + reinterpret_cast<size_t>(field) + id;
 }
 
-  size_t PathHasher::operator()(const Path& path) const {
-    return path.hash();
-}
 
 size_t Path::hash() const {
   size_t h = 123;
@@ -156,13 +153,13 @@ std::string Path::toString() const {
   return out.str();
 }
 
-  PathCP QueryGraphContext::toPath(Path&& path) {
-        auto pair = deduppedPaths_.insert(path);
-	if (path != pair.first) {
+  PathCP QueryGraphContext::toPath(PathCP path) {
+    path->makeImmutable();
+    auto pair = deduppedPaths_.insert(path);
+	if (path != *pair.first) {
 	  delete path;
 	}
-	pair.first->makeImmutable();
-	return pair.first;
+	return *pair.first;
   }
 
   

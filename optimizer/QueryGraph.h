@@ -162,6 +162,19 @@ inline folly::Range<T*> toRange(const std::vector<T, QGAllocator<T>>& v) {
 }
 
 class Subfield : public Expr {
+ public:
+  Subfield(PathCP path, const Type* type, ExprCP base)
+      : Expr(PlanType::kPath, Value(type, 1)), path_(path), base_(base) {}
+
+  PathCP path() const {
+    return path_;
+  }
+
+  ExprCP base() const {
+    return base_;
+  }
+
+ private:
   PathCP path_;
   ExprCP base_;
 };
@@ -210,6 +223,8 @@ struct LambdaInfo {
   std::vector<int32_t> argOrdinal;
 };
 
+/// Describes functions accepting lambdas and functions with special treatment
+/// of subfields.
 struct FunctionMetadata {
   std::vector<LambdaInfo> lambdas;
 
@@ -218,14 +233,22 @@ struct FunctionMetadata {
   /// for transform_values, which means that transform_values(f, map)[1] implies
   /// that key 1 is accessed in 'map'.
   std::optional<int32_t> subfieldArg;
-  // A subfield in the result that corresponds to an argument. If this subfield
-  // is accessed in the result, then the subfield above this is required from
-  // the corresponding argument.  array[a, b, c][2].a means that c.a is
-  // accessed.
-  std::vector<Step> resultSubfield;
+
+  /// If true, then access of subscript 'i' in result means that argument 'i' is
+  /// accessed.
+  bool isArrayConstructor_{false};
+
+  /// If key 'k' in result is accessed, then the argument that corresponds to
+  /// this key is accessed.
+  bool isMapConstructor{false};
+
+  /// If the step at 'i' is accessed in the result, then this means that
+  /// argument subfieldArg_[i] is accessed.
+  std::vector<Step> stepForArg;
+
   /// Ordinal of argument that produces the result subfield in the corresponding
   /// element of 'resultSubfield'.
-  std::vector<int32_t> subfieldArg;
+  std::vector<int32_t> argOrdinal;
 };
 
 /// Represents a function call or a special form, any expression with
@@ -294,9 +317,10 @@ using CallCP = const Call*;
 /// functions.
 class Lambda : public Expr {
  public:
-  Lambda(ColumnVector args, ExprCP body) : args_(args), body_(body) {}
+  Lambda(ColumnVector args, const Type* type, ExprCP body)
+      : Expr(PlanType::kLambda, Value(type, 1)), args_(args), body_(body) {}
   ColumnVector args() const {
-    return args;
+    return args_;
   }
 
   ExprCP body() const {

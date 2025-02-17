@@ -14,16 +14,8 @@
  * limitations under the License.
  */
 
-#include <folly/executors/CPUThreadPoolExecutor.h>
-#include <folly/init/Init.h>
-#include <gflags/gflags.h>
-#include <sys/resource.h>
-#include <sys/time.h>
+#include "optimizer/tests/QueryTestBase.h" //@manual
 
-#include "optimizer/connectors/hive/LocalHiveConnectorMetadata.h" //@manual
-#include "velox/common/base/SuccinctPrinter.h"
-#include "velox/common/file/FileSystems.h"
-#include "velox/common/memory/MmapAllocator.h"
 #include "velox/connectors/hive/HiveConnector.h"
 #include "velox/dwio/common/Options.h"
 #include "velox/dwio/dwrf/RegisterDwrfReader.h"
@@ -35,24 +27,12 @@
 #include "optimizer/SchemaResolver.h" //@manual
 #include "optimizer/VeloxHistory.h" //@manual
 #include "optimizer/connectors/ConnectorSplitSource.h" //@manual
-#include "velox/exec/PlanNodeStats.h"
-#include "velox/exec/Split.h"
 #include "velox/exec/tests/utils/HiveConnectorTestBase.h"
 #include "velox/exec/tests/utils/LocalExchangeSource.h"
 #include "velox/expression/Expr.h"
-#include "velox/functions/prestosql/aggregates/RegisterAggregateFunctions.h"
-#include "velox/functions/prestosql/registration/RegistrationFunctions.h"
-#include "velox/parse/QueryPlanner.h"
-#include "velox/parse/TypeResolver.h"
-#include "velox/runner/LocalRunner.h"
 #include "velox/serializers/PrestoSerializer.h"
-#include "velox/vector/VectorSaver.h"
 
-DEFINE_string(
-    data_path,
-    "",
-    "Root path of data. Data layout must follow Hive-style partitioning. ");
-
+DECLARE_string(data_path);
 
 DEFINE_int32(optimizer_trace, 0, "Optimizer trace level");
 
@@ -63,100 +43,225 @@ DEFINE_int32(num_workers, 4, "Number of in-process workers");
 
 DEFINE_string(data_format, "parquet", "Data format");
 
-
-namespace facebook::velox::optimizer {
+namespace facebook::velox::optimizer::test {
+using namespace facebook::velox::exec;
 
 void QueryTestBase::SetUp() {
-  memory::MemoryManager::testingSetInstance({});
+  exec::test::LocalRunnerTestBase::SetUp();
+  rootPool_ = memory::memoryManager()->addRootPool("velox_sql");
+  optimizerPool_ = rootPool_->addLeafChild("optimizer");
+  schemaPool_ = rootPool_->addLeafChild("schema");
 
-    rootPool_ = memory::memoryManager()->addRootPool("velox_sql");
+  parquet::registerParquetReaderFactory();
+  dwrf::registerDwrfReaderFactory();
+  exec::ExchangeSource::registerFactory(exec::test::createLocalExchangeSource);
+  serializer::presto::PrestoVectorSerde::registerVectorSerde();
+  if (!isRegisteredNamedVectorSerde(VectorSerde::Kind::kPresto)) {
+    serializer::presto::PrestoVectorSerde::registerNamedVectorSerde();
+  }
+  std::unordered_map<std::string, std::string> connectorConfig;
+  connectorConfig[connector::hive::HiveConfig::kLocalDataPath] =
+      FLAGS_data_path;
+  connectorConfig[connector::hive::HiveConfig::kLocalFileFormat] =
+      FLAGS_data_format;
+  auto config =
+      std::make_shared<config::ConfigBase>(std::move(connectorConfig));
+  connector::registerConnectorFactory(
+      std::make_shared<connector::hive::HiveConnectorFactory>());
+  connector_ = connector::getConnectorFactory(
+                   connector::hive::HiveConnectorFactory::kHiveConnectorName)
+                   ->newConnector(
+                       exec::test::kHiveConnectorId, config, ioExecutor_.get());
+  connector::registerConnector(connector_);
 
-    optimizerPool_ = rootPool_->addLeafChild("optimizer");
-    schemaPool_ = rootPool_->addLeafChild("schema");
-    checkPool_ = rootPool_->addLeafChild("check");
+  std::unordered_map<std::string, std::shared_ptr<config::ConfigBase>>
+      connectorConfigs;
+  auto copy = hiveConfig_;
+  connectorConfigs[exec::test::kHiveConnectorId] =
+      std::make_shared<config::ConfigBase>(std::move(copy));
 
-    functions::prestosql::registerAllScalarFunctions();
-    aggregate::prestosql::registerAllAggregateFunctions();
-    parse::registerTypeResolver();
-    filesystems::registerLocalFileSystem();
-    parquet::registerParquetReaderFactory();
-    dwrf::registerDwrfReaderFactory();
-    exec::ExchangeSource::registerFactory(
-        exec::test::createLocalExchangeSource);
-    serializer::presto::PrestoVectorSerde::registerVectorSerde();
-    if (!isRegisteredNamedVectorSerde(VectorSerde::Kind::kPresto)) {
-      serializer::presto::PrestoVectorSerde::registerNamedVectorSerde();
+  schemaQueryCtx_ = core::QueryCtx::create(
+      driverExecutor_.get(),
+      core::QueryConfig(config_),
+      std::move(connectorConfigs),
+      cache::AsyncDataCache::getInstance(),
+      rootPool_->shared_from_this(),
+      nullptr,
+      "schema");
+  common::SpillConfig spillConfig;
+  common::PrefixSortConfig prefixSortConfig;
+
+  schemaRootPool_ = rootPool_->addAggregateChild("schemaRoot");
+  connectorQueryCtx_ = std::make_shared<connector::ConnectorQueryCtx>(
+      schemaPool_.get(),
+      schemaRootPool_.get(),
+      schemaQueryCtx_->connectorSessionProperties(exec::test::kHiveConnectorId),
+      &spillConfig,
+      prefixSortConfig,
+      std::make_unique<exec::SimpleExpressionEvaluator>(
+          schemaQueryCtx_.get(), schemaPool_.get()),
+      schemaQueryCtx_->cache(),
+      "scan_for_schema",
+      "schema",
+      "N/a",
+      0,
+      schemaQueryCtx_->queryConfig().sessionTimezone());
+
+  schema_ = std::make_shared<facebook::velox::optimizer::SchemaResolver>(
+      connector_, "");
+}
+
+void QueryTestBase::tablesCreated() {
+  planner_ = std::make_unique<core::DuckDbQueryPlanner>(optimizerPool_.get());
+  auto& tables = dynamic_cast<connector::hive::LocalHiveConnectorMetadata*>(
+                     connector_->metadata())
+                     ->tables();
+  for (auto& pair : tables) {
+    planner_->registerTable(pair.first, pair.second->rowType());
+  }
+  planner_->registerTableScan([this](
+                                  const std::string& id,
+                                  const std::string& name,
+                                  const RowTypePtr& rowType,
+                                  const std::vector<std::string>& columnNames) {
+    return toTableScan(id, name, rowType, columnNames);
+  });
+  history_ = std::make_unique<facebook::velox::optimizer::VeloxHistory>();
+}
+
+core::PlanNodePtr QueryTestBase::toTableScan(
+    const std::string& id,
+    const std::string& name,
+    const RowTypePtr& rowType,
+    const std::vector<std::string>& columnNames) {
+  using namespace connector::hive;
+  auto handle = std::make_shared<HiveTableHandle>(
+      exec::test::kHiveConnectorId, name, true, SubfieldFilters{}, nullptr);
+  std::unordered_map<std::string, std::shared_ptr<connector::ColumnHandle>>
+      assignments;
+
+  auto table = connector_->metadata()->findTable(name);
+  for (auto i = 0; i < rowType->size(); ++i) {
+    auto projectedName = rowType->nameOf(i);
+    auto& columnName = columnNames[i];
+    VELOX_CHECK(
+        table->columnMap().find(columnName) != table->columnMap().end(),
+        "No column {} in {}",
+        columnName,
+        name);
+    assignments[projectedName] = std::make_shared<HiveColumnHandle>(
+        columnName,
+        HiveColumnHandle::ColumnType::kRegular,
+        rowType->childAt(i),
+        rowType->childAt(i));
+  }
+  return std::make_shared<core::TableScanNode>(
+      id, rowType, handle, assignments);
+}
+
+std::shared_ptr<runner::LocalRunner> QueryTestBase::runSql(
+    const std::string& sql,
+    std::vector<RowVectorPtr>* resultVector,
+    std::string* planString,
+    std::string* errorString,
+    std::vector<exec::TaskStats>* statsReturn) {
+  std::shared_ptr<runner::LocalRunner> runner;
+  std::unordered_map<std::string, std::shared_ptr<config::ConfigBase>>
+      connectorConfigs;
+  auto copy = hiveConfig_;
+  connectorConfigs[exec::test::kHiveConnectorId] =
+      std::make_shared<config::ConfigBase>(std::move(copy));
+  ++queryCounter_;
+  auto queryCtx = core::QueryCtx::create(
+      executor_.get(),
+      core::QueryConfig(config_),
+      std::move(connectorConfigs),
+      cache::AsyncDataCache::getInstance(),
+      rootPool_->shared_from_this(),
+      spillExecutor_.get(),
+      fmt::format("query_{}", queryCounter_));
+
+  // The default Locus for planning is the system and data of 'connector_'.
+  optimizer::Locus locus(connector_->connectorId().c_str(), connector_.get());
+  core::PlanNodePtr plan;
+  try {
+    plan = planner_->plan(sql);
+  } catch (std::exception& e) {
+    std::cerr << "parse error: " << e.what() << std::endl;
+    if (errorString) {
+      *errorString = fmt::format("Parse error: {}", e.what());
     }
-    ioExecutor_ = std::make_unique<folly::IOThreadPoolExecutor>(8);
-    std::unordered_map<std::string, std::string> connectorConfig;
-    connectorConfig[connector::hive::HiveConfig::kLocalDataPath] =
-        FLAGS_data_path;
-    connectorConfig[connector::hive::HiveConfig::kLocalFileFormat] =
-        FLAGS_data_format;
-    auto config =
-        std::make_shared<config::ConfigBase>(std::move(connectorConfig));
-    connector::registerConnectorFactory(
-        std::make_shared<connector::hive::HiveConnectorFactory>());
-    connector_ =
-        connector::getConnectorFactory(
-            connector::hive::HiveConnectorFactory::kHiveConnectorName)
-            ->newConnector(kHiveConnectorId, config, ioExecutor_.get());
-    connector::registerConnector(connector_);
-
-    std::unordered_map<std::string, std::shared_ptr<config::ConfigBase>>
-        connectorConfigs;
-    auto copy = hiveConfig_;
-    connectorConfigs[kHiveConnectorId] =
-        std::make_shared<config::ConfigBase>(std::move(copy));
-
-    schemaQueryCtx_ = core::QueryCtx::create(
-        executor_.get(),
-        core::QueryConfig(config_),
-        std::move(connectorConfigs),
-        cache::AsyncDataCache::getInstance(),
-        rootPool_->shared_from_this(),
-        spillExecutor_.get(),
-        "schema");
-    common::SpillConfig spillConfig;
-    common::PrefixSortConfig prefixSortConfig;
-
-    schemaRootPool_ = rootPool_->addAggregateChild("schemaRoot");
-    connectorQueryCtx_ = std::make_shared<connector::ConnectorQueryCtx>(
-        schemaPool_.get(),
-        schemaRootPool_.get(),
-        schemaQueryCtx_->connectorSessionProperties(kHiveConnectorId),
-        &spillConfig,
-        prefixSortConfig,
-        std::make_unique<exec::SimpleExpressionEvaluator>(
-            schemaQueryCtx_.get(), schemaPool_.get()),
-        schemaQueryCtx_->cache(),
-        "scan_for_schema",
-        "schema",
-        "N/a",
-        0,
-        schemaQueryCtx_->queryConfig().sessionTimezone());
-
-    schema_ = std::make_shared<facebook::velox::optimizer::SchemaResolver>(
-        connector_, "");
-
-    planner_ = std::make_unique<core::DuckDbQueryPlanner>(optimizerPool_.get());
-    auto& tables = dynamic_cast<connector::hive::LocalHiveConnectorMetadata*>(
-                       connector_->metadata())
-                       ->tables();
-    for (auto& pair : tables) {
-      planner_->registerTable(pair.first, pair.second->rowType());
+    return nullptr;
+  }
+  facebook::velox::optimizer::Optimization::PlanCostMap estimates;
+  runner::MultiFragmentPlan::Options opts;
+  opts.numWorkers = FLAGS_num_workers;
+  opts.numDrivers = FLAGS_num_drivers;
+  auto allocator = std::make_unique<HashStringAllocator>(optimizerPool_.get());
+  auto context =
+      std::make_unique<facebook::velox::optimizer::QueryGraphContext>(
+          *allocator);
+  facebook::velox::optimizer::queryCtx() = context.get();
+  exec::SimpleExpressionEvaluator evaluator(
+      queryCtx.get(), optimizerPool_.get());
+  runner::MultiFragmentPlanPtr fragmentedPlan;
+  try {
+    facebook::velox::optimizer::Schema veraxSchema(
+        "test", schema_.get(), &locus);
+    facebook::velox::optimizer::Optimization opt(
+        *plan, veraxSchema, *history_, evaluator, FLAGS_optimizer_trace);
+    auto best = opt.bestPlan();
+    if (planString) {
+      *planString = best->op->toString(true, false);
     }
-    planner_->registerTableScan(
-        [this](
-            const std::string& id,
-            const std::string& name,
-            const RowTypePtr& rowType,
-            const std::vector<std::string>& columnNames) {
-          return toTableScan(id, name, rowType, columnNames);
-        });
-    history_ = std::make_unique<facebook::velox::optimizer::VeloxHistory>();
-    executor_ = std::make_shared<folly::CPUThreadPoolExecutor>(
-        FLAGS_num_drivers * 2 + 2);
-    spillExecutor_ = std::make_shared<folly::IOThreadPoolExecutor>(4);
+    fragmentedPlan = opt.toVeloxPlan(best->op, opts);
+  } catch (const std::exception& e) {
+    facebook::velox::optimizer::queryCtx() = nullptr;
+    std::cerr << "optimizer error: " << e.what() << std::endl;
+    if (errorString) {
+      *errorString = fmt::format("optimizer error: {}", e.what());
+    }
+    return nullptr;
+  }
+  facebook::velox::optimizer::queryCtx() = nullptr;
+  try {
+    runner = std::make_shared<runner::LocalRunner>(
+        fragmentedPlan,
+        queryCtx,
+        std::make_shared<connector::ConnectorSplitSourceFactory>());
+    std::vector<RowVectorPtr> results;
+    while (auto rows = runner->next()) {
+      results.push_back(rows);
+    }
+    if (resultVector) {
+      *resultVector = results;
+    }
+    auto stats = runner->stats();
+    if (statsReturn) {
+      *statsReturn = stats;
+    }
+    auto& fragments = fragmentedPlan->fragments();
+    history_->recordVeloxExecution(nullptr, fragments, stats);
+  } catch (const std::exception& e) {
+    std::cerr << "Query terminated with: " << e.what() << std::endl;
+    if (errorString) {
+      *errorString = fmt::format("Runtime error: {}", e.what());
+    }
+    waitForCompletion(runner);
+    return nullptr;
+  }
+  waitForCompletion(runner);
+  return runner;
+}
+
+void QueryTestBase::waitForCompletion(
+    const std::shared_ptr<runner::LocalRunner>& runner) {
+  if (runner) {
+    try {
+      runner->waitForCompletion(50000);
+    } catch (const std::exception& /*ignore*/) {
+    }
   }
 }
+
+} // namespace facebook::velox::optimizer::test

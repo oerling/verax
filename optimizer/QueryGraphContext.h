@@ -62,6 +62,12 @@ struct TypeComparer {
   }
 };
 
+  
+/// Converts std::string to name used in query graph objects. raw pointer to
+/// arena allocated const chars.
+// Name toName(const std::string& string);
+Name toName(std::string_view string);
+
 
 struct Plan;
 using PlanPtr = Plan*;
@@ -100,23 +106,24 @@ struct Step {
   StepKind kind;
   Name field{nullptr};
   int64_t id{0};
-  /// True if all fields/keys are accessed at this level but there is a subset of fields accessed at a child level.
-  bool allElements{false};
-  
+  /// True if all fields/keys are accessed at this level but there is a subset
+  /// of fields accessed at a child level.
+  bool allFields{false};
+
   bool operator==(const Step& other) const;
   size_t hash() const;
 };
 
 class Path {
-public:
+ public:
   Path() = default;
-  
+
   Path(std::vector<Step> steps) {
     for (auto& step : steps) {
       steps_.push_back(std::move(step));
     }
   }
-  
+
   Path* field(const char* name) {
     VELOX_CHECK(mutable_);
     steps_.push_back(Step{.kind = StepKind::kField, .field = toName(name)});
@@ -140,23 +147,23 @@ public:
     return this;
   }
 
-  std::vector<Step, QGAllocator<Step>>& steps() const {
+  const std::vector<Step, QGAllocator<Step>>& steps() const {
     return steps_;
   }
 
   bool operator==(const Path& other) const;
 
   size_t hash() const;
-  
+
   std::string toString() const;
 
-  void makeImmutable() {
+  void makeImmutable() const {
     mutable_ = false;
   }
-  
+
  private:
   std::vector<Step, QGAllocator<Step>> steps_;
-  bool mutable_{true};
+  mutable bool mutable_{true};
 };
 
 using PathCP = const Path*;
@@ -166,13 +173,13 @@ struct PathHasher {
     return path->hash();
   }
 };
+
 struct PathComparer {
   bool operator()(const PathCP left, const PathCP right) const {
     return *left == *right;
   }
 };
 
-  
 /// Context for making a query plan. Owns all memory associated to
 /// planning, except for the input PlanNode tree. The result of
 /// planning is also owned by 'this', so the planning result must be
@@ -184,12 +191,6 @@ class QueryGraphContext {
  public:
   explicit QueryGraphContext(velox::HashStringAllocator& allocator)
       : allocator_(allocator), cache_(allocator_) {}
-
-  /// Returns the interned representation of 'str', i.e. Returns a
-  /// pointer to a canonical null terminated const char* with the same
-  /// characters as 'str'. Allows comparing names by comparing
-  /// pointers.
-  Name toName(std::string_view str);
 
   /// Returns a new unique id to use for 'object' and associates 'object' to
   /// this id. Tagging objects with integere ids is useful for efficiently
@@ -250,7 +251,13 @@ class QueryGraphContext {
     return optimization_;
   }
 
-  // Records the use of a TypePtr in optimization. Returns a canonical
+  /// Returns the interned representation of 'str', i.e. Returns a
+/// pointer to a canonical null terminated const char* with the same
+/// characters as 'str'. Allows comparing names by comparing
+/// pointers.
+  Name toName(std::string_view str);
+
+    // Records the use of a TypePtr in optimization. Returns a canonical
   // representative of the type, allowing pointer equality for exact match.
   // Allows mapping from the Type* back to TypePtr.
   const Type* toType(const velox::TypePtr& type);
@@ -259,6 +266,9 @@ class QueryGraphContext {
   /// been previously returned by toType().
   const TypePtr& toTypePtr(const Type* type);
 
+  /// Returns the interned instance of 'path'. 'path' is either
+  /// retained if it is not previously known or it is deleted. Must be
+  /// allocated from the arena of 'this'.
   PathCP toPath(PathCP);
 
  private:
@@ -290,18 +300,17 @@ class QueryGraphContext {
 
 /// Returns a mutable reference to the calling thread's QueryGraphContext.
 QueryGraphContext*& queryCtx();
-  
-  template <class T>  
-  T* QGAllocator<T>::allocate(std::size_t n) {
-    return reinterpret_cast<T*>(
-        queryCtx()->allocate(velox::checkedMultiply(n, sizeof(T)))); // NOLINT
-  }
 
-  template <class T>
-  void QGAllocator<T>::deallocate(T* p, std::size_t /*n*/) noexcept {
-    queryCtx()->free(p);
-  }
+template <class T>
+T* QGAllocator<T>::allocate(std::size_t n) {
+  return reinterpret_cast<T*>(
+      queryCtx()->allocate(velox::checkedMultiply(n, sizeof(T)))); // NOLINT
+}
 
+template <class T>
+void QGAllocator<T>::deallocate(T* p, std::size_t /*n*/) noexcept {
+  queryCtx()->free(p);
+}
 
 template <class _Tp, class... _Args>
 inline _Tp* make(_Args&&... __args) {
@@ -312,11 +321,6 @@ inline _Tp* make(_Args&&... __args) {
 /// Macro to use instead of make() when make() errors out from too
 /// many arguments.
 #define QGC_MAKE_IN_ARENA(_Tp) new (queryCtx()->allocate(sizeof(_Tp))) _Tp
-
-/// Converts std::string to name used in query graph objects. raw pointer to
-/// arena allocated const chars.
-// Name toName(const std::string& string);
-Name toName(std::string_view string);
 
 /// Shorthand for toType() in thread's QueryGraphContext.
 const Type* toType(const TypePtr& type);

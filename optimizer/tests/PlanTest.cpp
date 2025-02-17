@@ -152,18 +152,17 @@ TEST_F(PlanTest, queryGraph) {
   auto* path = make<Path>()
     ->subscript("field")
     ->subscript(123)
-    path->field("f1")
-    path->cardinality();
+    ->field("f1")
+    ->cardinality();
   auto interned = queryCtx()->toPath(path);
   EXPECT_EQ(interned, path);
   auto* path2 = make<Path>()
     ->subscript("field")
     ->subscript(123)
-    path->field("f1")
-    path->cardinality();
+    ->field("f1")
+    ->cardinality();
   auto interned2 = queryCtx()->toPath(path2);
   EXPECT_EQ(interned2, interned);
-  
 }
 
 TEST_F(PlanTest, q3) {

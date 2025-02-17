@@ -21,6 +21,9 @@ target_link_libraries(
   velox_plan_test
   velox_verax
   velox_tpch_gen
+  velox_connector_split_source
+  velox_hive_connector_metadata
+  velox_exec_runner_test_util
   velox_exec_test_lib
   velox_dwio_parquet_reader
   velox_dwio_native_parquet_reader

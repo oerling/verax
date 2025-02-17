@@ -19,6 +19,7 @@
 #include "optimizer/RelationOp.h" //@manual
 #include "velox/connectors/Connector.h"
 #include "velox/core/PlanNode.h"
+#include "velox/expression/ConstantExpr.h"
 #include "velox/runner/MultiFragmentPlan.h"
 
 /// Planning-time data structures. Represent the state of the planning process
@@ -54,13 +55,15 @@ struct ResultAccess {
 
 /// PlanNode output columns and function arguments with accessed subfields.
 struct PlanSubfields {
-  std::unordered_map<core::PlanNode*, ResultInfo> nodeFields; 
-  std::unordered_map<core::TypedExpr*, ResultInfo> argFields;
+  std::unordered_map<const core::PlanNode*, ResultAccess> nodeFields; 
+  std::unordered_map<const core::ITypedExpr*, ResultAccess> argFields;
     };
 
-struct  FunctionSubfields {
+/// Struct for resolving which PlanNode or Lambda defines which FieldAccessTypedExpr for column and subfield tracking.
+struct ContextSource {
+  const core::PlanNode* planNode;
+  const core::LambdaTypedExpr* lambda;
 };
-
   
 struct Plan;
 struct PlanState;
@@ -504,9 +507,31 @@ class Optimization {
       const velox::core::CastTypedExpr* cast,
       const ExprVector& literals);
 
+  // Returns a constant expression if 'typedExprcan be folded, nullptr otherwise.
+  std::shared_ptr<const exec::ConstantExpr> foldConstant(const core::TypedExprPtr& typedExpr);
+
+void markFieldAccessed(
+    const ContextSource& source,
+    int32_t ordinal,
+    std::vector<Step>& steps,
+    bool isControl);
+void markSubfields(
+				 const core::ITypedExpr* expr,
+    std::vector<Step>& steps,
+    bool isControl,
+    const std::vector<const RowType*> context,
+				 const std::vector<ContextSource>& sources);
+  
+  void markTopOutputs(const RowType* type, const core::PlanNode* node);
+  
+
+  bool isSubfield(const core::ITypedExpr* expr, Step& step, core::TypedExprPtr& input);
+  
   // Makes a deduplicated Expr tree from 'expr'.
   ExprCP translateExpr(const velox::core::TypedExprPtr& expr);
 
+  ExprCP translateSubfield(const core::TypedExprPtr& expr);
+  
   // Adds conjuncts combined by any number of enclosing ands from 'input' to
   // 'flat'.
   void translateConjuncts(

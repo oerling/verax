@@ -94,11 +94,11 @@ variant toVariant(BaseVector& constantVector) {
   VELOX_FAIL("Literal not of foldable type");
 }
 
-  std::shared_ptr<const ConstantExpr> Optimization::foldConstant(const TypedExprPtr& typedExpr) {
+  std::shared_ptr<const exec::ConstantExpr> Optimization::foldConstant(const core::TypedExprPtr& typedExpr) {
   auto exprSet = evaluator_.compile(typedExpr);
     auto first = exprSet->exprs().front().get();
     if (auto constantExpr = dynamic_cast<const exec::ConstantExpr*>(first)) {
-      return std::dynamic_pointer_cast<ConstantExpr>(exprSet->exprs().front());
+      return std::dynamic_pointer_cast<exec::ConstantExpr>(exprSet->exprs().front());
     }
     return nullptr;
   }
@@ -133,41 +133,57 @@ ExprCP Optimization::tryFoldConstant(
   }
 }
 
-  std::optional<StepKind> Optimization::subfieldKind(const core::TypedExpr* expr, Step& step, core::TypedExpr*& input) {
+bool Optimization::isSubfield(const core::ITypedExpr* expr, Step& step, core::TypedExprPtr& input) {
   if (auto* field = dynamic_cast<const core::FieldAccessTypedExpr*>(expr)) {
-    auto* input = field->inputs()[0].get();
-    if (!input || dynamic_cast<const InputTypedExpr*>(input)) {
-      return std::nullopt;
+    input = field->inputs()[0];
+    if (!input || dynamic_cast<const core::InputTypedExpr*>(input.get())) {
+      return false;
     }
     step.kind = StepKind::kField;
     step.field = toName(field->name());
-    return StepKind::kField;
+    return true;
   }
   if (auto* call = dynamic_cast<const core::CallTypedExpr*>(expr)) {
     auto name = call->name();
     if (name == "subscript") {
       auto subscript = translateExpr(call->inputs()[1]); 
-      if (subscript->planType() == PlanType::kLiteral) {
+      if (subscript->type() == PlanType::kLiteral) {
       step.kind = StepKind::kSubscript;
-      return StepKind::kSubscript;
+      input = expr->inputs()[0];
+      return true;
       }
-      return std::nullopt();
+      return false;
       }
     if (name == "cardinality") {
       step.kind = StepKind::kCardinality;
-      return StepKind::kCardinality;
+      input = expr->inputs()[0];
+      return true;
     }
   }
-  return std::nullopt;
+  return false;
 }
   
-ExprCP Optimization::translateSubfield(const core::TypedExprPtr& expr) {
-  auto maybekind = subfieldKind(expr, );
-  if (!maybeKind.has_value) {
-    return nullptr;
+ExprCP Optimization::translateSubfield(const core::TypedExprPtr& inputExpr) {
+  std::vector<Step> steps;
+  auto* expr = inputExpr.get();
+  for (;;) {
+    core::TypedExprPtr input;
+    Step step;
+    bool isStep = isSubfield(expr, step, input);
+    if (!isStep) {
+      if (steps.empty()) {
+	return nullptr;
+      }
+      std::vector<Step> reverse;
+      for (auto& step : steps) {
+	reverse.push_back(std::move(step));
+      }
+      auto path = queryCtx()->toPath(make<Path>(std::move(reverse)));
+      return make<Subfield>(path, inputExpr->type().get(), translateExpr(input));
+    }
+    steps.push_back(std::move(step));
+    expr = input.get();
   }
-  auto kind = maybeKind.value();
-  
 }
   
 ExprCP Optimization::translateExpr(const core::TypedExprPtr& expr) {
