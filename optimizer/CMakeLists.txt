@@ -19,6 +19,7 @@ add_subdirectory(connectors)
 add_library(
   velox_verax
   ToGraph.cpp
+  Subfields.cpp
   Plan.cpp
   PlanObject.cpp
   Schema.cpp

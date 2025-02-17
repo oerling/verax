@@ -31,7 +31,56 @@ using namespace facebook::velox;
   using NodeSubfieldFunc = std::function<void(Optimization*, PlanNode* node, const std::vector<const RowType*>& context, const std::vector<ContextSource>& sources, bool isControl, )>;
 
 
+  
 
+  template<typename T>
+  int64_t integerValueInner(const BaseVector* vector) {
+    return vector->as<ConstantVector<T>>()->valueAt(0);
+  }
+  
+  int64_t integerValue(const BaseVector* vector) {
+    switch (vector->typeKind()) {
+    case TypeKind::SMALLINT: return integerValueInner<int8_t>(vector);
+    case TypeKind::SMALLINT: return integerValueInner<int16_t>(vector);
+    case TypeKind::INTEGER: return integerValueInner<int32_t>(vector);
+    case TypeKind::BIGINT: return integerValueInner<int64_t>(vector);
+    default: VELOX_FAIL();
+    }
+  }
+
+
+  void Optimization::markFieldAccessed(const ContextSource& source, int32_t ordinal, const std::vector<Step>& steps, bool isControl) {
+    if (source.planNode) {
+      auto name = source.planNode->name();
+      auto fields = isControl ? &controlSubfields : &payloadSubfields_; 
+      std::vector<Step> reverse;
+      for (int32_t i = steps.size() - 1; i >= 0; --i) {
+	reverse.push_back(steps[i]);
+      }
+      path =queryCtx()->toPath(make<Path>(std::move(reverse)));
+      fields->nodeFields[ordinal] .insert(path);
+      if (name == "Project") {
+	auto* project = reinterpret_cast<const ProjectNode*>(source.planNode);
+	markSubfields(project->exprs()[ordinal], steps, isControl, {project->outputType().get()}, {.planNode = project->sources()[0]});
+	return;
+      }
+      auto& sources = source.planNode->sources();
+      if (sources.empty()) {
+	return;
+      }
+      auto fieldName = source.planNode->outputType()->nameOf(ordinal);
+      for (auto i = 0; i < sources.size(); ++i) {
+	auto& type = sources[i]->outputType();
+	auto maybeIdx = type->getChildIdxIfExists(name);
+	if (maybeIdx.has_value()) {
+	  markNodeSubfields(sources[i], expr, steps, isControl);
+	  return;
+	}
+      }
+      VELOX_FAIL("Should have found source for expr");
+    }
+    VELOX_NYI("no lambda");
+  }
   
   void Optimization::markSubfields(core::TypedExpr* expr, std::vector<Step>& steps, bool isControl, const std::vector<const RowType*> context, const std::vector<ContextSource>& sources) {
     if (auto* field = dynamic_cast<const core::FieldAccessTypedExpr>(expr)) {
@@ -83,7 +132,7 @@ using namespace facebook::velox;
 	  markSubfields(call->inputs()[0].get(), steps, isControl, context, sources);
 	  steps.pop_back();
 	}
-	
+	return;
       }
     }
 

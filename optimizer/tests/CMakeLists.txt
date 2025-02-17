@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-add_executable(velox_plan_test PlanTest.cpp Tpch.cpp ParquetTpchTest.cpp)
+add_executable(velox_plan_test PlanTest.cpp Tpch.cpp ParquetTpchTest.cpp
+  QueryTestBase.cpp SubfieldTest.cpp FeatureGen.cpp)
 
 add_test(velox_plan_test velox_plan_test)
 

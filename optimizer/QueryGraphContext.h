@@ -111,6 +111,12 @@ class Path {
 public:
   Path() = default;
   
+  Path(std::vector<Step> steps) {
+    for (auto& step : steps) {
+      steps_.push_back(std::move(step));
+    }
+  }
+  
   Path* field(const char* name) {
     VELOX_CHECK(mutable_);
     steps_.push_back(Step{.kind = StepKind::kField, .field = toName(name)});
