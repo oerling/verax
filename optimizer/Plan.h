@@ -522,9 +522,12 @@ void markSubfields(
     const std::vector<const RowType*> context,
 				 const std::vector<ContextSource>& sources);
   
-  void markTopOutputs(const RowType* type, const core::PlanNode* node);
-  
+  void markAllSubfields(const RowType* type, const core::PlanNode* node);
 
+  void markControl(const core::PlanNode* node);
+
+  void markColumnSubfields(const core::PlanNode* node, const std::vector<core::FieldReferenceTypedExprPtr>& columns, int32_t source);
+    
   bool isSubfield(const core::ITypedExpr* expr, Step& step, core::TypedExprPtr& input);
   
   // Makes a deduplicated Expr tree from 'expr'.

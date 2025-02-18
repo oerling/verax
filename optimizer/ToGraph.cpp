@@ -44,6 +44,7 @@ void Optimization::setDerivedTableOutput(
 }
 
 DerivedTableP Optimization::makeQueryGraph() {
+  markAllsubfields(inputPlan_);
   auto* root = make<DerivedTable>();
   root_ = root;
   currentSelect_ = root_;
