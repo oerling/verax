@@ -165,38 +165,46 @@ void Optimization::markSubfields(
   }
 }
 
-  void Optimization::markColumnSubfields(const core::PlanNode* node, const std::vector<core::FieldReferenceTypedExprPtr>& columns, int32_t source) {
-    std::vector<const RowType*> context = {node->sources()[source]->outputType().get();
-      std::vector<ContextSource> sources = {{.planNode = node->sources()[source].get()}};
-      for (auto i = 0;i < columns.size(); ++i) {
-	std::vector<Step> steps;
-	markSubfields(columns[i], steps, true, context, sources);
-      }
+void Optimization::markColumnSubfields(
+    const core::PlanNode* node,
+    const std::vector<core::FieldReferenceTypedExprPtr>& columns,
+    int32_t source) {
+  std::vector<const RowType*> context = {
+    node->sources()[source]->outputType().get();
+  std::vector<ContextSource> sources = {
+      {.planNode = node->sources()[source].get()}};
+  for (auto i = 0; i < columns.size(); ++i) {
+    std::vector<Step> steps;
+    markSubfields(columns[i], steps, true, context, sources);
+  }
+}
+} // namespace facebook::velox::optimizer
+
+void Optimization::markControl(const core::PlanNode* node) {
+  auto& name = node->name();
+  if (auto* join = dynamic_cast<const core::AbstractJoinNode*>(node)) {
+    markColumnSubfields(node, join->leftKeys, 0);
+    markColumnSubfields(node, join->leftKeys, 1);
+    if (auto* filter = join->filter().get()) {
+      std::vector<const RowType*> context = {
+          join->sources()[0]->outputType().get(),
+          join->sources()[1]->outputType().get()};
+      std::vector<ContextSource> sources = {
+          {.planNode = join->sources()[0].get(), join->sources()[1].get()}};
+      std::vector<Step> steps;
+      markSubfields(filter, steps, true, context, sources);
     }
   }
-  
-  void Optimization::markControl(const core::PlanNode* node) {
-    auto& name = node->name();
-    if (auto* join = dynamic_cast<const core::AbstractJoinNode*>(node)) {
-      markColumnSubfields(node, join->leftKeys, 0);
-      markColumnSubfields(node, join->leftKeys, 1);
-      if (auto* filter = join->filter().get()) {
-	std::vector<const RowType*> context = {join->sources()[0]->outputType().get(), join->sources()[1]->outputType().get()};
-	std::vector<ContextSource> sources = {{.planNode = join->sources()[0].get(), join->sources()[1].get()}};
-	  std::vector<Step> steps;
-	  markSubfields(filter, steps, true, context, sources);
-	}
-    }
-    if (name = "HashAggregation") {
-      auto* agg = dynamic_cast<HashAggregation*>(node);
-      markColumnSubfields(node, agg->keys(), 0);
-      return;
-    }
-    for (auto& source : node->sources()) {
-      markControl(source.get());
-    }
+  if (name = "HashAggregation") {
+    auto* agg = dynamic_cast<HashAggregation*>(node);
+    markColumnSubfields(node, agg->keys(), 0);
+    return;
   }
-  
+  for (auto& source : node->sources()) {
+    markControl(source.get());
+  }
+}
+
 void Optimization::markAllSubfields(
     const RowType* type,
     const core::PlanNode* node) {
