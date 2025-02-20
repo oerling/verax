@@ -122,5 +122,7 @@ std::vector<RowVectorPtr> makeFeatures(
         {uids, tss, floatFeatures, idListFeatures, scoreListFeatures});
     result.push_back(std::move(row));
   }
+  return result;
 }
+  
 } // namespace facebook::velox::optimizer::test
