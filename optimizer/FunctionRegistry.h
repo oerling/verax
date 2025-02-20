@@ -29,7 +29,7 @@ class FunctionRegistry {
 
   static FunctionRegistry* instance();
 
-private:
+ private:
   std::unordered_map<std::string, std::unique_ptr<FunctionMetadata>> metadata_;
-} ;
+};
 } // namespace facebook::velox::optimizer

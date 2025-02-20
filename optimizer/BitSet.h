@@ -23,8 +23,7 @@ namespace facebook::velox::optimizer {
 class BitSet {
  public:
   bool contains(int32_t id) const {
-    return id < bits_.size() * 64 &&
-        velox::bits::isBitSet(bits_.data(), id);
+    return id < bits_.size() * 64 && velox::bits::isBitSet(bits_.data(), id);
   }
 
   void add(int32_t id) {
@@ -52,19 +51,15 @@ class BitSet {
     return true;
   }
 
-  
   /// Returns true if 'this' is a subset of 'super'.
   bool isSubset(const BitSet& super) const;
-
 
   /// Erases all ids not in 'other'.
   void intersect(const BitSet& other);
 
-    /// Adds all ids in 'other'.
+  /// Adds all ids in 'other'.
   void unionSet(const BitSet& other);
 
-
-  
   void except(const BitSet& other) {
     velox::bits::forEachSetBit(
         other.bits_.data(), 0, other.bits_.size() * 64, [&](auto id) {
@@ -75,10 +70,10 @@ class BitSet {
   }
 
   template <typename Func>
-    void forEach(Func f) {
+  void forEach(Func f) {
     bits::forEachSetBit(bits_.data(), 0, bits_.size() * 64, f);
   }
-  
+
  protected:
   void ensureSize(int32_t id) {
     ensureWords(velox::bits::nwords(id + 1));

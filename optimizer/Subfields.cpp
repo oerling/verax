@@ -234,7 +234,7 @@ void Optimization::markAllSubfields(
   }
 }
 
-  std::vector<int32_t> Optimization::usedChannels(const core::PlanNode* node) {
+std::vector<int32_t> Optimization::usedChannels(const core::PlanNode* node) {
   auto& control = controlSubfields_.nodeFields[node];
   auto& payload = controlSubfields_.nodeFields[node];
   BitSet unique;

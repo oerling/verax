@@ -14,10 +14,7 @@
  * limitations under the License.
  */
 
-
 #include "optimizer/BitSet.h" //@manual
-
-
 
 namespace facebook::velox::optimizer {
 
@@ -75,7 +72,7 @@ size_t BitSet::hash() const {
   return hash * hash;
 }
 
-  void BitSet::unionSet(const BitSet& other) {
+void BitSet::unionSet(const BitSet& other) {
   ensureWords(other.bits_.size());
   for (auto i = 0; i < other.bits_.size(); ++i) {
     bits_[i] |= other.bits_[i];
@@ -90,6 +87,4 @@ void BitSet::intersect(const BitSet& other) {
   }
 }
 
-
-
-}
+} // namespace facebook::velox::optimizer
