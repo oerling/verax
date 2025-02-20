@@ -27,6 +27,33 @@ using namespace facebook::velox;
 using namespace facebook::velox::exec;
 using namespace facebook::velox::runner;
 
+  std::vector<common::Subfield> columnSubfields(BaseTableCP table, Name column) {
+    BitSet set = table->columnSubfields(column, false, false);
+    std::vector<common::Subfield> subfields;
+    set.forEach([&](auto id) {
+      auto steps = queryCtx()->pathById(id)->steps();
+      std::vector<std::unique_ptr<common::Subfield::PathElement>> elements;
+      for (auto& step : steps) {
+	switch (step.kind) {
+	case StepKind::kField:
+	  elements.push_back(std::make_unique<common::Subfield::NestedField>(step.field));
+	  break;
+	case StepKind::kSubscript:
+	  if (step.field) {
+	    elements.push_back(std::make_unique<common::Subfield::StringSubscript>(step.field));
+	    break;
+	  }
+	  elements.push_back(std::make_unique<common::Subfield::LongSubscript>(step.id));
+	  break;
+	case StepKind::kCardinality: VELOX_UNSUPPORTED();
+	}
+	
+      }
+      subfields.emplace_back(std::move(elements));
+    });
+    return subfields;
+  }
+  
 void filterUpdated(BaseTableCP table) {
   auto optimization = queryCtx()->optimization();
   std::vector<core::TypedExprPtr> remainingConjuncts;
@@ -65,9 +92,10 @@ void filterUpdated(BaseTableCP table) {
   auto connector = layout->connector();
   std::vector<connector::ColumnHandlePtr> columns;
   for (int32_t i = 0; i < dataColumns->size(); ++i) {
-    // Add subfield pruning here.
+    std::vector<common::Subfield> subfields = columnSubfields(table, toName(dataColumns->nameOf(i)));
+
     columns.push_back(connector->metadata()->createColumnHandle(
-        *layout, dataColumns->nameOf(i)));
+								*layout, dataColumns->nameOf(i), std::move(subfields)));
   }
   auto allFilters = std::move(pushdownConjuncts);
   if (remainingFilter) {

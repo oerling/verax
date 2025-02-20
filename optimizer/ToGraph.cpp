@@ -44,7 +44,7 @@ void Optimization::setDerivedTableOutput(
 }
 
 DerivedTableP Optimization::makeQueryGraph() {
-  markAllsubfields(inputPlan_);
+  markAllSubfields(inputPlan_.outputType().get(), &inputPlan_);
   auto* root = make<DerivedTable>();
   root_ = root;
   currentSelect_ = root_;
@@ -299,7 +299,8 @@ AggregationP Optimization::translateAggregation(
     }
     // The keys for intermediate are the same as for final.
     aggregation->intermediateColumns = aggregation->columns();
-    for (auto i = 0; i < source.aggregateNames().size(); ++i) {
+    for (auto channel : usedChannels(&source)) {
+      auto i = channel - source.groupingKeys().size();
       auto rawFunc = translateExpr(source.aggregates()[i].call)->as<Call>();
       ExprCP condition = nullptr;
       if (source.aggregates()[i].mask) {
@@ -518,14 +519,30 @@ PlanObjectP Optimization::makeBaseTable(const core::TableScanNode* tableScan) {
   auto* baseTable = make<BaseTable>();
   baseTable->cname = toName(cname);
   baseTable->schemaTable = schemaTable;
+  auto channels = usedChannels(tableScan);
   ColumnVector columns;
   ColumnVector schemaColumns;
   for (auto& pair : assignments) {
+    auto idx = tableScan->outputType()->getChildIdx(pair.second->name());
+    if (std::find(channels.begin(), channels.end(), idx) == channels.end()) {
+      continue;
+    }
     auto schemaColumn = schemaTable->findColumn(pair.second->name());
     schemaColumns.push_back(schemaColumn);
     auto value = schemaColumn->value();
     auto* column = make<Column>(toName(pair.second->name()), baseTable, value);
     columns.push_back(column);
+    auto kind = column->value().type->kind();
+    if (kind == TypeKind::ARRAY || kind == TypeKind::ROW || kind == TypeKind::MAP) {
+      if (controlSubfields_.hasColumn(tableScan, idx)) {
+	baseTable->controlSubfields.ids.push_back(column->id());
+	baseTable->controlSubfields.subfields.push_back(controlSubfields_.nodeFields[tableScan].resultPaths[idx]);
+      }
+      if (payloadSubfields_.hasColumn(tableScan, idx)) {
+	baseTable->payloadSubfields.ids.push_back(column->id());
+	baseTable->payloadSubfields.subfields.push_back(payloadSubfields_.nodeFields[tableScan].resultPaths[idx]);
+      }
+    }
     renames_[pair.first] = column;
   }
   baseTable->columns = columns;
@@ -540,7 +557,7 @@ PlanObjectP Optimization::makeBaseTable(const core::TableScanNode* tableScan) {
 void Optimization::addProjection(const core::ProjectNode* project) {
   auto names = project->names();
   auto exprs = project->projections();
-  for (auto i = 0; i < names.size(); ++i) {
+  for (auto i : usedChannels(project)) {
     if (auto field = dynamic_cast<const core::FieldAccessTypedExpr*>(
             exprs.at(i).get())) {
       // A variable projected to itself adds no renames. Inputs contain this

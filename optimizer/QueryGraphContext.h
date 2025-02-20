@@ -62,12 +62,10 @@ struct TypeComparer {
   }
 };
 
-  
 /// Converts std::string to name used in query graph objects. raw pointer to
 /// arena allocated const chars.
 // Name toName(const std::string& string);
 Name toName(std::string_view string);
-
 
 struct Plan;
 using PlanPtr = Plan*;
@@ -111,8 +109,11 @@ struct Step {
   bool allFields{false};
 
   bool operator==(const Step& other) const;
+  bool operator<(const Step& other) const;
   size_t hash() const;
 };
+
+class BitSet;
 
 class Path {
  public:
@@ -123,6 +124,8 @@ class Path {
       steps_.push_back(std::move(step));
     }
   }
+  /// True if 'prefix' is a prefix of 'this'.
+  bool hasPrefix(const Path& prefix) const;
 
   Path* field(const char* name) {
     VELOX_CHECK(mutable_);
@@ -151,7 +154,18 @@ class Path {
     return steps_;
   }
 
+  int32_t id() const {
+    return id_;
+  }
+
+  void setId(int32_t id) const {
+    VELOX_CHECK(mutable_);
+    id_ = id;
+  }
+
   bool operator==(const Path& other) const;
+
+  bool operator<(const Path& other) const;
 
   size_t hash() const;
 
@@ -161,8 +175,13 @@ class Path {
     mutable_ = false;
   }
 
+  /// Removes elements of 'subfields' where the path has a prefix in
+  /// 'subfields'.
+  static void subfieldSkyline(BitSet& subfields);
+
  private:
   std::vector<Step, QGAllocator<Step>> steps_;
+  mutable int32_t id_{-1};
   mutable bool mutable_{true};
 };
 
@@ -252,12 +271,12 @@ class QueryGraphContext {
   }
 
   /// Returns the interned representation of 'str', i.e. Returns a
-/// pointer to a canonical null terminated const char* with the same
-/// characters as 'str'. Allows comparing names by comparing
-/// pointers.
+  /// pointer to a canonical null terminated const char* with the same
+  /// characters as 'str'. Allows comparing names by comparing
+  /// pointers.
   Name toName(std::string_view str);
 
-    // Records the use of a TypePtr in optimization. Returns a canonical
+  // Records the use of a TypePtr in optimization. Returns a canonical
   // representative of the type, allowing pointer equality for exact match.
   // Allows mapping from the Type* back to TypePtr.
   const Type* toType(const velox::TypePtr& type);
@@ -270,6 +289,10 @@ class QueryGraphContext {
   /// retained if it is not previously known or it is deleted. Must be
   /// allocated from the arena of 'this'.
   PathCP toPath(PathCP);
+
+  PathCP pathById(int32_t id) {
+    return pathById_[id];
+  }
 
  private:
   TypePtr dedupType(const TypePtr& type);
@@ -293,6 +316,8 @@ class QueryGraphContext {
   std::unordered_map<const velox::Type*, velox::TypePtr> toTypePtr_;
 
   std::unordered_set<PathCP, PathHasher, PathComparer> deduppedPaths_;
+
+  std::vector<PathCP> pathById_;
 
   Plan* contextPlan_{nullptr};
   Optimization* optimization_{nullptr};

@@ -75,6 +75,43 @@ std::string conjunctsToString(const ExprVector& conjuncts) {
   return out.str();
 }
 
+  std::optional<BitSet> SubfieldSet::findSubfields(int32_t id) const {
+    for (auto i = 0; i < ids.size(); ++i) {
+      if (ids[i] == id) {
+	return subfields[i];
+      }
+    }
+    return std::nullopt;
+  }
+
+  
+BitSet BaseTable::columnSubfields(Name name, bool controlOnly, bool payloadOnly) const {
+  int32_t id = -1;
+  for (auto i = 0; i < columns.size(); ++i) {
+    if (columns[i]->name() == name) {
+      id = columns[i]->id();
+	break;
+    }
+  }
+  VELOX_CHECK_NE(id, -1);
+  BitSet subfields;
+  if (!controlOnly) {
+    auto maybe = payloadSubfields.findSubfields(id);
+    if (maybe.has_value()) {
+      subfields = maybe.value(); 
+    }
+  }
+  if (!payloadOnly) {
+    auto maybe = controlSubfields.findSubfields(id);
+    if (maybe.has_value()) {
+      subfields.unionSet(maybe.value());
+    }
+  }
+  Path::subfieldSkyline(subfields);
+  return subfields;
+}
+
+  
 std::string BaseTable::toString() const {
   std::stringstream out;
   out << "{" << PlanObject::toString();
@@ -232,6 +269,7 @@ PlanObjectSet allTables(CPSpan<Expr> exprs) {
 Column::Column(Name name, PlanObjectP relation, const Value& value)
     : Expr(PlanType::kColumn, value), name_(name), relation_(relation) {
   columns_.add(this);
+  subexpressions_.add(this);
   if (relation_ && relation_->type() == PlanType::kTable) {
     schemaColumn_ = relation->as<BaseTable>()->schemaTable->findColumn(name_);
     VELOX_CHECK(schemaColumn_);

@@ -18,6 +18,20 @@
 
 namespace facebook::velox::optimizer {
 
+FunctionMetadata* FunctionRegistry::metadata(Name name) {
+  auto it = metadata_.find(name);
+  if (it == metadata_.end()) {
+    return nullptr;
+  }
+  return it->second.get();
+}
+
+void FunctionRegistry::registerFunction(
+    const std::string& name,
+    std::unique_ptr<FunctionMetadata> metadata) {
+  metadata_[name] = std::move(metadata);
+}
+
 // static
 FunctionRegistry* FunctionRegistry::instance() {
   static auto registry = std::make_unique<FunctionRegistry>();

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "optimizer/FunctionRegistry.h" //@manual
 #include "optimizer/Plan.h" //@manual
 #include "optimizer/PlanUtils.h" //@manual
 #include "velox/exec/Aggregate.h"
@@ -63,7 +64,7 @@ void Optimization::markFieldAccessed(
       reverse.push_back(steps[i]);
     }
     auto path = queryCtx()->toPath(make<Path>(std::move(reverse)));
-    fields->nodeFields[source.planNode].resultPaths[ordinal].insert(path);
+    fields->nodeFields[source.planNode].resultPaths[ordinal].add(path->id());
     if (name == "Project") {
       auto* project =
           reinterpret_cast<const core::ProjectNode*>(source.planNode);
@@ -108,12 +109,11 @@ void Optimization::markSubfields(
     if (isLeaf) {
       for (auto i = 0; i < sources.size(); ++i) {
         auto maybeIdx = context[i]->getChildIdxIfExists(field->name());
-        if (maybeIdx.has_value())
-          if (maybeIdx.has_value()) {
-            auto source = sources[i];
-            markFieldAccessed(source, maybeIdx.value(), steps, isControl);
-            return;
-          }
+        if (maybeIdx.has_value()) {
+          auto source = sources[i];
+          markFieldAccessed(source, maybeIdx.value(), steps, isControl);
+          return;
+        }
       }
       VELOX_FAIL("Field not found {}", field->name());
     }
@@ -122,43 +122,51 @@ void Optimization::markSubfields(
     markSubfields(input, steps, isControl, context, sources);
     steps.pop_back();
     return;
-    if (auto* call = dynamic_cast<const core::CallTypedExpr*>(expr)) {
-      auto& name = call->name();
-      if (name == "cardinality") {
-        steps.push_back(Step{.kind = StepKind::kCardinality});
+  }
+  if (auto* call = dynamic_cast<const core::CallTypedExpr*>(expr)) {
+    auto& name = call->name();
+    if (name == "cardinality") {
+      steps.push_back(Step{.kind = StepKind::kCardinality});
+      markSubfields(
+          call->inputs()[0].get(), steps, isControl, context, sources);
+      steps.pop_back();
+      return;
+    }
+    if (name == "subscript") {
+      auto constant = foldConstant(call->inputs()[1]);
+      if (!constant) {
+        std::vector<Step> subSteps;
+        markSubfields(
+            call->inputs()[1].get(), subSteps, isControl, context, sources);
+        steps.push_back(Step{.kind = StepKind::kSubscript, .allFields = true});
         markSubfields(
             call->inputs()[0].get(), steps, isControl, context, sources);
         steps.pop_back();
         return;
       }
-      if (name == "subscript") {
-        auto constant = foldConstant(call->inputs()[1]);
-        if (!constant) {
-          std::vector<Step> subSteps;
-          markSubfields(
-              call->inputs()[1].get(), subSteps, isControl, context, sources);
-          steps.push_back(
-              Step{.kind = StepKind::kSubscript, .allFields = true});
-          markSubfields(
-              call->inputs()[0].get(), steps, isControl, context, sources);
-          steps.pop_back();
-          return;
-        }
-        auto value = constant->value();
-        if (value->type()->kind() == TypeKind::VARCHAR) {
-          std::string str = value->as<ConstantVector<StringView>>()->valueAt(0);
-          steps.push_back(
-              Step{.kind = StepKind::kSubscript, .field = toName(str)});
-          markSubfields(
-              call->inputs()[0].get(), steps, isControl, context, sources);
-          steps.pop_back();
-          return;
-        }
-        auto id = integerValue(constant->value().get());
-        steps.push_back(Step{.kind = StepKind::kSubscript, .id = id});
+      auto value = constant->value();
+      if (value->type()->kind() == TypeKind::VARCHAR) {
+        std::string str = value->as<ConstantVector<StringView>>()->valueAt(0);
+        steps.push_back(
+            Step{.kind = StepKind::kSubscript, .field = toName(str)});
         markSubfields(
             call->inputs()[0].get(), steps, isControl, context, sources);
         steps.pop_back();
+        return;
+      }
+      auto id = integerValue(constant->value().get());
+      steps.push_back(Step{.kind = StepKind::kSubscript, .id = id});
+      markSubfields(
+          call->inputs()[0].get(), steps, isControl, context, sources);
+      steps.pop_back();
+      return;
+    }
+    auto* data = FunctionRegistry::instance()->metadata(toName(name));
+    if (!data) {
+      for (auto i = 0; i < call->inputs().size(); ++i) {
+        std::vector<Step> steps;
+        markSubfields(
+            call->inputs()[i].get(), steps, isControl, context, sources);
       }
       return;
     }
@@ -167,38 +175,48 @@ void Optimization::markSubfields(
 
 void Optimization::markColumnSubfields(
     const core::PlanNode* node,
-    const std::vector<core::FieldReferenceTypedExprPtr>& columns,
+    const std::vector<core::FieldAccessTypedExprPtr>& columns,
     int32_t source) {
   std::vector<const RowType*> context = {
-    node->sources()[source]->outputType().get();
+      node->sources()[source]->outputType().get()};
   std::vector<ContextSource> sources = {
       {.planNode = node->sources()[source].get()}};
   for (auto i = 0; i < columns.size(); ++i) {
     std::vector<Step> steps;
-    markSubfields(columns[i], steps, true, context, sources);
+    markSubfields(columns[i].get(), steps, true, context, sources);
   }
 }
-} // namespace facebook::velox::optimizer
 
 void Optimization::markControl(const core::PlanNode* node) {
-  auto& name = node->name();
+  auto name = node->name();
   if (auto* join = dynamic_cast<const core::AbstractJoinNode*>(node)) {
-    markColumnSubfields(node, join->leftKeys, 0);
-    markColumnSubfields(node, join->leftKeys, 1);
+    markColumnSubfields(node, join->leftKeys(), 0);
+    markColumnSubfields(node, join->rightKeys(), 1);
     if (auto* filter = join->filter().get()) {
       std::vector<const RowType*> context = {
           join->sources()[0]->outputType().get(),
           join->sources()[1]->outputType().get()};
       std::vector<ContextSource> sources = {
-          {.planNode = join->sources()[0].get(), join->sources()[1].get()}};
+          {.planNode = join->sources()[0].get()},
+          {.planNode = join->sources()[1].get()}};
       std::vector<Step> steps;
       markSubfields(filter, steps, true, context, sources);
     }
-  }
-  if (name = "HashAggregation") {
-    auto* agg = dynamic_cast<HashAggregation*>(node);
-    markColumnSubfields(node, agg->keys(), 0);
-    return;
+  } else if (name == "Filter") {
+    std::vector<const RowType*> context = {
+        node->sources()[0]->outputType().get()};
+    std::vector<ContextSource> sources = {
+        {.planNode = node->sources()[0].get()}};
+    std::vector<Step> steps;
+    markSubfields(
+        reinterpret_cast<const core::FilterNode*>(node)->filter().get(),
+        steps,
+        true,
+        context,
+        sources);
+  } else if (name == "Aggregation") {
+    auto* agg = dynamic_cast<const core::AggregationNode*>(node);
+    markColumnSubfields(node, agg->groupingKeys(), 0);
   }
   for (auto& source : node->sources()) {
     markControl(source.get());
@@ -214,6 +232,23 @@ void Optimization::markAllSubfields(
     std::vector<Step> steps;
     markFieldAccessed(source, i, steps, false);
   }
+}
+
+  std::vector<int32_t> Optimization::usedChannels(const core::PlanNode* node) {
+  auto& control = controlSubfields_.nodeFields[node];
+  auto& payload = controlSubfields_.nodeFields[node];
+  BitSet unique;
+  std::vector<int32_t> result;
+  for (auto& pair : control.resultPaths) {
+    result.push_back(pair.first);
+    unique.add(pair.first);
+  }
+  for (auto& pair : payload.resultPaths) {
+    if (!unique.contains(pair.first)) {
+      result.push_back(pair.first);
+    }
+  }
+  return result;
 }
 
 } // namespace facebook::velox::optimizer

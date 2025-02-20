@@ -21,6 +21,7 @@ add_library(
   ToGraph.cpp
   Subfields.cpp
   Plan.cpp
+  BitSet.cpp
   PlanObject.cpp
   Schema.cpp
   SchemaResolver.cpp
@@ -28,6 +29,7 @@ add_library(
   QueryGraphContext.cpp
   Filters.cpp
   Cost.cpp
+  FunctionRegistry.cpp
   PlanUtils.cpp
   RelationOp.cpp
   ToVelox.cpp

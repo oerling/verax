@@ -50,14 +50,22 @@ using ExprDedupMap = folly::F14FastMap<
 
 /// Set of accessed subfields given ordinal of output column or function argument.
 struct ResultAccess {
-  std::unordered_map<int32_t, std::unordered_set<PathCP>> resultPaths;
+  std::map<int32_t, BitSet> resultPaths;
 };
 
 /// PlanNode output columns and function arguments with accessed subfields.
 struct PlanSubfields {
   std::unordered_map<const core::PlanNode*, ResultAccess> nodeFields; 
   std::unordered_map<const core::ITypedExpr*, ResultAccess> argFields;
-    };
+
+  bool hasColumn(const core::PlanNode* node, int32_t ordinal) const {
+    auto it = nodeFields.find(node);
+    if (it == nodeFields.end()) {
+      return false;
+    }
+    return it->second.resultPaths.count(ordinal) != 0;
+  }
+};
 
 /// Struct for resolving which PlanNode or Lambda defines which FieldAccessTypedExpr for column and subfield tracking.
 struct ContextSource {
@@ -510,6 +518,13 @@ class Optimization {
   // Returns a constant expression if 'typedExprcan be folded, nullptr otherwise.
   std::shared_ptr<const exec::ConstantExpr> foldConstant(const core::TypedExprPtr& typedExpr);
 
+  // Returns the ordinal positions of actually referenced outputs of 'node'.
+  std::vector<int32_t> usedChannels(const core::PlanNode* node);
+
+  // Returns the ordinal position of used arguments for a function call that produces a complex type.
+  std::vector<int32_t> usedArgs(const core::ITypedExpr* call);
+
+  
 void markFieldAccessed(
     const ContextSource& source,
     int32_t ordinal,
@@ -526,7 +541,7 @@ void markSubfields(
 
   void markControl(const core::PlanNode* node);
 
-  void markColumnSubfields(const core::PlanNode* node, const std::vector<core::FieldReferenceTypedExprPtr>& columns, int32_t source);
+  void markColumnSubfields(const core::PlanNode* node, const std::vector<core::FieldAccessTypedExprPtr>& columns, int32_t source);
     
   bool isSubfield(const core::ITypedExpr* expr, Step& step, core::TypedExprPtr& input);
   

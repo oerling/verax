@@ -64,6 +64,10 @@ class Expr : public PlanObject {
     return columns_;
   }
 
+  const PlanObjectSet& subexpressions() const {
+    return subexpressions_;
+  }
+
   const Value& value() const {
     return value_;
   }
@@ -76,6 +80,9 @@ class Expr : public PlanObject {
  protected:
   // The columns this depends on.
   PlanObjectSet columns_;
+
+  // All expressions 'this' depends on.
+  PlanObjectSet subexpressions_;
 
   // Type Constraints on the value of 'this'.
   Value value_;
@@ -184,6 +191,17 @@ inline CPSpan<T> toRangeCast(U v) {
   return CPSpan<T>(reinterpret_cast<const T* const*>(v.data()), v.size());
 }
 
+struct SubfieldSet {
+  /// Id of an accessed column of complex type.
+  std::vector<int32_t> ids;
+
+  // Set of subfield paths that are accessed for the corresponding 'column'.
+  // empty means that all subfields are accessed.
+  std::vector<BitSet> subfields;
+
+  std::optional<BitSet> findSubfields(int32_t id) const;
+};
+
 /// A bit set that qualifies a function call. Represents which functions/kinds
 /// of functions are found inside the children of a function call.
 class FunctionSet {
@@ -267,6 +285,7 @@ class Call : public Expr {
         functions_(functions) {
     for (auto arg : args_) {
       columns_.unionSet(arg->columns());
+      subexpressions_.unionSet(arg->subexpressions());
     }
   }
 
@@ -568,6 +587,9 @@ struct BaseTable : public PlanObject {
   // table only.
   float filterSelectivity{1};
 
+  SubfieldSet controlSubfields;
+  SubfieldSet payloadSubfields;
+
   bool isTable() const override {
     return true;
   }
@@ -578,6 +600,8 @@ struct BaseTable : public PlanObject {
 
   /// Adds 'expr' to 'filters' or 'columnFilters'.
   void addFilter(ExprCP expr);
+
+  BitSet columnSubfields(Name column, bool payloadOnly, bool controlOnly) const;
 
   std::string toString() const override;
 };
