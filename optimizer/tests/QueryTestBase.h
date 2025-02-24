@@ -46,14 +46,26 @@ class QueryTestBase : public exec::test::LocalRunnerTestBase {
       std::string* errorString = nullptr,
       std::vector<exec::TaskStats>* statsReturn = nullptr);
 
+  runner::MultiFragmentPlanPtr planSql(const std::string& sql, 
+      std::string* planString = nullptr,
+	       std::string* errorString = nullptr);
+
+  std::string veloxString(const std::string& sql) {
+    auto plan = planSql(sql);
+    VELOX_CHECK_NOT_NULL(plan);
+    return plan->toString();
+  }
+  
   void waitForCompletion(const std::shared_ptr<runner::LocalRunner>& runner);
 
   std::shared_ptr<memory::MemoryPool> rootPool_;
   std::shared_ptr<memory::MemoryPool> optimizerPool_;
   std::shared_ptr<memory::MemoryPool> schemaPool_;
   std::shared_ptr<memory::MemoryPool> schemaRootPool_;
-  std::shared_ptr<folly::IOThreadPoolExecutor> spillExecutor_;
   std::shared_ptr<core::QueryCtx> schemaQueryCtx_;
+
+  // A QueryCtx created for each compiled query. 
+  std::shared_ptr<core::QueryCtx> queryCtx_;
   std::shared_ptr<connector::ConnectorQueryCtx> connectorQueryCtx_;
   std::shared_ptr<connector::Connector> connector_;
   std::shared_ptr<optimizer::SchemaResolver> schema_;

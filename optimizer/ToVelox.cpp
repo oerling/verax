@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Facebook, Inc. and its affiliates.
+ *  Copyright (c) Facebook, Inc. and its affiliates.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,33 +27,37 @@ using namespace facebook::velox;
 using namespace facebook::velox::exec;
 using namespace facebook::velox::runner;
 
-  std::vector<common::Subfield> columnSubfields(BaseTableCP table, Name column) {
-    BitSet set = table->columnSubfields(column, false, false);
-    std::vector<common::Subfield> subfields;
-    set.forEach([&](auto id) {
-      auto steps = queryCtx()->pathById(id)->steps();
-      std::vector<std::unique_ptr<common::Subfield::PathElement>> elements;
-      for (auto& step : steps) {
-	switch (step.kind) {
-	case StepKind::kField:
-	  elements.push_back(std::make_unique<common::Subfield::NestedField>(step.field));
-	  break;
-	case StepKind::kSubscript:
-	  if (step.field) {
-	    elements.push_back(std::make_unique<common::Subfield::StringSubscript>(step.field));
-	    break;
-	  }
-	  elements.push_back(std::make_unique<common::Subfield::LongSubscript>(step.id));
-	  break;
-	case StepKind::kCardinality: VELOX_UNSUPPORTED();
-	}
-	
+std::vector<common::Subfield> columnSubfields(BaseTableCP table, Name column) {
+  BitSet set = table->columnSubfields(column, false, false);
+  std::vector<common::Subfield> subfields;
+  set.forEach([&](auto id) {
+    auto steps = queryCtx()->pathById(id)->steps();
+    std::vector<std::unique_ptr<common::Subfield::PathElement>> elements;
+    for (auto& step : steps) {
+      switch (step.kind) {
+        case StepKind::kField:
+          elements.push_back(
+              std::make_unique<common::Subfield::NestedField>(step.field));
+          break;
+        case StepKind::kSubscript:
+          if (step.field) {
+            elements.push_back(
+                std::make_unique<common::Subfield::StringSubscript>(
+                    step.field));
+            break;
+          }
+          elements.push_back(
+              std::make_unique<common::Subfield::LongSubscript>(step.id));
+          break;
+        case StepKind::kCardinality:
+          VELOX_UNSUPPORTED();
       }
-      subfields.emplace_back(std::move(elements));
-    });
-    return subfields;
-  }
-  
+    }
+    subfields.emplace_back(std::move(elements));
+  });
+  return subfields;
+}
+
 void filterUpdated(BaseTableCP table) {
   auto optimization = queryCtx()->optimization();
   std::vector<core::TypedExprPtr> remainingConjuncts;
@@ -92,10 +96,11 @@ void filterUpdated(BaseTableCP table) {
   auto connector = layout->connector();
   std::vector<connector::ColumnHandlePtr> columns;
   for (int32_t i = 0; i < dataColumns->size(); ++i) {
-    std::vector<common::Subfield> subfields = columnSubfields(table, toName(dataColumns->nameOf(i)));
+    std::vector<common::Subfield> subfields =
+        columnSubfields(table, toName(dataColumns->nameOf(i)));
 
     columns.push_back(connector->metadata()->createColumnHandle(
-								*layout, dataColumns->nameOf(i), std::move(subfields)));
+        *layout, dataColumns->nameOf(i), std::move(subfields)));
   }
   auto allFilters = std::move(pushdownConjuncts);
   if (remainingFilter) {
@@ -227,6 +232,13 @@ core::TypedExprPtr Optimization::toTypedExpr(ExprCP expr) {
       return std::make_shared<core::CallTypedExpr>(
           toTypePtr(expr->value().type), std::move(inputs), call->name());
     }
+#if 0
+  case PlanType::kSubfield: {
+    auto path = expr->as<Subfield>()->path();
+
+    input = toTypedExpr(expr->as<Subfield>()->base());
+  }
+#endif
     case PlanType::kLiteral: {
       auto literal = expr->as<Literal>();
       return std::make_shared<core::ConstantTypedExpr>(
@@ -572,7 +584,6 @@ core::PlanNodePtr Optimization::makeFragment(
     }
     case RelType::kTableScan: {
       auto scan = op->as<TableScan>();
-      auto outputType = makeOutputType(scan->columns());
       auto handlePair = leafHandle(scan->baseTable->id());
       if (!handlePair.first) {
         filterUpdated(scan->baseTable);
@@ -582,16 +593,18 @@ core::PlanNodePtr Optimization::makeFragment(
             "No table for scan {}",
             scan->toString(true, true));
       }
+      auto outputType = makeOutputType(scan->columns());
       std::unordered_map<std::string, std::shared_ptr<connector::ColumnHandle>>
           assignments;
       for (auto column : scan->columns()) {
         // TODO: Make assignments have a ConnectorTableHandlePtr instead of
         // non-const shared_ptr.
-        assignments[column->toString()] =
-            std::const_pointer_cast<connector::ColumnHandle>(
-                scan->index->layout->connector()
-                    ->metadata()
-                    ->createColumnHandle(*scan->index->layout, column->name()));
+        std::vector<common::Subfield> subfields =
+	  columnSubfields(scan->baseTable, column->name());
+        assignments[column->toString()] = std::const_pointer_cast<
+            connector::ColumnHandle>(
+            scan->index->layout->connector()->metadata()->createColumnHandle(
+                *scan->index->layout, column->name(), std::move(subfields)));
       }
       auto scanNode = std::make_shared<core::TableScanNode>(
           nextId(*op),

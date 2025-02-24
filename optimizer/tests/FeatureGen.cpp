@@ -75,9 +75,8 @@ std::vector<RowVectorPtr> makeFeatures(
     }
 
     auto idLists = vectorMaker.arrayVector<int64_t>(
-        batchSize * idListTotal,
+        batchSize * opts.numIdList,
         [&](auto row) { return idListSize[row % idListSize.size()]; },
-        [&](auto) { return false; },
         [&](auto row) { return row * 100 + 1; });
     auto idListKeys = vectorMaker.flatVector<int32_t>(
         batchSize * opts.numIdList,
@@ -100,7 +99,7 @@ std::vector<RowVectorPtr> makeFeatures(
         [&](auto row) { return idListSize[row % opts.numIdScoreList]; },
         [&](int32_t row, int32_t idx) {
           auto nthArray = (row / opts.numIdScoreList) * opts.numIdList;
-          return idLists->as<SimpleVector<int32_t>>()->valueAt(
+          return idLists->elements()->as<SimpleVector<int64_t>>()->valueAt(
               idLists->offsetAt(nthArray) + idx);
         },
         [&](int32_t row, int32_t idx) { return 1.2 * row / idx; });
@@ -124,5 +123,5 @@ std::vector<RowVectorPtr> makeFeatures(
   }
   return result;
 }
-  
+
 } // namespace facebook::velox::optimizer::test

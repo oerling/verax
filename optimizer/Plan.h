@@ -47,15 +47,18 @@ using ExprDedupMap = folly::F14FastMap<
     ITypedExprHasher,
     ITypedExprComparer>;
 
-
-/// Set of accessed subfields given ordinal of output column or function argument.
+/// Set of accessed subfields given ordinal of output column or function
+/// argument.
 struct ResultAccess {
+  // Key in 'resultPaths' to indicate the path is applied to the function
+  // itself, not the ith argument.
+  static constexpr int32_t kSelf = -1;
   std::map<int32_t, BitSet> resultPaths;
 };
 
 /// PlanNode output columns and function arguments with accessed subfields.
 struct PlanSubfields {
-  std::unordered_map<const core::PlanNode*, ResultAccess> nodeFields; 
+  std::unordered_map<const core::PlanNode*, ResultAccess> nodeFields;
   std::unordered_map<const core::ITypedExpr*, ResultAccess> argFields;
 
   bool hasColumn(const core::PlanNode* node, int32_t ordinal) const {
@@ -67,12 +70,16 @@ struct PlanSubfields {
   }
 };
 
-/// Struct for resolving which PlanNode or Lambda defines which FieldAccessTypedExpr for column and subfield tracking.
+/// Struct for resolving which PlanNode or Lambda defines which
+/// FieldAccessTypedExpr for column and subfield tracking.
 struct ContextSource {
   const core::PlanNode* planNode;
-  const core::LambdaTypedExpr* lambda;
+  const core::CallTypedExpr* call;
+  int32_t lambdaOrdinal{-1};
 };
-  
+/// Utility for making a getter from a Step.
+core::TypedExprPtr stepToGetter(Step, core::TypedExprPtr arg);
+
 struct Plan;
 struct PlanState;
 
@@ -515,41 +522,52 @@ class Optimization {
       const velox::core::CastTypedExpr* cast,
       const ExprVector& literals);
 
-  // Returns a constant expression if 'typedExprcan be folded, nullptr otherwise.
-  std::shared_ptr<const exec::ConstantExpr> foldConstant(const core::TypedExprPtr& typedExpr);
+  // Returns a constant expression if 'typedExprcan be folded, nullptr
+  // otherwise.
+  std::shared_ptr<const exec::ConstantExpr> foldConstant(
+      const core::TypedExprPtr& typedExpr);
 
   // Returns the ordinal positions of actually referenced outputs of 'node'.
   std::vector<int32_t> usedChannels(const core::PlanNode* node);
 
-  // Returns the ordinal position of used arguments for a function call that produces a complex type.
+  // Returns the ordinal position of used arguments for a function call that
+  // produces a complex type.
   std::vector<int32_t> usedArgs(const core::ITypedExpr* call);
 
-  
-void markFieldAccessed(
-    const ContextSource& source,
-    int32_t ordinal,
-    std::vector<Step>& steps,
-    bool isControl);
-void markSubfields(
-				 const core::ITypedExpr* expr,
-    std::vector<Step>& steps,
-    bool isControl,
-    const std::vector<const RowType*> context,
-				 const std::vector<ContextSource>& sources);
-  
+  void markFieldAccessed(
+      const ContextSource& source,
+      int32_t ordinal,
+      std::vector<Step>& steps,
+      bool isControl,
+      const std::vector<const RowType*>& context,
+      const std::vector<ContextSource>& sources);
+
+  void markSubfields(
+      const core::ITypedExpr* expr,
+      std::vector<Step>& steps,
+      bool isControl,
+      const std::vector<const RowType*> context,
+      const std::vector<ContextSource>& sources);
+
   void markAllSubfields(const RowType* type, const core::PlanNode* node);
 
   void markControl(const core::PlanNode* node);
 
-  void markColumnSubfields(const core::PlanNode* node, const std::vector<core::FieldAccessTypedExprPtr>& columns, int32_t source);
-    
-  bool isSubfield(const core::ITypedExpr* expr, Step& step, core::TypedExprPtr& input);
-  
+  void markColumnSubfields(
+      const core::PlanNode* node,
+      const std::vector<core::FieldAccessTypedExprPtr>& columns,
+      int32_t source);
+
+  bool isSubfield(
+      const core::ITypedExpr* expr,
+      Step& step,
+      core::TypedExprPtr& input);
+
   // Makes a deduplicated Expr tree from 'expr'.
   ExprCP translateExpr(const velox::core::TypedExprPtr& expr);
 
   ExprCP translateSubfield(const core::TypedExprPtr& expr);
-  
+
   // Adds conjuncts combined by any number of enclosing ands from 'input' to
   // 'flat'.
   void translateConjuncts(
@@ -779,13 +797,13 @@ void markSubfields(
   // Must stay alive as long as the Plans and RelationOps are reeferenced.
   PlanState topState_{*this, nullptr};
 
-  // Column and subfield access info for filters, joins, grouping and other things affecting result row selection. 
+  // Column and subfield access info for filters, joins, grouping and other
+  // things affecting result row selection.
   PlanSubfields controlSubfields_;
 
   // Column and subfield info for items that only affect column values.
   PlanSubfields payloadSubfields_;
-  
-  
+
   // Controls tracing.
   int32_t traceFlags_{0};
 

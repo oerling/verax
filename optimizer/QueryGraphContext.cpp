@@ -190,6 +190,8 @@ PathCP QueryGraphContext::toPath(PathCP path) {
   auto pair = deduppedPaths_.insert(path);
   if (path != *pair.first) {
     delete path;
+  } else {
+    pathById_.push_back(path);
   }
   return *pair.first;
 }

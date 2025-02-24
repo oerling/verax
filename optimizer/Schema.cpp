@@ -112,7 +112,7 @@ SchemaTableCP Schema::findTable(std::string_view name) const {
   for (auto& pair : table->columnMap()) {
     auto& tableColumn = *pair.second;
     float cardinality = tableColumn.approxNumDistinct(table->numRows());
-    Value value(tableColumn.type().get(), cardinality);
+    Value value(toType(tableColumn.type()), cardinality);
     auto columnName = toName(pair.first);
     auto* column = make<Column>(columnName, nullptr, value);
     schemaTable->columns[columnName] = column;

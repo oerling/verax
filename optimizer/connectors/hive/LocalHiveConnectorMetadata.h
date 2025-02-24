@@ -207,6 +207,10 @@ class LocalHiveConnectorMetadata : public HiveConnectorMetadata {
     return hiveConnector_;
   }
 
+  /// Rereads the contents of the data path and re-creates the tables
+  /// and stats. This is used in tests after adding tables.
+  void reinitialize();
+  
   /// returns the set of known tables. This is not part of the
   /// ConnectorMetadata API. This This is only needed for running the
   /// DuckDB parser on testing queries since the latter needs a set of

@@ -101,6 +101,13 @@ LocalHiveConnectorMetadata::LocalHiveConnectorMetadata(
           std::make_shared<HiveConfig>(hiveConnector_->connectorConfig())),
       splitManager_(this) {}
 
+void LocalHiveConnectorMetadata::reinitialize() {
+  std::lock_guard<std::mutex> l(mutex_);
+  tables_.clear();
+  initialize();
+  initialized_ = true;
+}
+  
 void LocalHiveConnectorMetadata::initialize() {
   auto formatName = hiveConfig_->hiveLocalFileFormat();
   auto path = hiveConfig_->hiveLocalDataPath();

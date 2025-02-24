@@ -124,6 +124,9 @@ class Path {
       steps_.push_back(std::move(step));
     }
   }
+
+  void operator delete(void* ptr);
+
   /// True if 'prefix' is a prefix of 'this'.
   bool hasPrefix(const Path& prefix) const;
 
@@ -290,7 +293,8 @@ class QueryGraphContext {
   /// allocated from the arena of 'this'.
   PathCP toPath(PathCP);
 
-  PathCP pathById(int32_t id) {
+  PathCP pathById(uint32_t id) {
+    VELOX_DCHECK_LT(id, pathById_.size());
     return pathById_[id];
   }
 
@@ -352,6 +356,11 @@ const Type* toType(const TypePtr& type);
 /// Shorthand for toTypePtr() in thread's QueryGraphContext.
 const TypePtr& toTypePtr(const Type* type);
 
+inline void Path::operator delete(void* ptr) {
+  queryCtx()->free(ptr);
+}
+
+  
 // Forward declarations of common types and collections.
 class Expr;
 using ExprCP = const Expr*;

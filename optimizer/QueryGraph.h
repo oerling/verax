@@ -193,11 +193,11 @@ inline CPSpan<T> toRangeCast(U v) {
 
 struct SubfieldSet {
   /// Id of an accessed column of complex type.
-  std::vector<int32_t> ids;
+  std::vector<int32_t, QGAllocator<int32_t>> ids;
 
   // Set of subfield paths that are accessed for the corresponding 'column'.
   // empty means that all subfields are accessed.
-  std::vector<BitSet> subfields;
+  std::vector<BitSet, QGAllocator<BitSet>> subfields;
 
   std::optional<BitSet> findSubfields(int32_t id) const;
 };
@@ -231,16 +231,23 @@ class FunctionSet {
   uint64_t set_;
 };
 
+  /// Describes where the args given to a lambda come from.
+  enum class LambdaArg : int8_t {kKey, kValue, kElement};
+  
 struct LambdaInfo {
   /// The ordinal of the lambda in the function's args
   int32_t ordinal;
   /// Getter applied to the collection given in corresponding 'argOrdinal' to
   /// get each argument of the lambda.
-  std::vector<std::vector<Step>> argsteps;
+  std::vector<LambdaArg> lambdaArg;
   /// Argument giving the collection
   std::vector<int32_t> argOrdinal;
 };
 
+  class Call;
+
+struct ResultAccess;
+  
 /// Describes functions accepting lambdas and functions with special treatment
 /// of subfields.
 struct FunctionMetadata {
@@ -267,6 +274,24 @@ struct FunctionMetadata {
   /// Ordinal of argument that produces the result subfield in the corresponding
   /// element of 'resultSubfield'.
   std::vector<int32_t> argOrdinal;
+
+  /// Static fixed cost for processing one row. use 'costFunc' for non-constant cost.
+  float cost{1};
+
+  /// Function for evaluating the per-row cost when the cost depends on arguments and their stats.
+  std::function<float(const Call*)> costFunc;
+
+  // If only subfields of the result are accessed (i.e. not the result as undivided whole), then this produces an Expr for each accessed subfield.
+  std::function<core::TypedExprPtr(const core::CallTypedExpr* call, PathCP path)> explode;
+
+  LambdaInfo* lambdaInfo(int32_t i) {
+    for (auto j = 0; j < lambdas.size(); ++j) {
+      if (lambdas[j].ordinal = i) {
+	return &lambdas[j];
+      }
+    }
+    return nullptr;
+  }
 };
 
 /// Represents a function call or a special form, any expression with

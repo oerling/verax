@@ -136,7 +136,7 @@ ExprCP Optimization::tryFoldConstant(
 
 bool Optimization::isSubfield(const core::ITypedExpr* expr, Step& step, core::TypedExprPtr& input) {
   if (auto* field = dynamic_cast<const core::FieldAccessTypedExpr*>(expr)) {
-    input = field->inputs()[0];
+    input = field->inputs().empty() ? nullptr : field->inputs()[0];
     if (!input || dynamic_cast<const core::InputTypedExpr*>(input.get())) {
       return false;
     }
@@ -146,7 +146,7 @@ bool Optimization::isSubfield(const core::ITypedExpr* expr, Step& step, core::Ty
   }
   if (auto* call = dynamic_cast<const core::CallTypedExpr*>(expr)) {
     auto name = call->name();
-    if (name == "subscript") {
+    if (name == "subscript" || name == "element_at") {
       auto subscript = translateExpr(call->inputs()[1]); 
       if (subscript->type() == PlanType::kLiteral) {
       step.kind = StepKind::kSubscript;
@@ -165,6 +165,7 @@ bool Optimization::isSubfield(const core::ITypedExpr* expr, Step& step, core::Ty
 }
   
 ExprCP Optimization::translateSubfield(const core::TypedExprPtr& inputExpr) {
+  return nullptr;
   std::vector<Step> steps;
   auto* expr = inputExpr.get();
   for (;;) {
@@ -496,7 +497,7 @@ PlanObjectP Optimization::wrapInDt(const core::PlanNode& node) {
   currentSelect_ = previousDt;
   velox::RowTypePtr type = node.outputType();
   // node.name() == "Aggregation" ? aggFinalType_ : node.outputType();
-  for (auto i = 0; i < type->size(); ++i) {
+  for (auto i : usedChannels(&node)) {
     ExprCP inner = translateColumn(type->nameOf(i));
     newDt->exprs.push_back(inner);
     auto* outer = make<Column>(toName(type->nameOf(i)), newDt, inner->value());

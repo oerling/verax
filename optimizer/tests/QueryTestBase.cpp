@@ -48,6 +48,7 @@ using namespace facebook::velox::exec;
 
 void QueryTestBase::SetUp() {
   exec::test::LocalRunnerTestBase::SetUp();
+  connector_ = connector::getConnector(exec::test::kHiveConnectorId);
   rootPool_ = memory::memoryManager()->addRootPool("velox_sql");
   optimizerPool_ = rootPool_->addLeafChild("optimizer");
   schemaPool_ = rootPool_->addLeafChild("schema");
@@ -55,25 +56,12 @@ void QueryTestBase::SetUp() {
   parquet::registerParquetReaderFactory();
   dwrf::registerDwrfReaderFactory();
   exec::ExchangeSource::registerFactory(exec::test::createLocalExchangeSource);
-  serializer::presto::PrestoVectorSerde::registerVectorSerde();
+  if (!isRegisteredVectorSerde()) {
+    serializer::presto::PrestoVectorSerde::registerVectorSerde();
+  }
   if (!isRegisteredNamedVectorSerde(VectorSerde::Kind::kPresto)) {
     serializer::presto::PrestoVectorSerde::registerNamedVectorSerde();
   }
-  std::unordered_map<std::string, std::string> connectorConfig;
-  connectorConfig[connector::hive::HiveConfig::kLocalDataPath] =
-      FLAGS_data_path;
-  connectorConfig[connector::hive::HiveConfig::kLocalFileFormat] =
-      FLAGS_data_format;
-  auto config =
-      std::make_shared<config::ConfigBase>(std::move(connectorConfig));
-  connector::registerConnectorFactory(
-      std::make_shared<connector::hive::HiveConnectorFactory>());
-  connector_ = connector::getConnectorFactory(
-                   connector::hive::HiveConnectorFactory::kHiveConnectorName)
-                   ->newConnector(
-                       exec::test::kHiveConnectorId, config, ioExecutor_.get());
-  connector::registerConnector(connector_);
-
   std::unordered_map<std::string, std::shared_ptr<config::ConfigBase>>
       connectorConfigs;
   auto copy = hiveConfig_;
@@ -112,10 +100,12 @@ void QueryTestBase::SetUp() {
 }
 
 void QueryTestBase::tablesCreated() {
+  auto metadata = dynamic_cast<connector::hive::LocalHiveConnectorMetadata*>(
+      connector_->metadata());
+  VELOX_CHECK_NOT_NULL(metadata);
+  metadata->reinitialize();
   planner_ = std::make_unique<core::DuckDbQueryPlanner>(optimizerPool_.get());
-  auto& tables = dynamic_cast<connector::hive::LocalHiveConnectorMetadata*>(
-                     connector_->metadata())
-                     ->tables();
+  auto& tables = metadata->tables();
   for (auto& pair : tables) {
     planner_->registerTable(pair.first, pair.second->rowType());
   }
@@ -136,7 +126,11 @@ core::PlanNodePtr QueryTestBase::toTableScan(
     const std::vector<std::string>& columnNames) {
   using namespace connector::hive;
   auto handle = std::make_shared<HiveTableHandle>(
-      exec::test::kHiveConnectorId, name, true, SubfieldFilters{}, nullptr);
+      exec::test::kHiveConnectorId,
+      name,
+      true,
+      common::SubfieldFilters{},
+      nullptr);
   std::unordered_map<std::string, std::shared_ptr<connector::ColumnHandle>>
       assignments;
 
@@ -166,13 +160,51 @@ std::shared_ptr<runner::LocalRunner> QueryTestBase::runSql(
     std::string* errorString,
     std::vector<exec::TaskStats>* statsReturn) {
   std::shared_ptr<runner::LocalRunner> runner;
+  auto fragmentedPlan = planSql(sql, planString, errorString);
+  if (!fragmentedPlan) {
+    return nullptr;
+  }
+  try {
+    runner = std::make_shared<runner::LocalRunner>(
+        fragmentedPlan,
+        queryCtx_,
+        std::make_shared<connector::ConnectorSplitSourceFactory>());
+    std::vector<RowVectorPtr> results;
+    while (auto rows = runner->next()) {
+      results.push_back(rows);
+    }
+    if (resultVector) {
+      *resultVector = results;
+    }
+    auto stats = runner->stats();
+    if (statsReturn) {
+      *statsReturn = stats;
+    }
+    auto& fragments = fragmentedPlan->fragments();
+    history_->recordVeloxExecution(nullptr, fragments, stats);
+  } catch (const std::exception& e) {
+    std::cerr << "Query terminated with: " << e.what() << std::endl;
+    if (errorString) {
+      *errorString = fmt::format("Runtime error: {}", e.what());
+    }
+    waitForCompletion(runner);
+    return nullptr;
+  }
+  waitForCompletion(runner);
+  return runner;
+}
+
+runner::MultiFragmentPlanPtr QueryTestBase::planSql(
+    const std::string& sql,
+    std::string* planString,
+    std::string* errorString) {
+  ++queryCounter_;
   std::unordered_map<std::string, std::shared_ptr<config::ConfigBase>>
       connectorConfigs;
   auto copy = hiveConfig_;
   connectorConfigs[exec::test::kHiveConnectorId] =
       std::make_shared<config::ConfigBase>(std::move(copy));
-  ++queryCounter_;
-  auto queryCtx = core::QueryCtx::create(
+  queryCtx_ = core::QueryCtx::create(
       executor_.get(),
       core::QueryConfig(config_),
       std::move(connectorConfigs),
@@ -203,7 +235,7 @@ std::shared_ptr<runner::LocalRunner> QueryTestBase::runSql(
           *allocator);
   facebook::velox::optimizer::queryCtx() = context.get();
   exec::SimpleExpressionEvaluator evaluator(
-      queryCtx.get(), optimizerPool_.get());
+      queryCtx_.get(), optimizerPool_.get());
   runner::MultiFragmentPlanPtr fragmentedPlan;
   try {
     facebook::velox::optimizer::Schema veraxSchema(
@@ -224,34 +256,7 @@ std::shared_ptr<runner::LocalRunner> QueryTestBase::runSql(
     return nullptr;
   }
   facebook::velox::optimizer::queryCtx() = nullptr;
-  try {
-    runner = std::make_shared<runner::LocalRunner>(
-        fragmentedPlan,
-        queryCtx,
-        std::make_shared<connector::ConnectorSplitSourceFactory>());
-    std::vector<RowVectorPtr> results;
-    while (auto rows = runner->next()) {
-      results.push_back(rows);
-    }
-    if (resultVector) {
-      *resultVector = results;
-    }
-    auto stats = runner->stats();
-    if (statsReturn) {
-      *statsReturn = stats;
-    }
-    auto& fragments = fragmentedPlan->fragments();
-    history_->recordVeloxExecution(nullptr, fragments, stats);
-  } catch (const std::exception& e) {
-    std::cerr << "Query terminated with: " << e.what() << std::endl;
-    if (errorString) {
-      *errorString = fmt::format("Runtime error: {}", e.what());
-    }
-    waitForCompletion(runner);
-    return nullptr;
-  }
-  waitForCompletion(runner);
-  return runner;
+  return fragmentedPlan;
 }
 
 void QueryTestBase::waitForCompletion(
