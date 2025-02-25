@@ -33,6 +33,7 @@ std::vector<common::Subfield> columnSubfields(BaseTableCP table, Name column) {
   set.forEach([&](auto id) {
     auto steps = queryCtx()->pathById(id)->steps();
     std::vector<std::unique_ptr<common::Subfield::PathElement>> elements;
+    elements.push_back(std::make_unique<common::Subfield::NestedField>(column));
     for (auto& step : steps) {
       switch (step.kind) {
         case StepKind::kField:
