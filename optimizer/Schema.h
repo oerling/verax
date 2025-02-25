@@ -380,7 +380,7 @@ float baseSelectivity(PlanObjectCP object);
 /// (aka indices) need to contain all columns.
 struct SchemaTable {
   SchemaTable(Name _name, const velox::RowTypePtr& _type)
-    : name(_name), type(reinterpret_cast<const RowType*>(toType(_type))) {}
+      : name(_name), type(reinterpret_cast<const RowType*>(toType(_type))) {}
 
   /// Adds an index. The arguments set the corresponding members of a
   /// Distribution.

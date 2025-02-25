@@ -75,22 +75,22 @@ std::string conjunctsToString(const ExprVector& conjuncts) {
   return out.str();
 }
 
-  std::optional<BitSet> SubfieldSet::findSubfields(int32_t id) const {
-    for (auto i = 0; i < ids.size(); ++i) {
-      if (ids[i] == id) {
-	return subfields[i];
-      }
+std::optional<BitSet> SubfieldSet::findSubfields(int32_t id) const {
+  for (auto i = 0; i < ids.size(); ++i) {
+    if (ids[i] == id) {
+      return subfields[i];
     }
-    return std::nullopt;
   }
+  return std::nullopt;
+}
 
-  
-BitSet BaseTable::columnSubfields(Name name, bool controlOnly, bool payloadOnly) const {
+BitSet BaseTable::columnSubfields(Name name, bool controlOnly, bool payloadOnly)
+    const {
   int32_t id = -1;
   for (auto i = 0; i < columns.size(); ++i) {
     if (columns[i]->name() == name) {
       id = columns[i]->id();
-	break;
+      break;
     }
   }
   VELOX_CHECK_NE(id, -1);
@@ -98,7 +98,7 @@ BitSet BaseTable::columnSubfields(Name name, bool controlOnly, bool payloadOnly)
   if (!controlOnly) {
     auto maybe = payloadSubfields.findSubfields(id);
     if (maybe.has_value()) {
-      subfields = maybe.value(); 
+      subfields = maybe.value();
     }
   }
   if (!payloadOnly) {
@@ -111,7 +111,6 @@ BitSet BaseTable::columnSubfields(Name name, bool controlOnly, bool payloadOnly)
   return subfields;
 }
 
-  
 std::string BaseTable::toString() const {
   std::stringstream out;
   out << "{" << PlanObject::toString();

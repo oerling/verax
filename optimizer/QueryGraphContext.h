@@ -360,7 +360,6 @@ inline void Path::operator delete(void* ptr) {
   queryCtx()->free(ptr);
 }
 
-  
 // Forward declarations of common types and collections.
 class Expr;
 using ExprCP = const Expr*;

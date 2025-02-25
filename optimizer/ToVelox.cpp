@@ -601,7 +601,7 @@ core::PlanNodePtr Optimization::makeFragment(
         // TODO: Make assignments have a ConnectorTableHandlePtr instead of
         // non-const shared_ptr.
         std::vector<common::Subfield> subfields =
-	  columnSubfields(scan->baseTable, column->name());
+            columnSubfields(scan->baseTable, column->name());
         assignments[column->toString()] = std::const_pointer_cast<
             connector::ColumnHandle>(
             scan->index->layout->connector()->metadata()->createColumnHandle(

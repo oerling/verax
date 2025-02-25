@@ -95,15 +95,17 @@ variant toVariant(BaseVector& constantVector) {
   VELOX_FAIL("Literal not of foldable type");
 }
 
-  std::shared_ptr<const exec::ConstantExpr> Optimization::foldConstant(const core::TypedExprPtr& typedExpr) {
+std::shared_ptr<const exec::ConstantExpr> Optimization::foldConstant(
+    const core::TypedExprPtr& typedExpr) {
   auto exprSet = evaluator_.compile(typedExpr);
-    auto first = exprSet->exprs().front().get();
-    if (auto constantExpr = dynamic_cast<const exec::ConstantExpr*>(first)) {
-      return std::dynamic_pointer_cast<exec::ConstantExpr>(exprSet->exprs().front());
-    }
-    return nullptr;
+  auto first = exprSet->exprs().front().get();
+  if (auto constantExpr = dynamic_cast<const exec::ConstantExpr*>(first)) {
+    return std::dynamic_pointer_cast<exec::ConstantExpr>(
+        exprSet->exprs().front());
   }
-  
+  return nullptr;
+}
+
 ExprCP Optimization::tryFoldConstant(
     const core::CallTypedExpr* call,
     const core::CastTypedExpr* cast,
@@ -134,7 +136,10 @@ ExprCP Optimization::tryFoldConstant(
   }
 }
 
-bool Optimization::isSubfield(const core::ITypedExpr* expr, Step& step, core::TypedExprPtr& input) {
+bool Optimization::isSubfield(
+    const core::ITypedExpr* expr,
+    Step& step,
+    core::TypedExprPtr& input) {
   if (auto* field = dynamic_cast<const core::FieldAccessTypedExpr*>(expr)) {
     input = field->inputs().empty() ? nullptr : field->inputs()[0];
     if (!input || dynamic_cast<const core::InputTypedExpr*>(input.get())) {
@@ -147,14 +152,14 @@ bool Optimization::isSubfield(const core::ITypedExpr* expr, Step& step, core::Ty
   if (auto* call = dynamic_cast<const core::CallTypedExpr*>(expr)) {
     auto name = call->name();
     if (name == "subscript" || name == "element_at") {
-      auto subscript = translateExpr(call->inputs()[1]); 
+      auto subscript = translateExpr(call->inputs()[1]);
       if (subscript->type() == PlanType::kLiteral) {
-      step.kind = StepKind::kSubscript;
-      input = expr->inputs()[0];
-      return true;
+        step.kind = StepKind::kSubscript;
+        input = expr->inputs()[0];
+        return true;
       }
       return false;
-      }
+    }
     if (name == "cardinality") {
       step.kind = StepKind::kCardinality;
       input = expr->inputs()[0];
@@ -163,7 +168,7 @@ bool Optimization::isSubfield(const core::ITypedExpr* expr, Step& step, core::Ty
   }
   return false;
 }
-  
+
 ExprCP Optimization::translateSubfield(const core::TypedExprPtr& inputExpr) {
   return nullptr;
   std::vector<Step> steps;
@@ -174,20 +179,21 @@ ExprCP Optimization::translateSubfield(const core::TypedExprPtr& inputExpr) {
     bool isStep = isSubfield(expr, step, input);
     if (!isStep) {
       if (steps.empty()) {
-	return nullptr;
+        return nullptr;
       }
       std::vector<Step> reverse;
       for (auto& step : steps) {
-	reverse.push_back(std::move(step));
+        reverse.push_back(std::move(step));
       }
       auto path = queryCtx()->toPath(make<Path>(std::move(reverse)));
-      return make<Subfield>(path, inputExpr->type().get(), translateExpr(input));
+      return make<Subfield>(
+          path, inputExpr->type().get(), translateExpr(input));
     }
     steps.push_back(std::move(step));
     expr = input.get();
   }
 }
-  
+
 ExprCP Optimization::translateExpr(const core::TypedExprPtr& expr) {
   if (auto name = columnName(expr)) {
     return translateColumn(*name);
@@ -534,14 +540,17 @@ PlanObjectP Optimization::makeBaseTable(const core::TableScanNode* tableScan) {
     auto* column = make<Column>(toName(pair.second->name()), baseTable, value);
     columns.push_back(column);
     auto kind = column->value().type->kind();
-    if (kind == TypeKind::ARRAY || kind == TypeKind::ROW || kind == TypeKind::MAP) {
+    if (kind == TypeKind::ARRAY || kind == TypeKind::ROW ||
+        kind == TypeKind::MAP) {
       if (controlSubfields_.hasColumn(tableScan, idx)) {
-	baseTable->controlSubfields.ids.push_back(column->id());
-	baseTable->controlSubfields.subfields.push_back(controlSubfields_.nodeFields[tableScan].resultPaths[idx]);
+        baseTable->controlSubfields.ids.push_back(column->id());
+        baseTable->controlSubfields.subfields.push_back(
+            controlSubfields_.nodeFields[tableScan].resultPaths[idx]);
       }
       if (payloadSubfields_.hasColumn(tableScan, idx)) {
-	baseTable->payloadSubfields.ids.push_back(column->id());
-	baseTable->payloadSubfields.subfields.push_back(payloadSubfields_.nodeFields[tableScan].resultPaths[idx]);
+        baseTable->payloadSubfields.ids.push_back(column->id());
+        baseTable->payloadSubfields.subfields.push_back(
+            payloadSubfields_.nodeFields[tableScan].resultPaths[idx]);
       }
     }
     renames_[pair.first] = column;

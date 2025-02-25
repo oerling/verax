@@ -16,8 +16,8 @@
 
 #pragma once
 
-#include "optimizer/QueryGraphContext.h" //@manual
 #include "optimizer/BitSet.h" //@manual
+#include "optimizer/QueryGraphContext.h" //@manual
 
 namespace facebook::velox::optimizer {
 
@@ -118,7 +118,7 @@ class PlanObject {
 };
 
 /// Set of PlanObjects. Uses the objects id() as an index into a bitmap.
-  class PlanObjectSet : public BitSet {
+class PlanObjectSet : public BitSet {
  public:
   /// True if id of 'object' is in 'this'.
   bool contains(PlanObjectCP object) const {

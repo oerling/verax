@@ -150,17 +150,17 @@ TEST_F(PlanTest, queryGraph) {
   EXPECT_EQ(dedupRow1->childAt(0).get(), dedupDifferentNames->childAt(0).get());
 
   auto* path = make<Path>()
-    ->subscript("field")
-    ->subscript(123)
-    ->field("f1")
-    ->cardinality();
+                   ->subscript("field")
+                   ->subscript(123)
+                   ->field("f1")
+                   ->cardinality();
   auto interned = queryCtx()->toPath(path);
   EXPECT_EQ(interned, path);
   auto* path2 = make<Path>()
-    ->subscript("field")
-    ->subscript(123)
-    ->field("f1")
-    ->cardinality();
+                    ->subscript("field")
+                    ->subscript(123)
+                    ->field("f1")
+                    ->cardinality();
   auto interned2 = queryCtx()->toPath(path2);
   EXPECT_EQ(interned2, interned);
 }

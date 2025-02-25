@@ -107,7 +107,7 @@ void LocalHiveConnectorMetadata::reinitialize() {
   initialize();
   initialized_ = true;
 }
-  
+
 void LocalHiveConnectorMetadata::initialize() {
   auto formatName = hiveConfig_->hiveLocalFileFormat();
   auto path = hiveConfig_->hiveLocalDataPath();

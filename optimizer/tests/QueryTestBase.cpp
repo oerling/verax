@@ -301,7 +301,8 @@ std::string QueryTestBase::veloxString(const std::string& sql) {
       }
     };
 
-    out << fragment.fragment.planNode->toString(true, true, planNodeDetails) << std::endl;
+    out << fragment.fragment.planNode->toString(true, true, planNodeDetails)
+        << std::endl;
   }
   out << std::endl;
   return out.str();
