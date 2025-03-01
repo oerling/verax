@@ -356,6 +356,9 @@ const Type* toType(const TypePtr& type);
 /// Shorthand for toTypePtr() in thread's QueryGraphContext.
 const TypePtr& toTypePtr(const Type* type);
 
+// Shorthand for toPath in queryCtx().
+PathCP toPath(std::vector<Step> steps);
+
 inline void Path::operator delete(void* ptr) {
   queryCtx()->free(ptr);
 }

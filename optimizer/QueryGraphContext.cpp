@@ -199,6 +199,9 @@ PathCP QueryGraphContext::toPath(PathCP path) {
 void Path::subfieldSkyline(BitSet& subfields) {
   // Expand the ids to fields and  remove subfields where there exists a shorter
   // prefix.
+  if (subfields.empty()) {
+    return;
+  }
   auto ctx = queryCtx();
   bool allFields = false;
   std::vector<std::vector<PathCP>> bySize;
@@ -248,6 +251,10 @@ void Path::subfieldSkyline(BitSet& subfields) {
       }
     }
   }
+}
+
+PathCP toPath(std::vector<Step> steps) {
+  return queryCtx()->toPath(make<Path>(std::move(steps)));
 }
 
 } // namespace facebook::velox::optimizer

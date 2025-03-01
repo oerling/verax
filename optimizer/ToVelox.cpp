@@ -41,6 +41,10 @@ std::vector<common::Subfield> columnSubfields(BaseTableCP table, Name column) {
               std::make_unique<common::Subfield::NestedField>(step.field));
           break;
         case StepKind::kSubscript:
+	  if (step.allFields) {
+            elements.push_back(
+			       std::make_unique<common::Subfield::AllSubscripts>());
+	    break;	  }
           if (step.field) {
             elements.push_back(
                 std::make_unique<common::Subfield::StringSubscript>(

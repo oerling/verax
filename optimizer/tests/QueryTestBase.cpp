@@ -198,6 +198,23 @@ runner::MultiFragmentPlanPtr QueryTestBase::planSql(
     const std::string& sql,
     std::string* planString,
     std::string* errorString) {
+  core::PlanNodePtr plan;
+  try {
+    plan = planner_->plan(sql);
+  } catch (std::exception& e) {
+    std::cerr << "parse error: " << e.what() << std::endl;
+    if (errorString) {
+      *errorString = fmt::format("Parse error: {}", e.what());
+    }
+    return nullptr;
+  }
+  return planVelox(plan, planString, errorString);
+}
+
+runner::MultiFragmentPlanPtr QueryTestBase::planVelox(
+    const core::PlanNodePtr& plan,
+    std::string* planString,
+    std::string* errorString) {
   ++queryCounter_;
   std::unordered_map<std::string, std::shared_ptr<config::ConfigBase>>
       connectorConfigs;
@@ -215,16 +232,6 @@ runner::MultiFragmentPlanPtr QueryTestBase::planSql(
 
   // The default Locus for planning is the system and data of 'connector_'.
   optimizer::Locus locus(connector_->connectorId().c_str(), connector_.get());
-  core::PlanNodePtr plan;
-  try {
-    plan = planner_->plan(sql);
-  } catch (std::exception& e) {
-    std::cerr << "parse error: " << e.what() << std::endl;
-    if (errorString) {
-      *errorString = fmt::format("Parse error: {}", e.what());
-    }
-    return nullptr;
-  }
   facebook::velox::optimizer::Optimization::PlanCostMap estimates;
   runner::MultiFragmentPlan::Options opts;
   opts.numWorkers = FLAGS_num_workers;
@@ -272,8 +279,12 @@ void QueryTestBase::waitForCompletion(
 std::string QueryTestBase::veloxString(const std::string& sql) {
   auto plan = planSql(sql);
   VELOX_CHECK_NOT_NULL(plan);
-  std::stringstream out;
+  return veloxString(plan);
+}
 
+std::string QueryTestBase::veloxString(
+    const runner::MultiFragmentPlanPtr& plan) {
+  std::stringstream out;
   for (auto i = 0; i < plan->fragments().size(); ++i) {
     auto& fragment = plan->fragments()[i];
     out << "Fragment " << i << ":\n";
@@ -306,6 +317,12 @@ std::string QueryTestBase::veloxString(const std::string& sql) {
   }
   out << std::endl;
   return out.str();
+}
+
+void QueryTestBase::expectRegexp(std::string& text, const std::string regexp) {
+  if (!RE2::FullMatch(text, regexp)) {
+    FAIL() << "Expected " << regexp << " in " << text;
+  }
 }
 
 } // namespace facebook::velox::optimizer::test

@@ -51,8 +51,19 @@ class QueryTestBase : public exec::test::LocalRunnerTestBase {
       std::string* planString = nullptr,
       std::string* errorString = nullptr);
 
+  runner::MultiFragmentPlanPtr planVelox(
+					 const core::PlanNodePtr& plan,
+      std::string* planString = nullptr,
+      std::string* errorString = nullptr);
+
+  
   std::string veloxString(const std::string& sql);
 
+  std::string veloxString(const runner::MultiFragmentPlanPtr& plan);
+
+  void expectRegexp(std::string& text, const std::string regexp);
+  
+  
   void waitForCompletion(const std::shared_ptr<runner::LocalRunner>& runner);
 
   std::shared_ptr<memory::MemoryPool> rootPool_;

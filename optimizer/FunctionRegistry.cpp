@@ -18,7 +18,7 @@
 
 namespace facebook::velox::optimizer {
 
-FunctionMetadata* FunctionRegistry::metadata(Name name) {
+  FunctionMetadata* FunctionRegistry::metadata(const std::string& name) {
   auto it = metadata_.find(name);
   if (it == metadata_.end()) {
     return nullptr;

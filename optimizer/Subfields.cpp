@@ -149,7 +149,7 @@ void Optimization::markSubfields(
         if (maybeIdx.has_value()) {
           auto source = sources[i];
           markFieldAccessed(
-              source, maybeIdx.value(), steps, isControl, context, sources);
+			    source, maybeIdx.value(), steps, isControl, context, sources);
           return;
         }
       }
@@ -175,7 +175,7 @@ void Optimization::markSubfields(
       if (!constant) {
         std::vector<Step> subSteps;
         markSubfields(
-            call->inputs()[1].get(), subSteps, isControl, context, sources);
+		      call->inputs()[1].get(), subSteps, isControl, context, sources);
         steps.push_back(Step{.kind = StepKind::kSubscript, .allFields = true});
         markSubfields(
             call->inputs()[0].get(), steps, isControl, context, sources);
@@ -204,7 +204,7 @@ void Optimization::markSubfields(
       for (auto i = 0; i < call->inputs().size(); ++i) {
         std::vector<Step> steps;
         markSubfields(
-            call->inputs()[i].get(), steps, isControl, context, sources);
+		      call->inputs()[i].get(), steps, isControl, context, sources);
       }
       return;
     }
@@ -223,9 +223,10 @@ void Optimization::markSubfields(
             sources);
         continue;
       }
-      if (!steps.empty()) {
+      if (!steps.empty() && steps.back().kind == StepKind::kField) {
+	std::string fieldName = steps.back().field;
         auto it = std::find(
-            data->stepForArg.begin(), data->stepForArg.end(), steps.back());
+            data->stepForArg.begin(), data->stepForArg.end(), fieldName);
         if (it != data->stepForArg.end()) {
           // The arg corresponding to the step is accessed.
           auto nth = it - data->stepForArg.begin();
@@ -234,7 +235,7 @@ void Optimization::markSubfields(
           fields->argFields[call].resultPaths[nth].add(argPath->id());
           newSteps.pop_back();
           markSubfields(
-              call->inputs()[nth].get(), newSteps, isControl, context, sources);
+			call->inputs()[nth].get(), newSteps, isControl, context, sources);
           continue;
         }
       }
@@ -249,13 +250,24 @@ void Optimization::markSubfields(
             call->inputs()[i].get());
         std::vector<Step> empty;
         markSubfields(
-            l->body().get(), empty, isControl, newContext, newSources);
+		      l->body().get(), empty, isControl, newContext, newSources);
         continue;
         markSubfields(
-            call->inputs()[i].get(), empty, isControl, context, sources);
+		      call->inputs()[i].get(), empty, isControl, context, sources);
       }
     }
+    return;
   }
+  if (dynamic_cast<const core::ConstantTypedExpr*>(expr)) {
+    return;
+  }
+  if (auto* castExpr = dynamic_cast<const core::CastTypedExpr*>(expr)) {
+    std::vector<Step> steps;
+    markSubfields(
+        castExpr->inputs()[0].get(), steps, isControl, context, sources);
+    return;
+  }
+  VELOX_UNREACHABLE("Unhandled expr: {}", expr->toString());
 }
 
 void Optimization::markColumnSubfields(

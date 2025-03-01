@@ -37,7 +37,7 @@ enum class PlanType {
   kJoin,
   kOrderBy,
   kLimit,
-  kPath,
+  kField,
   kLambda
 };
 

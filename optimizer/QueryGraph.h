@@ -168,13 +168,13 @@ inline folly::Range<T*> toRange(const std::vector<T, QGAllocator<T>>& v) {
   return folly::Range<T const*>(v.data(), v.size());
 }
 
-class Subfield : public Expr {
+class Field : public Expr {
  public:
-  Subfield(PathCP path, const Type* type, ExprCP base)
-      : Expr(PlanType::kPath, Value(type, 1)), path_(path), base_(base) {}
+  Field(const Type* type, ExprCP base, Name field)
+      : Expr(PlanType::kField, Value(type, 1)), field_(field), base_(base) {}
 
-  PathCP path() const {
-    return path_;
+  Name field() const {
+    return field_;
   }
 
   ExprCP base() const {
@@ -182,7 +182,7 @@ class Subfield : public Expr {
   }
 
  private:
-  PathCP path_;
+  Name field_;
   ExprCP base_;
 };
 
@@ -246,6 +246,7 @@ struct LambdaInfo {
 
 class Call;
 
+  
 struct ResultAccess;
 
 /// Describes functions accepting lambdas and functions with special treatment
@@ -267,9 +268,9 @@ struct FunctionMetadata {
   /// this key is accessed.
   bool isMapConstructor{false};
 
-  /// If the step at 'i' is accessed in the result, then this means that
+  /// If the field at 'i' is accessed in the result, then this means that
   /// argument subfieldArg_[i] is accessed.
-  std::vector<Step> stepForArg;
+  std::vector<std::string> stepForArg;
 
   /// Ordinal of argument that produces the result subfield in the corresponding
   /// element of 'resultSubfield'.
@@ -283,10 +284,14 @@ struct FunctionMetadata {
   /// arguments and their stats.
   std::function<float(const Call*)> costFunc;
 
-  // If only subfields of the result are accessed (i.e. not the result as
-  // undivided whole), then this produces an Expr for each accessed subfield.
-  std::function<
-      core::TypedExprPtr(const core::CallTypedExpr* call, PathCP path)>
+  /// Translates a set of paths into path, expression pairs if the complex type
+  /// returning function is decomposable into per-path subexpressions. Suppose
+  /// the function applies array sort to all arrays in a map. suppose it is used
+  /// in [k1][0] and [k2][1]. This could return [k1] = array_sort(arg[k1]) and
+  /// k2 = array_sort(arg[k2]. 'arg'  comes from 'call'.
+  std::function<std::unordered_map<PathCP, core::TypedExprPtr>(
+      const core::CallTypedExpr* call,
+      std::vector<PathCP>& paths)>
       explode;
 
   LambdaInfo* lambdaInfo(int32_t i) {
@@ -619,7 +624,8 @@ struct BaseTable : public PlanObject {
 
   SubfieldSet controlSubfields;
   SubfieldSet payloadSubfields;
-
+  
+  
   bool isTable() const override {
     return true;
   }

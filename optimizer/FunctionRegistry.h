@@ -21,7 +21,7 @@ namespace facebook::velox::optimizer {
 
 class FunctionRegistry {
  public:
-  FunctionMetadata* metadata(Name name);
+  FunctionMetadata* metadata(const std::string& name);
 
   void registerFunction(
       const std::string& function,
