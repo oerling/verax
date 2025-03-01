@@ -364,9 +364,13 @@ ExprCP Optimization::makeGettersOverSkyline(
           ExprVector args;
           args.push_back(expr);
           args.push_back(make<Literal>(
-				       Value(subscriptType, 1), make<variant>(subscriptLiteral(subscriptKind, step))));
+              Value(subscriptType, 1),
+              make<variant>(subscriptLiteral(subscriptKind, step))));
           expr = make<Call>(
-			    toName("subscript"), Value(type, 1), std::move(args), FunctionSet());
+              toName("subscript"),
+              Value(type, 1),
+              std::move(args),
+              FunctionSet());
           break;
         }
         default:

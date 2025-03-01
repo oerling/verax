@@ -246,7 +246,6 @@ struct LambdaInfo {
 
 class Call;
 
-  
 struct ResultAccess;
 
 /// Describes functions accepting lambdas and functions with special treatment
@@ -624,8 +623,7 @@ struct BaseTable : public PlanObject {
 
   SubfieldSet controlSubfields;
   SubfieldSet payloadSubfields;
-  
-  
+
   bool isTable() const override {
     return true;
   }
