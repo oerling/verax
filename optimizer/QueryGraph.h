@@ -224,6 +224,9 @@ class FunctionSet {
   /// Indicates and aggregate function in the set.
   static constexpr uint64_t kAggregate = 1;
 
+    /// Indicates a non-determinstic function
+  static constexpr uint64_t kNondeterministic = 1UL << 1;
+
   FunctionSet() : set_(0) {}
   explicit FunctionSet(uint64_t set) : set_(set) {}
 
@@ -266,6 +269,10 @@ struct ResultAccess;
 /// Describes functions accepting lambdas and functions with special treatment
 /// of subfields.
 struct FunctionMetadata {
+  bool processSubfields() const {
+    return subfieldArg.has_value() || !fieldIndexForArg.empty() || isArrayConstructor || isMapConstructor;
+  }
+
   std::vector<LambdaInfo> lambdas;
 
   /// If accessing a subfield on the result means that the same subfield is
@@ -276,7 +283,7 @@ struct FunctionMetadata {
 
   /// If true, then access of subscript 'i' in result means that argument 'i' is
   /// accessed.
-  bool isArrayConstructor_{false};
+  bool isArrayConstructor{false};
 
   /// If key 'k' in result is accessed, then the argument that corresponds to
   /// this key is accessed.

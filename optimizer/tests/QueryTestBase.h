@@ -48,6 +48,19 @@ class QueryTestBase : public exec::test::LocalRunnerTestBase {
       std::string* errorString = nullptr,
       std::vector<exec::TaskStats>* statsReturn = nullptr);
 
+  std::shared_ptr<runner::LocalRunner> runVelox(
+						const core::PlanNodePtr& plan,
+      std::vector<RowVectorPtr>* resultVector = nullptr,
+      std::string* planString = nullptr,
+      std::string* errorString = nullptr,
+      std::vector<exec::TaskStats>* statsReturn = nullptr);
+
+  std::shared_ptr<runner::LocalRunner> runFragmentedPlan(runner::MultiFragmentPlanPtr plan,
+    std::vector<RowVectorPtr>* resultVector,
+    std::string* planString,
+    std::string* errorString,
+							 std::vector<exec::TaskStats>* statsReturn);
+  
   runner::MultiFragmentPlanPtr planSql(
       const std::string& sql,
       std::string* planString = nullptr,
@@ -67,6 +80,7 @@ class QueryTestBase : public exec::test::LocalRunnerTestBase {
 
   void waitForCompletion(const std::shared_ptr<runner::LocalRunner>& runner);
 
+  OptimizerOptions optimizerOptions_;
   std::shared_ptr<memory::MemoryPool> rootPool_;
   std::shared_ptr<memory::MemoryPool> optimizerPool_;
   std::shared_ptr<memory::MemoryPool> schemaPool_;

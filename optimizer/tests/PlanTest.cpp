@@ -92,7 +92,12 @@ class PlanTest : public ParquetTpchTest {
     auto schema = tpchSchema(100, partitioned, ordered, false);
     std::string string;
     for (auto counter = 0; counter < numRepeats; ++counter) {
-      Optimization opt(*plan, *schema, *history_, *evaluator_, FLAGS_trace);
+      Optimization opt(
+          *plan,
+          *schema,
+          *history_,
+          *evaluator_,
+          OptimizerOptions{.traceFlags = FLAGS_trace});
       auto result = opt.bestPlan();
       if (counter == numRepeats - 1) {
         string = result->toString(true);

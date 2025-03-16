@@ -402,6 +402,21 @@ struct hash<::facebook::velox::optimizer::MemoKey> {
 
 namespace facebook::velox::optimizer {
 
+
+  struct OptimizerOptions {
+    /// Do not make shuffles or final gather stage.
+    bool singleStage{false};
+
+    /// Produces skyline subfield sets of complex type columns as top level columns in table scan.
+    bool pushdownSubfields{false};
+    
+    /// Map from table name to  list of map columns to be read as structs unless the whole map is accessed as a map.
+    std::unordered_map<std::string, std::vector<std::string>> mapAsStruct;
+    
+    /// Produce trace of plan candidates.
+    int32_t traceFlags{0};
+  };
+  
 /// Instance of query optimization. Comverts a plan and schema into an
 /// optimized plan. Depends on QueryGraphContext being set on the
 /// calling thread. There is one instance per query to plan. The
@@ -420,7 +435,7 @@ class Optimization {
       const Schema& schema,
       History& history,
       velox::core::ExpressionEvaluator& evaluator,
-      int32_t traceFlags = 0);
+      OptimizerOptions opts = OptimizerOptions());
 
   /// Returns the optimized RelationOp plan for 'plan' given at construction.
   PlanPtr bestPlan();
@@ -497,6 +512,10 @@ class Optimization {
   // only considers base relation columns of the given type.
   velox::RowTypePtr makeOutputType(const ColumnVector& columns);
 
+  const OptimizerOptions& opts() const {
+    return opts_;
+  }
+  
  private:
   static constexpr uint64_t kAllAllowedInDt = ~0UL;
 
@@ -612,6 +631,8 @@ class Optimization {
 
   // Makes a deduplicated Expr tree from 'expr'.
   ExprCP translateExpr(const velox::core::TypedExprPtr& expr);
+
+  ExprCP translateLambda(const velox::core::LambdaTypedExpr* lambda);
 
   // If 'expr' is not a subfield path, returns std::nullopt. If 'expr'
   // is a subfield path that is subsumed by a projected subfield,
@@ -845,6 +866,8 @@ class Optimization {
 
   const Schema& schema_;
 
+  OptimizerOptions opts_;
+  
   // Top level plan to optimize.
   const velox::core::PlanNode& inputPlan_;
 

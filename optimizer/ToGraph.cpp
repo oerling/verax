@@ -506,7 +506,7 @@ ExprCP Optimization::translateExpr(const core::TypedExprPtr& expr) {
   auto call = dynamic_cast<const core::CallTypedExpr*>(expr.get());
   if (call) {
     auto* metadata = FunctionRegistry::instance()->metadata(call->name());
-    if (metadata) {
+    if (metadata && metadata->processSubfields()) {
       auto translated = translateSubfieldFunction(call, metadata);
       if (translated.has_value()) {
         return translated.value();
@@ -514,6 +514,11 @@ ExprCP Optimization::translateExpr(const core::TypedExprPtr& expr) {
     }
   }
   auto cast = dynamic_cast<const core::CastTypedExpr*>(expr.get());
+  if (!cast && !call) {
+    if (auto* lambda = dynamic_cast<const core::LambdaTypedExpr*>(expr.get())) {
+      return translateLambda(lambda);
+    }
+  }
   ExprVector args{expr->inputs().size()};
   PlanObjectSet columns;
   FunctionSet funcs;
@@ -541,7 +546,9 @@ ExprCP Optimization::translateExpr(const core::TypedExprPtr& expr) {
     funcs = funcs | functionBits(name);
     auto* callExpr =
         make<Call>(name, Value(toType(call->type()), cardinality), args, funcs);
-    exprDedup_[expr.get()] = callExpr;
+    if (!callExpr->containsFunction(FunctionSet::kNondeterministic)) {
+      exprDedup_[expr.get()] = callExpr;
+    }
     return callExpr;
   }
   if (cast) {
@@ -550,7 +557,9 @@ ExprCP Optimization::translateExpr(const core::TypedExprPtr& expr) {
 
     auto* callExpr =
         make<Call>(name, Value(toType(cast->type()), cardinality), args, funcs);
-    exprDedup_[expr.get()] = callExpr;
+    if (!callExpr->containsFunction(FunctionSet::kNondeterministic)) {
+      exprDedup_[expr.get()] = callExpr;
+    }
     return callExpr;
   }
 
@@ -558,6 +567,20 @@ ExprCP Optimization::translateExpr(const core::TypedExprPtr& expr) {
   return nullptr;
 }
 
+ExprCP Optimization::translateLambda(const core::LambdaTypedExpr* lambda) {
+  auto savedRenames = renames_;
+  auto row = lambda->signature();
+  ColumnVector args;
+  for (auto i = 0; i < row->size() - 1; ++i) {
+    auto col = make<Column>(toName(row->nameOf(i)), nullptr, Value(toType(row->childAt(i)), 1));
+    args.push_back(col);
+    renames_[row->nameOf(i)] = col;
+  }
+  auto body = translateExpr(lambda->body());
+  renames_ = savedRenames;
+  return make<Lambda>(std::move(args), toType(lambda->type()), body);
+}
+  
 std::optional<ExprCP> Optimization::translateSubfieldFunction(
     const core::CallTypedExpr* call,
     const FunctionMetadata* metadata) {
@@ -612,6 +635,7 @@ std::optional<ExprCP> Optimization::translateSubfieldFunction(
   auto* name = toName(call->name());
   funcs = funcs | functionBits(name);
   if (metadata->explode) {
+    
     auto map = metadata->explode(call, paths);
     std::unordered_map<PathCP, ExprCP> translated;
     for (auto& pair : map) {

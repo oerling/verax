@@ -194,6 +194,7 @@ RowTypePtr Optimization::makeOutputType(const ColumnVector& columns) {
       if (!schemaTable) {
         continue;
       }
+      
       auto* runnerTable = schemaTable->connectorTable;
       if (runnerTable) {
         auto* runnerColumn =
@@ -264,7 +265,11 @@ core::TypedExprPtr Optimization::toTypedExpr(ExprCP expr) {
       return std::make_shared<core::ConstantTypedExpr>(
           toTypePtr(literal->value().type), literal->literal());
     }
-
+  case PlanType::kLambda: {
+    
+    auto*  lambda = expr->as<Lambda>();
+    return std::make_shared<core::LambdaTypedExpr>(std::static_pointer_cast<const RowType>(toTypePtr(lambda->value().type)), toTypedExpr(lambda->body())); 
+  }
     default:
       VELOX_FAIL("Cannot translate {} to TypeExpr", expr->toString());
   }

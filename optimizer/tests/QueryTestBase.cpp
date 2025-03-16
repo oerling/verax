@@ -173,14 +173,24 @@ std::shared_ptr<runner::LocalRunner> QueryTestBase::runSql(
     std::string* planString,
     std::string* errorString,
     std::vector<exec::TaskStats>* statsReturn) {
-  std::shared_ptr<runner::LocalRunner> runner;
   auto fragmentedPlan = planSql(sql, planString, errorString);
   if (!fragmentedPlan) {
     return nullptr;
   }
+  return runFragmentedPlan(
+      fragmentedPlan, resultVector, planString, errorString, statsReturn);
+}
+
+std::shared_ptr<runner::LocalRunner> QueryTestBase::runFragmentedPlan(
+    runner::MultiFragmentPlanPtr fragmentedPlan,
+    std::vector<RowVectorPtr>* resultVector,
+    std::string* planString,
+    std::string* errorString,
+    std::vector<exec::TaskStats>* statsReturn) {
+  std::shared_ptr<runner::LocalRunner> runner;
   try {
     runner = std::make_shared<runner::LocalRunner>(
-        fragmentedPlan,
+						   fragmentedPlan,
         queryCtx_,
         std::make_shared<connector::ConnectorSplitSourceFactory>());
     std::vector<RowVectorPtr> results;
@@ -262,7 +272,7 @@ runner::MultiFragmentPlanPtr QueryTestBase::planVelox(
     facebook::velox::optimizer::Schema veraxSchema(
         "test", schema_.get(), &locus);
     facebook::velox::optimizer::Optimization opt(
-        *plan, veraxSchema, *history_, evaluator, FLAGS_optimizer_trace);
+        *plan, veraxSchema, *history_, evaluator, optimizerOptions_);
     auto best = opt.bestPlan();
     if (planString) {
       *planString = best->op->toString(true, false);
@@ -278,6 +288,20 @@ runner::MultiFragmentPlanPtr QueryTestBase::planVelox(
   }
   facebook::velox::optimizer::queryCtx() = nullptr;
   return fragmentedPlan;
+}
+
+std::shared_ptr<runner::LocalRunner> QueryTestBase::runVelox(
+    const core::PlanNodePtr& plan,
+    std::vector<RowVectorPtr>* resultVector,
+    std::string* planString,
+    std::string* errorString,
+    std::vector<exec::TaskStats>* statsReturn) {
+  auto fragmentedPlan = planVelox(plan, planString, errorString);
+  if (!fragmentedPlan) {
+    return nullptr;
+  }
+  return runFragmentedPlan(
+      fragmentedPlan, resultVector, planString, errorString, statsReturn);
 }
 
 void QueryTestBase::waitForCompletion(
