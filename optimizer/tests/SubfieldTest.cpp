@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "velox/common/base/tests/GTestUtils.h"
 #include "optimizer/FunctionRegistry.h" //@manual
 #include "optimizer/tests/FeatureGen.h" //@manual
 #include "optimizer/tests/QueryTestBase.h" //@manual
@@ -66,11 +67,20 @@ VELOX_DECLARE_VECTOR_FUNCTION_WITH_METADATA(
     exec::VectorFunctionMetadataBuilder().defaultNullBehavior(false).build(),
     std::make_unique<GenieFunction>());
 
-class SubfieldTest : public QueryTestBase {
+class SubfieldTest : public QueryTestBase,
+		     public testing::WithParamInterface<int32_t> {
  protected:
   void SetUp() override {
     QueryTestBase::SetUp();
     core::Expressions::setFieldAccessHook(fieldIndexHook);
+    switch (GetParam()) {
+    case 1: optimizerOptions_ = OptimizerOptions(); break;
+    case 2: optimizerOptions_ = OptimizerOptions{.pushdownSubfields = true}; break;
+    case 3: optimizerOptions_ = OptimizerOptions{.pushdownSubfields = true};
+      optimizerOptions_.mapAsStruct["features"] = {"float_features", "id_list_features", "id_score_list_features"};
+      break;
+    default: FAIL(); break;
+    }
   }
 
   void TearDown() override {
@@ -219,7 +229,7 @@ class SubfieldTest : public QueryTestBase {
 
 };
 
-TEST_F(SubfieldTest, structs) {
+TEST_P(SubfieldTest, structs) {
   auto structType =
       ROW({"s1", "s2", "s3"},
           {BIGINT(), ROW({"s2s1"}, {BIGINT()}), ARRAY(BIGINT())});
@@ -240,7 +250,7 @@ TEST_F(SubfieldTest, structs) {
   expectRegexp(plan, "s.*Subfields.*s.s1");
 }
 
-TEST_F(SubfieldTest, maps) {
+TEST_P(SubfieldTest, maps) {
   FeatureOptions opts;
   auto vectors = makeFeatures(1, 100, opts, pool_.get());
   auto rowType = std::dynamic_pointer_cast<const RowType>(vectors[0]->type());
@@ -252,8 +262,8 @@ TEST_F(SubfieldTest, maps) {
   config->set<const std::vector<uint32_t>>(dwrf::Config::MAP_FLAT_COLS, {2, 3, 4});
 
   writeToFile(filePath, vectors, config);
-
   tablesCreated();
+
   std::vector<RowVectorPtr> results;
   std::string plan;
   auto planNodeIdGenerator = std::make_shared<core::PlanNodeIdGenerator>();
@@ -264,6 +274,7 @@ TEST_F(SubfieldTest, maps) {
     .hashJoin({"uid"}, {"opt_uid"},
 	      PlanBuilder(planNodeIdGenerator)
 	      .tableScan("features", rowType)
+	      .filter("uid % 2 = 1 and cast(float_features[30::INTEGER] as integer) % 2 = 0")
 	      .project({"uid as opt_uid", "float_features as opt_ff"})
 	      .planNode(),
 	      "",
@@ -376,8 +387,15 @@ TEST_F(SubfieldTest, maps) {
   builder =
       PlanBuilder()
           .tableScan("features", rowType)
-    .project({"transform(id_list_features[1000], x -> x + 1) as ids"});
+    .project({"transform(id_list_features[1000::INTEGER], x -> x + 1) as ids"});
   runVelox(builder.planNode(), &results);
   auto expected = extractAndIncrementIdList(vectors, 1000);
   assertEqualResults(expected, results);
 }
+
+
+VELOX_INSTANTIATE_TEST_SUITE_P(
+    SubfieldTests,
+    SubfieldTest,
+    testing::ValuesIn(std::vector<int32_t>{1, 2, 3}));
+

@@ -114,7 +114,7 @@ class Literal : public Expr {
 /// or derived table.
 class Column : public Expr {
  public:
-  Column(Name _name, PlanObjectP _relation, const Value& value);
+  Column(Name _name, PlanObjectP _relation, const Value& value, ColumnCP topColumn = nullptr, PathCP path = nullptr);
 
   Name name() const {
     return name_;
@@ -133,16 +133,20 @@ class Column : public Expr {
   /// asserted equal to b, a and c are also equal.
   void equals(ColumnCP other) const;
 
-  int32_t wholeColumnId() {
-    return wholeColumnId_;
-  }
-
   std::string toString() const override;
 
   struct Equivalence* equivalence() const {
     return equivalence_;
   }
 
+  ColumnCP topColumn() const {
+    return topColumn_;
+  }
+
+  PathCP path() const {
+    return path_;
+  }
+  
  private:
   // Last part of qualified name.
   Name name_;
@@ -163,6 +167,12 @@ class Column : public Expr {
   // subfields, 'wholeColumnId_' is added to the dependencies of using
   // exprs. 0 if not applicable.
   int32_t wholeColumnId_{0};
+
+  // Containing top level column if 'this' is a subfield projected out as column. 
+  ColumnCP topColumn_;
+
+  // Path from 'topColumn'.
+  PathCP path_;
 };
 
 template <typename T>

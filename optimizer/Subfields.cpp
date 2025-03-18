@@ -461,7 +461,7 @@ core::TypedExprPtr stepToGetter(Step step, core::TypedExprPtr arg) {
         }
 
         return std::make_shared<core::CallTypedExpr>(
-            type->as<TypeKind::MAP>().childAt(0),
+            type->as<TypeKind::MAP>().childAt(1),
             std::vector<core::TypedExprPtr>{arg, key},
             "subscript");
       }

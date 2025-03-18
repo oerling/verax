@@ -471,6 +471,18 @@ class Optimization {
     return idGenerator_;
   }
 
+  // Makes a getter path over a top level column and can convert the top map getter into struct getter if maps extracted as structs.
+  core::TypedExprPtr pathToGetter(ColumnCP column, PathCP path, core::TypedExprPtr source);
+
+  // Produces a scan output type with only top level columns. Returns
+  // these in scanColumns. The scan->columns() is the leaf columns,
+  // not the top level ones if subfield pushdown.
+  RowTypePtr scanOutputType(TableScan* scan, ColumnVector& scanColumns);
+
+  // Makes projections for subfields as top level columns.
+  core::PlanNodePtr makeSubfieldProjections(TableScan* scan, const std::shared_ptr<const core::TableScanNode>& scanNode);
+
+  
   /// Sets 'filterSelectivity' of 'baseTable' from history. Returns True if set.
   bool setLeafSelectivity(BaseTable& baseTable) {
     return history_.setLeafSelectivity(baseTable);
@@ -508,6 +520,10 @@ class Optimization {
     return makeVeloxExprWithNoAlias_;
   }
 
+  bool& getterForPushdownSubfield() {
+    return getterForPushdownSubfield_;
+  }
+  
   // Makes an output type for use in PlanNode et al. If 'columnType' is set,
   // only considers base relation columns of the given type.
   velox::RowTypePtr makeOutputType(const ColumnVector& columns);
@@ -550,6 +566,10 @@ class Optimization {
   // Converts a table scan into a BaseTable wen building a DerivedTable.
   PlanObjectP makeBaseTable(const core::TableScanNode* tableScan);
 
+  // Decomposes complex type columns into parts projected out as top
+  // level if subfield pushdown is on.
+  void makeSubfieldColumns(BaseTable* baseTable, ColumnCP column, const BitSet& paths);
+  
   // Interprets a Project node and adds its information into the DerivedTable
   // being assembled.
   void addProjection(const core::ProjectNode* project);
@@ -994,6 +1014,8 @@ class Optimization {
   // On when producing a remaining filter for table scan, where columns must
   // correspond 1:1 to the schema.
   bool makeVeloxExprWithNoAlias_{false};
+
+  bool getterForPushdownSubfield_{false};
 };
 
 /// Returns bits describing function 'name'.
