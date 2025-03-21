@@ -954,10 +954,10 @@ PlanObjectP Optimization::makeBaseTable(const core::TableScanNode* tableScan) {
         allPaths.unionSet(payloadPaths);
       }
       if (opts_.pushdownSubfields) {
-	Path::subfieldSkyline(allPaths);
-	if (!allPaths.empty()) {
-	  makeSubfieldColumns(baseTable, column, allPaths);
-	}
+        Path::subfieldSkyline(allPaths);
+        if (!allPaths.empty()) {
+          makeSubfieldColumns(baseTable, column, allPaths);
+        }
       }
     }
     renames_[pair.first] = column;
@@ -966,7 +966,8 @@ PlanObjectP Optimization::makeBaseTable(const core::TableScanNode* tableScan) {
   ColumnVector top;
   std::unordered_map<ColumnCP, TypePtr> map;
   filterUpdated(baseTable, false);
-  auto scanType = subfieldPushdownScanType(baseTable, baseTable->columns, top, map);
+  auto scanType =
+      subfieldPushdownScanType(baseTable, baseTable->columns, top, map);
   setLeafSelectivity(*baseTable, scanType);
   currentSelect_->tables.push_back(baseTable);
   currentSelect_->tableSet.add(baseTable);

@@ -255,7 +255,8 @@ class TableLayout {
   /// to look at a subset of all accessed columns, so we specify these instead
   /// of defaulting to the columns in 'handle'.  'allocator' is used for
   /// temporary memory in gathering statistics.
-  /// 'outputType' can specify a cast from map to struct. Filter expressions see the 'outputType' and 'subfields' are relative to that.
+  /// 'outputType' can specify a cast from map to struct. Filter expressions see
+  /// the 'outputType' and 'subfields' are relative to that.
   virtual std::pair<int64_t, int64_t> sample(
       const connector::ConnectorTableHandlePtr& handle,
       float pct,

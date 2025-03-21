@@ -76,8 +76,8 @@ std::unordered_map<std::string, float>& baseSelectivities() {
 FunctionSet functionBits(Name name) {
   auto deterministic = isDeterministic(name);
   if (deterministic.has_value() && !deterministic.value()) {
-      return FunctionSet(FunctionSet::kNondeterministic);
-    }
+    return FunctionSet(FunctionSet::kNondeterministic);
+  }
   return FunctionSet(0);
 }
 
@@ -1199,7 +1199,10 @@ void Optimization::addJoin(
 
 // Sets 'columns' to the columns in 'downstream' that exist
 // in 'index' of 'table'.
-  ColumnVector indexColumns(const PlanObjectSet& downstream, BaseTableCP table, ColumnGroupP index) {
+ColumnVector indexColumns(
+    const PlanObjectSet& downstream,
+    BaseTableCP table,
+    ColumnGroupP index) {
   ColumnVector result;
   downstream.forEach([&](PlanObjectCP object) {
     auto* column = object->as<Column>();

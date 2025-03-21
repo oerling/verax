@@ -114,7 +114,12 @@ class Literal : public Expr {
 /// or derived table.
 class Column : public Expr {
  public:
-  Column(Name _name, PlanObjectP _relation, const Value& value, ColumnCP topColumn = nullptr, PathCP path = nullptr);
+  Column(
+      Name _name,
+      PlanObjectP _relation,
+      const Value& value,
+      ColumnCP topColumn = nullptr,
+      PathCP path = nullptr);
 
   Name name() const {
     return name_;
@@ -146,7 +151,7 @@ class Column : public Expr {
   PathCP path() const {
     return path_;
   }
-  
+
  private:
   // Last part of qualified name.
   Name name_;
@@ -163,7 +168,8 @@ class Column : public Expr {
   // ordering/partitioning columns in the SchemaTable.
   ColumnCP schemaColumn_{nullptr};
 
-  // Containing top level column if 'this' is a subfield projected out as column. 
+  // Containing top level column if 'this' is a subfield projected out as
+  // column.
   ColumnCP topColumn_;
 
   // Path from 'topColumn'.
@@ -229,7 +235,7 @@ class FunctionSet {
   /// Indicates and aggregate function in the set.
   static constexpr uint64_t kAggregate = 1;
 
-    /// Indicates a non-determinstic function
+  /// Indicates a non-determinstic function
   static constexpr uint64_t kNondeterministic = 1UL << 1;
 
   FunctionSet() : set_(0) {}
@@ -275,7 +281,8 @@ struct ResultAccess;
 /// of subfields.
 struct FunctionMetadata {
   bool processSubfields() const {
-    return subfieldArg.has_value() || !fieldIndexForArg.empty() || isArrayConstructor || isMapConstructor;
+    return subfieldArg.has_value() || !fieldIndexForArg.empty() ||
+        isArrayConstructor || isMapConstructor;
   }
 
   std::vector<LambdaInfo> lambdas;

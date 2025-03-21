@@ -15,10 +15,11 @@
  */
 
 #include "optimizer/Plan.h" //@manual
-#include "optimizer/VeloxHistory.h" //@manual
 #include <folly/init/Init.h>
 #include <gtest/gtest.h>
+#include "optimizer/VeloxHistory.h" //@manual
 #include "optimizer/tests/ParquetTpchTest.h" //@manual
+#include "optimizer/tests/QueryTestBase.h" //@manual
 #include "optimizer/tests/Tpch.h" //@manual
 #include "velox/common/file/FileSystems.h"
 #include "velox/dwio/parquet/RegisterParquetReader.h"
@@ -27,8 +28,6 @@
 #include "velox/functions/prestosql/aggregates/RegisterAggregateFunctions.h"
 #include "velox/functions/prestosql/registration/RegistrationFunctions.h"
 #include "velox/parse/TypeResolver.h"
-#include "optimizer/tests/QueryTestBase.h" //@manual
-
 
 DEFINE_int32(trace, 0, "Enable trace 1=retained plans, 2=abandoned, 3=both");
 
@@ -44,7 +43,6 @@ std::string nodeString(core::PlanNode* node) {
 
 class PlanTest : public virtual ParquetTpchTest, public virtual QueryTestBase {
  protected:
- 
   static void SetUpTestCase() {
     ParquetTpchTest::SetUpTestCase();
     LocalRunnerTestBase::testDataPath_ = FLAGS_data_path;
@@ -52,17 +50,17 @@ class PlanTest : public virtual ParquetTpchTest, public virtual QueryTestBase {
     connector::unregisterConnectorFactory("hive");
     LocalRunnerTestBase::SetUpTestCase();
   }
-  
+
   static void TearDownTestCase() {
     LocalRunnerTestBase::TearDownTestCase();
     ParquetTpchTest::TearDownTestCase();
   }
-  
+
   void SetUp() override {
     ParquetTpchTest::SetUp();
     QueryTestBase::SetUp();
-        allocator_ = std::make_unique<HashStringAllocator>(pool_.get());
-	context_ = std::make_unique<QueryGraphContext>(*allocator_);
+    allocator_ = std::make_unique<HashStringAllocator>(pool_.get());
+    context_ = std::make_unique<QueryGraphContext>(*allocator_);
     queryCtx() = context_.get();
     builder_ = std::make_unique<exec::test::TpchQueryBuilder>(
         dwio::common::FileFormat::PARQUET);
@@ -77,7 +75,7 @@ class PlanTest : public virtual ParquetTpchTest, public virtual QueryTestBase {
     ParquetTpchTest::TearDown();
     QueryTestBase::TearDown();
   }
-  
+
   std::string makePlan(
       std::shared_ptr<const core::PlanNode> plan,
       bool partitioned,
@@ -86,10 +84,10 @@ class PlanTest : public virtual ParquetTpchTest, public virtual QueryTestBase {
     std::string planText;
     std::string errorText;
     for (auto counter = 0; counter < numRepeats; ++counter) {
-          optimizerOptions_.traceFlags = FLAGS_trace;
-	  auto result = planVelox(plan, &planText, &errorText);
+      optimizerOptions_.traceFlags = FLAGS_trace;
+      auto result = planVelox(plan, &planText, &errorText);
     }
-	  return fmt::format(
+    return fmt::format(
         "=== {} {}:\n{}\n",
         partitioned ? "Partitioned on PK" : "Not partitioned",
         ordered ? "sorted on PK" : "not sorted",

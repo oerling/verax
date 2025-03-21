@@ -32,7 +32,7 @@ struct FeatureOptions {
   RowTypePtr floatStruct;
   RowTypePtr idListStruct;
   RowTypePtr idScoreListStruct;
-  };
+};
 
 std::vector<RowVectorPtr> makeFeatures(
     int32_t numBatches,

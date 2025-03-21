@@ -496,7 +496,8 @@ class Optimization {
       TableScan* scan,
       const std::shared_ptr<const core::TableScanNode>& scanNode);
 
-  /// Sets 'filterSelectivity' of 'baseTable' from history. Returns True if set. 'scanType' is the set of sampled columns with possible map to struct cast.
+  /// Sets 'filterSelectivity' of 'baseTable' from history. Returns True if set.
+  /// 'scanType' is the set of sampled columns with possible map to struct cast.
   bool setLeafSelectivity(BaseTable& baseTable, RowTypePtr scanType) {
     return history_.setLeafSelectivity(baseTable, scanType);
   }
@@ -549,11 +550,10 @@ class Optimization {
     return columnAlteredTypes_;
   }
 
-  
   /// True if a scan should expose 'column' of 'table' as a struct only
   /// containing the accessed keys. 'column' must be a top level map column.
   bool isMapAsStruct(Name table, Name column);
-  
+
  private:
   static constexpr uint64_t kAllAllowedInDt = ~0UL;
 
@@ -1021,7 +1021,7 @@ class Optimization {
       nextId_ = startId;
     }
 
-  private:
+   private:
     int nextId_;
   };
 
@@ -1052,11 +1052,11 @@ FunctionSet functionBits(Name name);
 
 const JoinEdgeVector& joinedBy(PlanObjectCP table);
 
-  void filterUpdated(BaseTableCP baseTable, bool updateSelectivity = true);
+void filterUpdated(BaseTableCP baseTable, bool updateSelectivity = true);
 
 /// Returns a struct with fields for skyline map keys of 'column' in
 /// 'baseTable'. This is the type to return from the table reader
 /// for the map column.
-  RowTypePtr skylineStruct(BaseTableCP baseTable, ColumnCP column);
+RowTypePtr skylineStruct(BaseTableCP baseTable, ColumnCP column);
 
 } // namespace facebook::velox::optimizer

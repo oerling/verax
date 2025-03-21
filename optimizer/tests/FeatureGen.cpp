@@ -19,7 +19,9 @@
 
 namespace facebook::velox::optimizer::test {
 
-RowTypePtr makeRowType(const std::vector<RowVectorPtr>& vectors, int32_t column) {
+RowTypePtr makeRowType(
+    const std::vector<RowVectorPtr>& vectors,
+    int32_t column) {
   std::unordered_set<int32_t> keys;
   TypePtr valueType;
   for (auto& row : vectors) {
@@ -40,7 +42,7 @@ RowTypePtr makeRowType(const std::vector<RowVectorPtr>& vectors, int32_t column)
   }
   return ROW(std::move(names), std::move(types));
 }
-  
+
 BufferPtr evenOffsets(int32_t numRows, int32_t step, memory::MemoryPool* pool) {
   auto buffer = AlignedBuffer::allocate<int32_t>(numRows, pool);
   for (auto i = 0; i < numRows; ++i) {

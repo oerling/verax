@@ -294,11 +294,11 @@ void Optimization::markSubfields(
         }
       }
       if (auto* lambda = metadata->lambdaInfo(i)) {
-	auto argType = lambdaArgType(call->inputs()[i].get());
-	std::vector<const RowType*> newContext = {argType.get()};
+        auto argType = lambdaArgType(call->inputs()[i].get());
+        std::vector<const RowType*> newContext = {argType.get()};
         newContext.insert(newContext.end(), context.begin(), context.end());
         std::vector<ContextSource> newSources = {
-	  ContextSource{.call = call, .lambdaOrdinal = i}};
+            ContextSource{.call = call, .lambdaOrdinal = i}};
         newSources.insert(newSources.end(), sources.begin(), sources.end());
 
         auto* l = reinterpret_cast<const core::LambdaTypedExpr*>(

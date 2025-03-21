@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-#include "velox/common/base/tests/GTestUtils.h"
 #include "optimizer/FunctionRegistry.h" //@manual
 #include "optimizer/tests/FeatureGen.h" //@manual
 #include "optimizer/tests/QueryTestBase.h" //@manual
+#include "velox/common/base/tests/GTestUtils.h"
 #include "velox/exec/tests/utils/PlanBuilder.h"
 #include "velox/parse/Expressions.h"
 #include "velox/vector/tests/utils/VectorMaker.h"
@@ -70,7 +70,7 @@ VELOX_DECLARE_VECTOR_FUNCTION_WITH_METADATA(
     std::make_unique<GenieFunction>());
 
 class SubfieldTest : public QueryTestBase,
-		     public testing::WithParamInterface<int32_t> {
+                     public testing::WithParamInterface<int32_t> {
  protected:
   static void SetUpTestCase() {
     testDataPath_ = FLAGS_subfield_data_path;
@@ -81,17 +81,24 @@ class SubfieldTest : public QueryTestBase,
     LocalRunnerTestBase::TearDownTestCase();
   }
 
-  
   void SetUp() override {
     QueryTestBase::SetUp();
     core::Expressions::setFieldAccessHook(fieldIndexHook);
     switch (GetParam()) {
-    case 1: optimizerOptions_ = OptimizerOptions(); break;
-    case 2: optimizerOptions_ = OptimizerOptions{.pushdownSubfields = true}; break;
-    case 3: optimizerOptions_ = OptimizerOptions{.pushdownSubfields = true};
-      optimizerOptions_.mapAsStruct["features"] = {"float_features", "id_list_features", "id_score_list_features"};
-      break;
-    default: FAIL(); break;
+      case 1:
+        optimizerOptions_ = OptimizerOptions();
+        break;
+      case 2:
+        optimizerOptions_ = OptimizerOptions{.pushdownSubfields = true};
+        break;
+      case 3:
+        optimizerOptions_ = OptimizerOptions{.pushdownSubfields = true};
+        optimizerOptions_.mapAsStruct["features"] = {
+            "float_features", "id_list_features", "id_score_list_features"};
+        break;
+      default:
+        FAIL();
+        break;
     }
   }
 
@@ -206,7 +213,9 @@ class SubfieldTest : public QueryTestBase,
     return result;
   }
 
-  std::vector<RowVectorPtr> extractAndIncrementIdList(const std::vector<RowVectorPtr>& vectors, int32_t key) {
+  std::vector<RowVectorPtr> extractAndIncrementIdList(
+      const std::vector<RowVectorPtr>& vectors,
+      int32_t key) {
     std::vector<RowVectorPtr> result;
     facebook::velox::test::VectorMaker vectorMaker(pool_.get());
 
@@ -214,31 +223,35 @@ class SubfieldTest : public QueryTestBase,
       auto* idList = row->childAt(3)->as<MapVector>();
       auto* keys = idList->mapKeys()->as<FlatVector<int32_t>>();
       auto* values = idList->mapValues()->as<ArrayVector>();
-      auto idsShared = BaseVector::create(values->type(), row->size(), values->pool());
+      auto idsShared =
+          BaseVector::create(values->type(), row->size(), values->pool());
       auto* ids = idsShared->as<ArrayVector>();
       for (auto i = 0; i < idList->size(); ++i) {
-	bool found = false;
-	for (auto k = idList->offsetAt(i); k < idList->offsetAt(i) + idList->sizeAt(i); ++k) {
-	  if (keys->valueAt(k) == key) {
-	    ids->copy(values, i, k, 1);
-	    auto* elt = ids->elements()->as<FlatVector<int64_t>>();
-	    for (auto e = ids->offsetAt(i); e < ids->offsetAt(i) + ids->sizeAt(i); ++e) {
-	      elt->set(e, elt->valueAt(e) + 1);
-	    }
-	    found = true;
-	    break;
-	  }
-	}
-	if (!found) {
-	  ids->setNull(i, true);
-	}
+        bool found = false;
+        for (auto k = idList->offsetAt(i);
+             k < idList->offsetAt(i) + idList->sizeAt(i);
+             ++k) {
+          if (keys->valueAt(k) == key) {
+            ids->copy(values, i, k, 1);
+            auto* elt = ids->elements()->as<FlatVector<int64_t>>();
+            for (auto e = ids->offsetAt(i);
+                 e < ids->offsetAt(i) + ids->sizeAt(i);
+                 ++e) {
+              elt->set(e, elt->valueAt(e) + 1);
+            }
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          ids->setNull(i, true);
+        }
       }
       result.push_back(vectorMaker.rowVector({idsShared}));
     }
 
     return result;
-}
-
+  }
 };
 
 TEST_P(SubfieldTest, structs) {
@@ -271,7 +284,8 @@ TEST_P(SubfieldTest, maps) {
   auto filePath = testDataPath_ + "/features/features.dwrf";
   auto config = std::make_shared<dwrf::Config>();
   config->set(dwrf::Config::FLATTEN_MAP, true);
-  config->set<const std::vector<uint32_t>>(dwrf::Config::MAP_FLAT_COLS, {2, 3, 4});
+  config->set<const std::vector<uint32_t>>(
+      dwrf::Config::MAP_FLAT_COLS, {2, 3, 4});
 
   writeToFile(filePath, vectors, config);
   tablesCreated();
@@ -281,17 +295,26 @@ TEST_P(SubfieldTest, maps) {
   auto builder =
       PlanBuilder(planNodeIdGenerator)
           .tableScan("features", rowType)
-    .project({"uid", "float_features as ff"})
-    .hashJoin({"uid"}, {"opt_uid"},
-	      PlanBuilder(planNodeIdGenerator)
-	      .tableScan("features", rowType)
-	      .filter("uid % 2 = 1 and cast(float_features[10300::INTEGER] as integer) % 2 = 0")
-	      .project({"uid as opt_uid", "float_features as opt_ff"})
-	      .planNode(),
-	      "",
-	      {"ff", "uid", "opt_uid", "opt_ff"},
-	      core::JoinType::kLeft)
-    .project({"uid", "opt_uid", "ff[10100::INTEGER] as f10", "ff[10200::INTEGER] as f20", "opt_ff[10100::INTEGER] as o10", "opt_ff[10200::INTEGER] as o20"});
+          .project({"uid", "float_features as ff"})
+          .hashJoin(
+              {"uid"},
+              {"opt_uid"},
+              PlanBuilder(planNodeIdGenerator)
+                  .tableScan("features", rowType)
+                  .filter(
+                      "uid % 2 = 1 and cast(float_features[10300::INTEGER] as integer) % 2 = 0")
+                  .project({"uid as opt_uid", "float_features as opt_ff"})
+                  .planNode(),
+              "",
+              {"ff", "uid", "opt_uid", "opt_ff"},
+              core::JoinType::kLeft)
+          .project(
+              {"uid",
+               "opt_uid",
+               "ff[10100::INTEGER] as f10",
+               "ff[10200::INTEGER] as f20",
+               "opt_ff[10100::INTEGER] as o10",
+               "opt_ff[10200::INTEGER] as o20"});
 
   plan = veloxString(planVelox(builder.planNode()));
   std::cout << plan << std::endl;
@@ -391,20 +414,18 @@ TEST_P(SubfieldTest, maps) {
   plan = veloxString(planVelox(builder.planNode()));
   std::cout << plan << std::endl;
 
-
   builder =
       PlanBuilder()
           .tableScan("features", rowType)
-    .project({"transform(id_list_features[201800::INTEGER], x -> x + 1) as ids"});
+          .project(
+              {"transform(id_list_features[201800::INTEGER], x -> x + 1) as ids"});
 
   auto result = runVelox(builder.planNode());
   auto expected = extractAndIncrementIdList(vectors, 201800);
   assertEqualResults(expected, result.results);
 }
 
-
 VELOX_INSTANTIATE_TEST_SUITE_P(
     SubfieldTests,
     SubfieldTest,
     testing::ValuesIn(std::vector<int32_t>{1, 2, 3}));
-
