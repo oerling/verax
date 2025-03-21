@@ -570,8 +570,10 @@ ExprCP Optimization::translateExpr(const core::TypedExprPtr& expr) {
 ExprCP Optimization::translateLambda(const core::LambdaTypedExpr* lambda) {
   auto savedRenames = renames_;
   auto row = lambda->signature();
+  toType(row);
+  toType(lambda->type());
   ColumnVector args;
-  for (auto i = 0; i < row->size() - 1; ++i) {
+  for (auto i = 0; i < row->size(); ++i) {
     auto col = make<Column>(
         toName(row->nameOf(i)), nullptr, Value(toType(row->childAt(i)), 1));
     args.push_back(col);
@@ -952,14 +954,20 @@ PlanObjectP Optimization::makeBaseTable(const core::TableScanNode* tableScan) {
         allPaths.unionSet(payloadPaths);
       }
       if (opts_.pushdownSubfields) {
-        makeSubfieldColumns(baseTable, column, allPaths);
+	Path::subfieldSkyline(allPaths);
+	if (!allPaths.empty()) {
+	  makeSubfieldColumns(baseTable, column, allPaths);
+	}
       }
     }
     renames_[pair.first] = column;
   }
 
-  setLeafHandle(baseTable->id(), tableScan->tableHandle(), {});
-  setLeafSelectivity(*baseTable);
+  ColumnVector top;
+  std::unordered_map<ColumnCP, TypePtr> map;
+  filterUpdated(baseTable, false);
+  auto scanType = subfieldPushdownScanType(baseTable, baseTable->columns, top, map);
+  setLeafSelectivity(*baseTable, scanType);
   currentSelect_->tables.push_back(baseTable);
   currentSelect_->tableSet.add(baseTable);
   return baseTable;

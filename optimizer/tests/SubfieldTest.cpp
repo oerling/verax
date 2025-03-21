@@ -22,6 +22,8 @@
 #include "velox/parse/Expressions.h"
 #include "velox/vector/tests/utils/VectorMaker.h"
 
+DEFINE_string(subfield_data_path, "", "Data directory for subfield test data");
+
 using namespace facebook::velox;
 using namespace facebook::velox::optimizer;
 using namespace facebook::velox::optimizer::test;
@@ -70,6 +72,16 @@ VELOX_DECLARE_VECTOR_FUNCTION_WITH_METADATA(
 class SubfieldTest : public QueryTestBase,
 		     public testing::WithParamInterface<int32_t> {
  protected:
+  static void SetUpTestCase() {
+    testDataPath_ = FLAGS_subfield_data_path;
+    LocalRunnerTestBase::SetUpTestCase();
+  }
+
+  static void TearDownTestCase() {
+    LocalRunnerTestBase::TearDownTestCase();
+  }
+
+  
   void SetUp() override {
     QueryTestBase::SetUp();
     core::Expressions::setFieldAccessHook(fieldIndexHook);
@@ -202,7 +214,7 @@ class SubfieldTest : public QueryTestBase,
       auto* idList = row->childAt(3)->as<MapVector>();
       auto* keys = idList->mapKeys()->as<FlatVector<int32_t>>();
       auto* values = idList->mapValues()->as<ArrayVector>();
-      auto idsShared = BaseVector::create(values->type(), values->size(), values->pool());
+      auto idsShared = BaseVector::create(values->type(), row->size(), values->pool());
       auto* ids = idsShared->as<ArrayVector>();
       for (auto i = 0; i < idList->size(); ++i) {
 	bool found = false;
@@ -235,9 +247,9 @@ TEST_P(SubfieldTest, structs) {
           {BIGINT(), ROW({"s2s1"}, {BIGINT()}), ARRAY(BIGINT())});
   auto rowType = ROW({"s", "i"}, {structType, BIGINT()});
   auto vectors = makeVectors(rowType, 10, 10);
-  auto fs = filesystems::getFileSystem(files_->getPath(), {});
-  fs->mkdir(files_->getPath() + "/structs");
-  auto filePath = files_->getPath() + "/structs/structs.dwrf";
+  auto fs = filesystems::getFileSystem(testDataPath_, {});
+  fs->mkdir(testDataPath_ + "/structs");
+  auto filePath = testDataPath_ + "/structs/structs.dwrf";
   writeToFile(filePath, vectors);
   tablesCreated();
 
@@ -254,9 +266,9 @@ TEST_P(SubfieldTest, maps) {
   FeatureOptions opts;
   auto vectors = makeFeatures(1, 100, opts, pool_.get());
   auto rowType = std::dynamic_pointer_cast<const RowType>(vectors[0]->type());
-  auto fs = filesystems::getFileSystem(files_->getPath(), {});
-  fs->mkdir(files_->getPath() + "/features");
-  auto filePath = files_->getPath() + "/features/features.dwrf";
+  auto fs = filesystems::getFileSystem(testDataPath_, {});
+  fs->mkdir(testDataPath_ + "/features");
+  auto filePath = testDataPath_ + "/features/features.dwrf";
   auto config = std::make_shared<dwrf::Config>();
   config->set(dwrf::Config::FLATTEN_MAP, true);
   config->set<const std::vector<uint32_t>>(dwrf::Config::MAP_FLAT_COLS, {2, 3, 4});
@@ -264,7 +276,6 @@ TEST_P(SubfieldTest, maps) {
   writeToFile(filePath, vectors, config);
   tablesCreated();
 
-  std::vector<RowVectorPtr> results;
   std::string plan;
   auto planNodeIdGenerator = std::make_shared<core::PlanNodeIdGenerator>();
   auto builder =
@@ -274,13 +285,13 @@ TEST_P(SubfieldTest, maps) {
     .hashJoin({"uid"}, {"opt_uid"},
 	      PlanBuilder(planNodeIdGenerator)
 	      .tableScan("features", rowType)
-	      .filter("uid % 2 = 1 and cast(float_features[30::INTEGER] as integer) % 2 = 0")
+	      .filter("uid % 2 = 1 and cast(float_features[10300::INTEGER] as integer) % 2 = 0")
 	      .project({"uid as opt_uid", "float_features as opt_ff"})
 	      .planNode(),
 	      "",
 	      {"ff", "uid", "opt_uid", "opt_ff"},
 	      core::JoinType::kLeft)
-    .project({"uid", "opt_uid", "ff[10::INTEGER] as f10", "ff[20::INTEGER] as f20", "opt_ff[10::INTEGER] as o10", "opt_ff[20::INTEGER] as o20"});
+    .project({"uid", "opt_uid", "ff[10100::INTEGER] as f10", "ff[10200::INTEGER] as f20", "opt_ff[10100::INTEGER] as o10", "opt_ff[10200::INTEGER] as o20"});
 
   plan = veloxString(planVelox(builder.planNode()));
   std::cout << plan << std::endl;
@@ -289,36 +300,36 @@ TEST_P(SubfieldTest, maps) {
       PlanBuilder()
           .tableScan("features", rowType)
           .project(
-              {"float_features[10::INTEGER] as f1",
-               "float_features[20::INTEGER] as f2",
-               "id_score_list_features[10000::INTEGER][100000::INTEGER]"});
+              {"float_features[10100::INTEGER] as f1",
+               "float_features[10200::INTEGER] as f2",
+               "id_score_list_features[200800::INTEGER][100000::INTEGER]"});
   plan = veloxString(planVelox(builder.planNode()));
-  expectRegexp(plan, "float_features.*Subfields.*float_features\\[10\\]");
-  expectRegexp(plan, "float_features.*Subfields.*float_features\\[20\\]");
+  expectRegexp(plan, "float_features.*Subfields.*float_features.10100.");
+  expectRegexp(plan, "float_features.*Subfields.*float_features.10200.");
   expectRegexp(
       plan,
-      "id_score_list_features.*Subfields.* id_score_list_features\\[10000\\]\\[100000\\]");
-  expectRegexp(plan, "id_list", false);
+      "id_score_list_features.*Subfields.* id_score_list_features.200800.*\\[100000\\]");
+  expectRegexp(plan, "ubfield.*id_list", false);
 
   builder = PlanBuilder()
                 .tableScan("features", rowType)
                 .project(
                     {"float_features[10000::INTEGER] as ff",
-                     "id_score_list_features[10000::INTEGER] as sc1",
+                     "id_score_list_features[200800::INTEGER] as sc1",
                      "id_list_features as idlf"})
                 .project({"sc1[1::INTEGER] + 1::REAL as score"});
   plan = veloxString(planVelox(builder.planNode()));
   expectRegexp(
       plan,
-      "id_score_list_features.*Subfields:.*\\[ id_score_list_features\\[10000\\]\\[1\\]");
-  expectRegexp(plan, "id_list", false);
-  expectRegexp(plan, "float_f", false);
+      "id_score_list_features.*Subfields:.*\\[ id_score_list_features.200800.*\\[1\\]");
+  expectRegexp(plan, "ubfield.*id_list", false);
+  expectRegexp(plan, "ubfield.*float_f", false);
 
   builder = PlanBuilder()
                 .tableScan("features", rowType)
                 .project(
-                    {"float_features[10000::INTEGER] as ff",
-                     "id_score_list_features[10000::INTEGER] as sc1",
+                    {"float_features[10100::INTEGER] as ff",
+                     "id_score_list_features[200800::INTEGER] as sc1",
                      "id_list_features as idlf",
                      "uid"})
                 .project(
@@ -338,14 +349,14 @@ TEST_P(SubfieldTest, maps) {
           .project(
               {"genie(uid, float_features, id_list_features, id_score_list_features) as g"})
           .project(
-              {"g.__1[2::INTEGER] as f2",
-               "g.__1[11::INTEGER] as f11",
-               "g.__1[2::INTEGER] + 22::REAL  as f2b",
-               "g.__2[100::INTEGER] as idl100"});
+              {"g.__1[10200::INTEGER] as f2",
+               "g.__1[10100::INTEGER] as f11",
+               "g.__1[10200::INTEGER] + 22::REAL  as f2b",
+               "g.__2[201600::INTEGER] as idl100"});
 
   plan = veloxString(planVelox(builder.planNode()));
-  expectRegexp(plan, "float_features.*Subfield.*float_features\\[2\\]");
-  expectRegexp(plan, "id_list_features.*Subfields.*id_list_features\\[100\\]");
+  expectRegexp(plan, "float_features.*Subfield.*float_features.10200");
+  expectRegexp(plan, "id_list_features.*Subfields.*id_list_features.201600");
 
   // All of genie is returned.
   builder =
@@ -355,9 +366,9 @@ TEST_P(SubfieldTest, maps) {
               {"genie(uid, float_features, id_list_features, id_score_list_features) as g"})
           .project(
               {"g",
-               "g.__1[10::INTEGER] as f10",
-               "g.__1[2::INTEGER] as f2",
-               "g.__2[100::INTEGER] as idl100"});
+               "g.__1[10100::INTEGER] as f10",
+               "g.__1[10200::INTEGER] as f2",
+               "g.__2[200600::INTEGER] as idl100"});
 
   plan = veloxString(planVelox(builder.planNode()));
   std::cout << plan << std::endl;
@@ -370,27 +381,25 @@ TEST_P(SubfieldTest, maps) {
               {"exploding_genie(uid, float_features, id_list_features, id_score_list_features) as g"})
           .project({"g.__1 as ff", "g as gg"})
           .project(
-              {"ff[10::INTEGER] as f10",
-               "ff[11::INTEGER] as f11",
-               "ff[2::INTEGER] as f2",
-               "gg.__1[2::INTEGER] + 22::REAL as f2b",
-               "gg.__2[100::INTEGER] as idl100"})
+              {"ff[10100::INTEGER] as f10",
+               "ff[10100::INTEGER] as f11",
+               "ff[10200::INTEGER] as f2",
+               "gg.__1[10200::INTEGER] + 22::REAL as f2b",
+               "gg.__2[200600::INTEGER] as idl100"})
           .filter("f10 < 10::REAL and f11 < 10::REAL");
 
   plan = veloxString(planVelox(builder.planNode()));
   std::cout << plan << std::endl;
 
-  // Enable reading flat maps as structs.
-  optimizerOptions_.mapAsStruct["features"] = std::vector<std::string>{"float_features", "id_list_features", "id_score_list_features"};
-  
 
   builder =
       PlanBuilder()
           .tableScan("features", rowType)
-    .project({"transform(id_list_features[1000::INTEGER], x -> x + 1) as ids"});
-  runVelox(builder.planNode(), &results);
-  auto expected = extractAndIncrementIdList(vectors, 1000);
-  assertEqualResults(expected, results);
+    .project({"transform(id_list_features[201800::INTEGER], x -> x + 1) as ids"});
+
+  auto result = runVelox(builder.planNode());
+  auto expected = extractAndIncrementIdList(vectors, 201800);
+  assertEqualResults(expected, result.results);
 }
 
 

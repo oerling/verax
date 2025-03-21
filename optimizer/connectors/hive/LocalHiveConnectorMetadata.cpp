@@ -200,12 +200,13 @@ std::pair<int64_t, int64_t> LocalHiveTableLayout::sample(
     const connector::ConnectorTableHandlePtr& handle,
     float pct,
     std::vector<core::TypedExprPtr> extraFilters,
+    RowTypePtr scanType,
     const std::vector<common::Subfield>& fields,
     HashStringAllocator* allocator,
     std::vector<ColumnStatistics>* statistics) const {
   std::vector<std::unique_ptr<velox::dwrf::StatisticsBuilder>> builders;
   VELOX_CHECK(extraFilters.empty());
-  auto result = sample(handle, pct, fields, allocator, &builders);
+  auto result = sample(handle, pct, scanType, fields, allocator, &builders);
   if (!statistics) {
     return result;
   }
@@ -229,6 +230,7 @@ std::pair<int64_t, int64_t> LocalHiveTableLayout::sample(
 std::pair<int64_t, int64_t> LocalHiveTableLayout::sample(
     const connector::ConnectorTableHandlePtr& tableHandle,
     float pct,
+    RowTypePtr scanType,
     const std::vector<common::Subfield>& fields,
     HashStringAllocator* /*allocator*/,
     std::vector<std::unique_ptr<velox::dwrf::StatisticsBuilder>>* statsBuilders)
@@ -243,6 +245,7 @@ std::pair<int64_t, int64_t> LocalHiveTableLayout::sample(
       columnHandles;
   std::vector<std::string> names;
   std::vector<TypePtr> types;
+  auto hiveTableHandle = reinterpret_cast<const HiveTableHandle*>(tableHandle.get());
   for (auto& field : fields) {
     auto& path = field.path();
     auto column =
@@ -251,7 +254,7 @@ std::pair<int64_t, int64_t> LocalHiveTableLayout::sample(
     const auto idx = rowType()->getChildIdx(column);
     names.push_back(rowType()->nameOf(idx));
     types.push_back(rowType()->childAt(idx));
-    columnHandles[names.back()] =
+      columnHandles[names.back()] =
         std::make_shared<connector::hive::HiveColumnHandle>(
             names.back(),
             connector::hive::HiveColumnHandle::ColumnType::kRegular,
@@ -500,7 +503,7 @@ void LocalTable::sampleNumDistincts(float samplePct, memory::MemoryPool* pool) {
   auto* localLayout = dynamic_cast<LocalHiveTableLayout*>(layout);
   VELOX_CHECK_NOT_NULL(localLayout, "Expecting a local hive layout");
   auto [sampled, passed] = localLayout->sample(
-      handle, samplePct, fields, allocator.get(), &statsBuilders);
+					       handle, samplePct, type_, fields, allocator.get(), &statsBuilders);
   numSampledRows_ = sampled;
   for (auto i = 0; i < statsBuilders.size(); ++i) {
     if (statsBuilders[i]) {

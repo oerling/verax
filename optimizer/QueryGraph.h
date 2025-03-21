@@ -163,11 +163,6 @@ class Column : public Expr {
   // ordering/partitioning columns in the SchemaTable.
   ColumnCP schemaColumn_{nullptr};
 
-  // If column is of complex type and is used so as to require all
-  // subfields, 'wholeColumnId_' is added to the dependencies of using
-  // exprs. 0 if not applicable.
-  int32_t wholeColumnId_{0};
-
   // Containing top level column if 'this' is a subfield projected out as column. 
   ColumnCP topColumn_;
 
@@ -404,7 +399,7 @@ class Lambda : public Expr {
  public:
   Lambda(ColumnVector args, const Type* type, ExprCP body)
       : Expr(PlanType::kLambda, Value(type, 1)), args_(args), body_(body) {}
-  ColumnVector args() const {
+  const ColumnVector& args() const {
     return args_;
   }
 
