@@ -46,6 +46,7 @@ class PlanTest : public virtual ParquetTpchTest, public virtual QueryTestBase {
   static void SetUpTestCase() {
     ParquetTpchTest::SetUpTestCase();
     LocalRunnerTestBase::testDataPath_ = FLAGS_data_path;
+    LocalRunnerTestBase::localFileFormat_ = "parquet";
     connector::unregisterConnector(exec::test::kHiveConnectorId);
     connector::unregisterConnectorFactory("hive");
     LocalRunnerTestBase::SetUpTestCase();
@@ -65,7 +66,6 @@ class PlanTest : public virtual ParquetTpchTest, public virtual QueryTestBase {
     builder_ = std::make_unique<exec::test::TpchQueryBuilder>(
         dwio::common::FileFormat::PARQUET);
     builder_->initialize(FLAGS_data_path);
-    history_ = std::make_unique<VeloxHistory>();
   }
 
   void TearDown() override {
@@ -96,7 +96,6 @@ class PlanTest : public virtual ParquetTpchTest, public virtual QueryTestBase {
 
   std::unique_ptr<HashStringAllocator> allocator_;
   std::unique_ptr<QueryGraphContext> context_;
-  std::unique_ptr<VeloxHistory> history_;
   std::unique_ptr<exec::test::TpchQueryBuilder> builder_;
   static inline bool registered;
 };
