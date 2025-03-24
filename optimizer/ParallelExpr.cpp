@@ -3,6 +3,7 @@ struct LevelData {
   int32_t exprCount{0};
   float levelCost{0};
   PlanObjectSet exprs;
+
 };
 
 int32_t definitionLevel(std::vector<PlanObjectSet>& levels, ExprCP expr) {
@@ -14,33 +15,48 @@ int32_t definitionLevel(std::vector<PlanObjectSet>& levels, ExprCP expr) {
   VELOX_UNREACHABLE();
 }
 
-void makeExprStats(ExprVector exprs, std::vector<LevelData>& levelData,   std::unordered_set<Expr, int32_t>& refCount ) {
+
+float selfCost(ExprCP expr) {
+  switch (expr->type()) {
+  case PlanType::kColumn: {
+    auto kind = expr->value().type->kind();
+    if (kind == TypeKind::ARRAY || kind == TypeKind::NAP) {
+      return 200;
+    }
+    return 10;
+  }
+  default:
+    return 5;
+  }
+}
+
+
+void makeExprStats(PlanObjectSet exprs, std::vector<LevelData>& levelData,   std::unordered_set<Expr, int32_t>& refCount ) {
   PlanObjectSet& counted;
   for (;;) {
-    ExprVector inputs;
-    
-    for (auto i = 0; i < exprs.size(); ++i) {
-    Expr* expr = exprs[i];
-    if (levels[level].exprs.contains(expr)) {
-      continue;
-    }
+    PlanObjectSet  inputs;
+    levelData.emplace_back();
+    int32_t level = levelData.size() - 1;
+    exprs.forEach([&](PlanObjectCP o) {
+      auto* expr = o->as<Expr>();
+      float self = selfCost(expr);
     if (counted.contains(expr)) {
       auto i = definitionLevel(levels, expr);
       levels[i].exprs.erase(expr);
-      levels[i].cost -= selfCost(expr);
+      levels[i].cost -= selfCost;
     }
     levls[level].exprs.add(expr);
-    levels[leve].cost += selfCost(expr);
+    levels[level].cost += selfCost;
     
     counted.add(expr);
     if (expr->type() == PlanType::kCall) {
       for (auto& input : expr->as<Call>()->args()) {
       ++refCount[input];
-      inputs.push_back(i);
+      inputs.add(input);
     }
     }
-    }
-    if (inputs.empty()) {
+    });
+      if (inputs.empty()) {
       return;
     }
   exprs = std::move(inputs);
