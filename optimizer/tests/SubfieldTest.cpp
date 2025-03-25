@@ -74,6 +74,7 @@ class SubfieldTest : public QueryTestBase,
  protected:
   static void SetUpTestCase() {
     testDataPath_ = FLAGS_subfield_data_path;
+    LocalRunnerTestBase::localFileFormat_ = "dwrf";
     LocalRunnerTestBase::SetUpTestCase();
   }
 
