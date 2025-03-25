@@ -245,8 +245,6 @@ std::pair<int64_t, int64_t> LocalHiveTableLayout::sample(
       columnHandles;
   std::vector<std::string> names;
   std::vector<TypePtr> types;
-  auto hiveTableHandle =
-      reinterpret_cast<const HiveTableHandle*>(tableHandle.get());
   for (auto& field : fields) {
     auto& path = field.path();
     auto column =

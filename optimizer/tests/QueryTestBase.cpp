@@ -97,6 +97,7 @@ void QueryTestBase::SetUp() {
 
   schema_ = std::make_shared<facebook::velox::optimizer::SchemaResolver>(
       connector_, "");
+  history_ = std::make_unique<facebook::velox::optimizer::VeloxHistory>();
 }
 
 void QueryTestBase::TearDown() {
@@ -130,7 +131,6 @@ void QueryTestBase::tablesCreated() {
                                   const std::vector<std::string>& columnNames) {
     return toTableScan(id, name, rowType, columnNames);
   });
-  history_ = std::make_unique<facebook::velox::optimizer::VeloxHistory>();
 }
 
 core::PlanNodePtr QueryTestBase::toTableScan(

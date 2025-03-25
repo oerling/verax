@@ -307,9 +307,6 @@ core::TypedExprPtr Optimization::toTypedExpr(ExprCP expr) {
     case PlanType::kColumn: {
       auto column = expr->as<Column>();
       if (column->topColumn() && getterForPushdownSubfield_) {
-        bool asStruct = isMapAsStruct(
-            column->relation()->as<BaseTable>()->schemaTable->name,
-            column->name());
         auto field = toTypedExpr(column->topColumn());
         return pathToGetter(column->topColumn(), column->path(), field);
       }
