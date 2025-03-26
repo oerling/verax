@@ -253,6 +253,22 @@ class SubfieldTest : public QueryTestBase,
 
     return result;
   }
+
+  void testParallelExpr(FeatureOptions& opts, const RowTypePtr& rowType) {
+    std::vector<std::string> names;
+    std::vector<core::TypedExprPtr> exprs;
+    makeExprs(opts, names, exprs);
+
+    optimizerOptions.parallelExprs = true;
+    auto builder = PlanBuilder()
+      .tableScan("features", rowType )
+      .addNode([&](std::string id, auto node) {
+	return std::make_shared<core::ProjectNode>(id, std::move(names), std::move(exprs), node);
+      });
+    auto plan = veloxString(builder.planNode());
+    std::cout <<  plan;
+    
+  }
 };
 
 TEST_P(SubfieldTest, structs) {
@@ -278,6 +294,7 @@ TEST_P(SubfieldTest, structs) {
 
 TEST_P(SubfieldTest, maps) {
   FeatureOptions opts;
+  opts.rng.seed(1);
   auto vectors = makeFeatures(1, 100, opts, pool_.get());
   auto rowType = std::dynamic_pointer_cast<const RowType>(vectors[0]->type());
   auto fs = filesystems::getFileSystem(testDataPath_, {});
@@ -424,6 +441,8 @@ TEST_P(SubfieldTest, maps) {
   auto result = runVelox(builder.planNode());
   auto expected = extractAndIncrementIdList(vectors, 201800);
   assertEqualResults(expected, result.results);
+
+  testParallelExpr(opts, rowType);
 }
 
 VELOX_INSTANTIATE_TEST_SUITE_P(

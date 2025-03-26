@@ -83,4 +83,42 @@ void makeExprStats(
   }
 }
 
+PlanObjectSet makeBorder(
+    std::vector<LevelData> levelData,
+    PlanObjectSet& placed,
+    int32_t& leafLevel,
+    std::unordered_map<ExprCP, int32_t>& refCount) {
+  PlanObjectSet border;
+  while (leafLevel > 0) {
+    levelData[leafLevel].exprs.forEach([&](PlanObjectCP o) {
+      ExprCP expr = o->as<const Expr>();
+      if (placed.contains(expr)) {
+        return;
+      }
+      if (refCount[expr] > 1) {
+        auto subexprs = expr->subexpressions();
+        subexprs.intersect(border);
+        if (!subexprs.empty()) {
+          // Is a multiply refd over another multiply refd in the same border.
+          // Not a member.
+          return;
+        }
+        border.add(expr);
+        placed.add(expr);
+      }
+    });
+
+    --leafLevel;
+  }
+  return border;
+}
+
+  core::PlanNodePtr Optimization::maybeParallelProject(Project* project, core::PlanNodePtr input) {
+    PlanObjectSet exprset;
+    auto& exprs = project->exprs();
+    auto& columns = project->columns();
+    return nullptr;
+  }
+
+  
 } // namespace facebook::velox::optimizer

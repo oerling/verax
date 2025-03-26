@@ -406,6 +406,9 @@ struct OptimizerOptions {
   /// Do not make shuffles or final gather stage.
   bool singleStage{false};
 
+  /// Parallelizes independent subexpressions for wide expressions.
+  bool parallelExprs{false};
+  
   /// Produces skyline subfield sets of complex type columns as top level
   /// columns in table scan.
   bool pushdownSubfields{false};
@@ -896,6 +899,12 @@ class Optimization {
   // Returns a new PlanNodeId and associates the Cost of 'op' with it.
   velox::core::PlanNodeId nextId(const RelationOp& op);
 
+  // Returns a stack of parallel project nodes if parallelization makes sense. nullptr means use regular ProjectNode in output. 
+  velox::core::PlanNodePtr maybeParallelProject(
+						Project* op,
+      core::PlanNodePtr input);
+
+  
   // Records 'cost' for 'id'. 'role' can be e.g. 'build; or
   // 'probe'. for nodes that produce multiple operators.
   void recordPlanNodeEstimate(

@@ -738,6 +738,12 @@ core::PlanNodePtr Optimization::makeFragment(
     case RelType::kProject: {
       auto input = makeFragment(op->input(), fragment, stages);
       auto project = op->as<Project>();
+      if (opts_.parallelExprs) {
+	auto result = maybeParallelProject(project, input);
+	if (result) {
+	  return result;
+	}
+      }
       std::vector<std::string> names;
       std::vector<core::TypedExprPtr> exprs;
       for (auto i = 0; i < project->exprs().size(); ++i) {

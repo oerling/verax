@@ -23,6 +23,7 @@ add_library(
   Plan.cpp
   BitSet.cpp
   ParallelExpr.cpp
+  ParallelProject.cpp
   PlanObject.cpp
   Schema.cpp
   SchemaResolver.cpp
