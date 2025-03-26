@@ -16,8 +16,7 @@
 
 #include <velox/exec/Driver.h>
 #include <velox/exec/Operator.h>
-
-
+#include "velox/expression/Expr.h"
 
 namespace facebook::velox::exec {
 
@@ -64,14 +63,13 @@ class ParallelProjectNode : public core::PlanNode {
   std::vector<std::vector<core::TypedExprPtr>> exprs_;
 };
 
- class ParallelProject : public Operator {
+class ParallelProject : public Operator {
  public:
   ParallelProject(
       int32_t operatorId,
       DriverCtx* driverCtx,
       const std::shared_ptr<const ParallelProjectNode>& node);
 
-  
   bool isFilter() const override {
     return false;
   }
@@ -96,42 +94,50 @@ class ParallelProjectNode : public core::PlanNode {
 
   void close() override {
     Operator::close();
-    for (auto& exprSet : exprSets_) {
-      exprSet->clear();
+    for (auto& work : work_) {
+      if (work.exprSet) {
+        work.exprSet->clear();
+      }
     }
   }
 
   void initialize() override;
 
  private:
+  struct WorkUnit {
+    // Maps from result channel of exprSet to channel in the node's output type.
+    std::vector<IdentityProjection> resultProjections;
+    // Positions in input which are to be loaded by this group.
+    std::vector<column_index_t> loadOnly;
+    std::unique_ptr<core::ExecCtx> execCtx;
+    std::shared_ptr<ExprSet> exprSet;
+  };
+
+  struct WorkResult {
+    WorkResult(std::exception_ptr e) : error(std::move(e)) {}
+    std::exception_ptr error;
+  };
+
   // Tests if 'numProcessedRows_' equals to the length of input_ and clears
   // outstanding references to input_ if done. Returns true if getOutput
   // should return nullptr.
   bool allInputProcessed();
 
-  // Evaluate projections on the specified rows and return the results.
-  // pre-condition: !isIdentityProjection_
-  std::vector<VectorPtr> project(
-      const SelectivityVector& rows,
-      EvalCtx& evalCtx);
+  std::unique_ptr<WorkResult> doWork(
+      int32_t workIdx,
+      std::vector<VectorPtr>& result);
 
-  // Cached filter and project node for lazy initialization. After
+  // Cached Parallelproject node for lazy initialization. After
   // initialization, they will be reset, and initialized_ will be set to true.
-  std::shared_ptr<const core::ParallelProjectNode> node_;
+  std::shared_ptr<const ParallelProjectNode> node_;
 
   bool initialized_{false};
 
-  
-  RowVectorPtr result_;
-  struct WorkUnit {
-    // Maps from result channel of exprSet to channel in the node's output type.
-    std::vector<IdentityProjection> output; 
-    std::shared_ptr<ExprSet> exprset;
-  };
   std::vector<WorkUnit> work_;
+  SelectivityVector allRows_;
+  int32_t numProcessedInputRows_{0};
 };
 
- 
 class ParallelProjectFactory : public Operator::PlanNodeTranslator {
  public:
   ParallelProjectFactory() = default;
@@ -142,15 +148,10 @@ class ParallelProjectFactory : public Operator::PlanNodeTranslator {
       const core::PlanNodePtr& node) override {
     if (auto project =
             std::dynamic_pointer_cast<const ParallelProjectNode>(node)) {
-      return std::make_unique<ParallelProject>(
-          ctx, id, project);
+      return std::make_unique<ParallelProject>(id, ctx, project);
     }
     return nullptr;
   }
-
-
 };
-
-
 
 } // namespace facebook::velox::exec

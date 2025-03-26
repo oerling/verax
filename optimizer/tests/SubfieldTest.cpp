@@ -259,13 +259,13 @@ class SubfieldTest : public QueryTestBase,
     std::vector<core::TypedExprPtr> exprs;
     makeExprs(opts, names, exprs);
 
-    optimizerOptions.parallelExprs = true;
+    optimizerOptions_.parallelExprs = true;
     auto builder = PlanBuilder()
       .tableScan("features", rowType )
       .addNode([&](std::string id, auto node) {
 	return std::make_shared<core::ProjectNode>(id, std::move(names), std::move(exprs), node);
       });
-    auto plan = veloxString(builder.planNode());
+    auto plan = veloxString(planVelox(builder.planNode()));
     std::cout <<  plan;
     
   }

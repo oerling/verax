@@ -15,63 +15,86 @@
  */
 
 #include "optimizer/ParallelProject.h"
+#include "velox/exec/Task.h"
+#include "velox/common/base/AsyncSource.h"
 
 namespace facebook::velox::exec {
 
-  ParallelProject::ParallelProject(
-      int32_t operatorId,
-      DriverCtx* driverCtx,
-      const std::shared_ptr<const ParallelProjectNode>& node)
+ParallelProject::ParallelProject(
+    int32_t operatorId,
+    DriverCtx* driverCtx,
+    const std::shared_ptr<const ParallelProjectNode>& node)
     : Operator(
           driverCtx,
           node->outputType(),
           operatorId,
           node->id(),
           "ParallelProject"),
-      node_(std::move(node)) {
+      node_(std::move(node)) {}
+
+namespace {
+bool checkAddIdentityProjection(
+    const core::TypedExprPtr& projection,
+    const RowTypePtr& inputType,
+    column_index_t outputChannel,
+    std::vector<IdentityProjection>& identityProjections) {
+  if (auto field = core::TypedExprs::asFieldAccess(projection)) {
+    const auto& inputs = field->inputs();
+    if (inputs.empty() ||
+        (inputs.size() == 1 &&
+         dynamic_cast<const core::InputTypedExpr*>(inputs[0].get()))) {
+      const auto inputChannel = inputType->getChildIdx(field->name());
+      identityProjections.emplace_back(inputChannel, outputChannel);
+      return true;
+    }
+  }
+
+  return false;
 }
+} // namespace
 
   
 void ParallelProject::initialize() {
   Operator::initialize();
   std::vector<core::TypedExprPtr> allExprs;
 
-    const auto& inputType = project_->sources()[0]->outputType();
-    for (column_index_t i = 0; i < project_->projections().size(); i++) {
-      auto& projection = project_->projections()[i];
-      bool identityProjection = checkAddIdentityProjection(
-          projection, inputType, i, identityProjections_);
-      if (!identityProjection) {
-        allExprs.push_back(projection);
-        resultProjections_.emplace_back(allExprs.size() - 1, i);
-      }
-    }
-  } else {
-    for (column_index_t i = 0; i < outputType_->size(); ++i) {
-      identityProjections_.emplace_back(i, i);
-    }
-    isIdentityProjection_ = true;
-  }
-  numExprs_ = allExprs.size();
-  exprs_ = makeExprSetFromFlag(std::move(allExprs), operatorCtx_->execCtx());
+  const auto& inputType = node_->sources()[0]->outputType();
+  auto& exprs = node_->exprs();
+  auto& names = node_->names();
+  int32_t unitIdx = 0;
+  int32_t exprIdx = 0;
+  int32_t unitSize = exprs[unitIdx].size();
+  work_.emplace_back();
+  work_.back().execCtx = std::make_unique<core::ExecCtx>(
+							 operatorCtx_->pool(), operatorCtx_->driverCtx()->task->queryCtx().get());
 
-  if (numExprs_ > 0 && !identityProjections_.empty()) {
-    const auto inputType = project_ ? project_->sources()[0]->outputType()
-                                    : filter_->sources()[0]->outputType();
-    std::unordered_set<uint32_t> distinctFieldIndices;
-    for (auto field : exprs_->distinctFields()) {
-      auto fieldIndex = inputType->getChildIdx(field->name());
-      distinctFieldIndices.insert(fieldIndex);
+  std::vector<core::TypedExprPtr> unitExprs;
+  for (column_index_t i = 0; i < node_->names().size(); i++) {
+    auto& projection = exprs[unitIdx][exprIdx];
+    bool identityProjection = checkAddIdentityProjection(
+        projection, inputType, i, identityProjections_);
+    if (!identityProjection) {
+      unitExprs.push_back(projection);
+      work_.back().resultProjections.emplace_back(unitExprs.size() - 1, i);
+    } else {
+      work_.back().loadOnly.push_back(i);
     }
-    for (auto identityField : identityProjections_) {
-      if (distinctFieldIndices.find(identityField.inputChannel) !=
-          distinctFieldIndices.end()) {
-        multiplyReferencedFieldIndices_.push_back(identityField.inputChannel);
+    ++exprIdx;
+    if (exprIdx == unitSize) {
+      auto tempExprs =
+          makeExprSetFromFlag(std::move(unitExprs), operatorCtx_->execCtx());
+      std::shared_ptr<ExprSet> shared(tempExprs.release());
+      work_.back().exprSet = shared;
+      ++unitIdx;
+      exprIdx = 0;
+      if (unitIdx == exprs.size()) {
+        break;
       }
+      work_.emplace_back();
+      work_.back().execCtx = std::make_unique<core::ExecCtx>(
+							     operatorCtx_->pool(), operatorCtx_->driverCtx()->task->queryCtx().get());
     }
   }
-  filter_.reset();
-  project_.reset();
 }
 
 void ParallelProject::addInput(RowVectorPtr input) {
@@ -100,62 +123,58 @@ RowVectorPtr ParallelProject::getOutput() {
   }
 
   vector_size_t size = input_->size();
-  LocalSelectivityVector localRows(*operatorCtx_->execCtx(), size);
-  auto* rows = localRows.get();
-  VELOX_DCHECK_NOT_NULL(rows);
-  rows->setAll();
-  EvalCtx evalCtx(operatorCtx_->execCtx(), exprs_.get(), input_.get());
+  allRows_.resize(size);
+  allRows_.setAll();
+  std::vector<std::shared_ptr<AsyncSource<WorkResult>>> pending;
+  std::vector<VectorPtr> results(outputType_->size());
 
-  // Pre-load lazy vectors which are referenced by both expressions and identity
-  // projections.
-  for (auto fieldIdx : multiplyReferencedFieldIndices_) {
-    evalCtx.ensureFieldLoaded(fieldIdx, *rows);
+  for (auto i = 0; i < work_.size(); ++i) {
+    pending.push_back(std::make_shared<AsyncSource<WorkResult>>(
+								[i, &results, this]() { return doWork(i, results); }));
+    auto item = pending.back();
+    operatorCtx_->task()->queryCtx()->executor()->add([item]() { item->prepare(); });
   }
-
-  if (!hasFilter_) {
-    numProcessedInputRows_ = size;
-    VELOX_CHECK(!isIdentityProjection_);
-    auto results = project(*rows, evalCtx);
-
-    return fillOutput(size, nullptr, results);
-  }
-
-  // evaluate filter
-  auto numOut = filter(evalCtx, *rows);
-  numProcessedInputRows_ = size;
-  if (numOut == 0) { // no rows passed the filer
-    input_ = nullptr;
-    return nullptr;
-  }
-
-  bool allRowsSelected = (numOut == size);
-
-  // evaluate projections (if present)
-  std::vector<VectorPtr> results;
-  if (!isIdentityProjection_) {
-    if (!allRowsSelected) {
-      rows->setFromBits(filterEvalCtx_.selectedBits->as<uint64_t>(), size);
+  std::exception_ptr error;
+  for (auto i = 0; i < pending.size(); ++i) {
+    auto result = pending[i]->move();
+    if (!error && result->error) {
+      error = result->error;
     }
-    results = project(*rows, evalCtx);
+  }
+  if (error) {
+    std::rethrow_exception(error);
   }
 
-  return fillOutput(
-      numOut,
-      allRowsSelected ? nullptr : filterEvalCtx_.selectedIndices,
-      results);
+  for (auto& projection : identityProjections_) {
+    results[projection.outputChannel] = input_->childAt(projection.inputChannel);
+  }
+  numProcessedInputRows_ = size;
+  input_.reset();
+  return std::make_shared<RowVector>(
+      operatorCtx_->pool(), outputType_, nullptr, size, std::move(results));
 }
 
-std::vector<VectorPtr> ParallelProject::project(
-    const SelectivityVector& rows,
-    EvalCtx& evalCtx) {
-  std::vector<VectorPtr> results;
-  exprs_->eval(
-      hasFilter_ ? 1 : 0, numExprs_, !hasFilter_, rows, evalCtx, results);
-  return results;
+std::unique_ptr<ParallelProject::WorkResult> ParallelProject::doWork(
+    int32_t workIdx,
+    std::vector<VectorPtr>& results) {
+  auto& work = work_[workIdx];
+  EvalCtx evalCtx(work.execCtx.get(), work.exprSet.get(), input_.get());
+  try {
+    for (auto channel : work.loadOnly) {
+      evalCtx.ensureFieldLoaded(channel, allRows_);
+    }
+
+    std::vector<VectorPtr> localResults;
+    work.exprSet->eval(
+        0, work.exprSet->exprs().size(), true, allRows_, evalCtx, localResults);
+    for (auto& projection : work.resultProjections) {
+      results[projection.outputChannel] =
+          std::move(localResults[projection.inputChannel]);
+    }
+  } catch (const std::exception& e) {
+    return std::make_unique<WorkResult>(std::current_exception());
+  }
+  return std::make_unique<WorkResult>(nullptr);
 }
 
-
-}
-
-
-
+} // namespace facebook::velox::exec
