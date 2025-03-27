@@ -56,17 +56,13 @@ class LocalHiveConnectorMetadata;
 
 class LocalHiveSplitManager : public ConnectorSplitManager {
  public:
-  LocalHiveSplitManager(LocalHiveConnectorMetadata* metadata)
-      : metadata_(metadata) {}
+  LocalHiveSplitManager(LocalHiveConnectorMetadata* /* metadata */) {}
   std::vector<std::shared_ptr<const PartitionHandle>> listPartitions(
       const ConnectorTableHandlePtr& tableHandle) override;
 
   std::shared_ptr<SplitSource> getSplitSource(
       const ConnectorTableHandlePtr& tableHandle,
       std::vector<std::shared_ptr<const PartitionHandle>> partitions) override;
-
- private:
-  LocalHiveConnectorMetadata* metadata_;
 };
 
 /// A HiveTableLayout backed by local files. Implements sampling by reading

@@ -130,7 +130,7 @@ ExprCP Optimization::tryFoldConstant(
       return make<Literal>(value, variantLiteral);
     }
     return nullptr;
-  } catch (const std::exception& e) {
+  } catch (const std::exception&) {
     return nullptr;
   }
 }

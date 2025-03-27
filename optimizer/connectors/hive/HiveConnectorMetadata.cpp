@@ -77,7 +77,7 @@ ConnectorTableHandlePtr HiveConnectorMetadata::createTableHandle(
         continue;
       }
       subfieldFilters[std::move(pair.first)] = std::move(pair.second);
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
       remainingConjuncts.push_back(std::move(typedExpr));
     }
   }
