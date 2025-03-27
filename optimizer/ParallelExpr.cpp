@@ -59,6 +59,9 @@ void makeExprLevels(
       counted.add(expr);
       if (expr->type() == PlanType::kCall) {
         for (auto& input : expr->as<Call>()->args()) {
+	  if (input->type() == PlanType::kLiteral) {
+	    continue;
+	  }
           ++refCount[input];
           inputs.add(input);
         }
@@ -91,7 +94,6 @@ PlanObjectSet makeCseBorder(
           return;
         }
         border.add(expr);
-        placed.add(expr);
       }
     });
 
@@ -125,12 +127,16 @@ core::PlanNodePtr Optimization::makeParallelProject(
   float groupCost = 0;
   std::vector<std::vector<core::TypedExprPtr>> groups;
   groups.emplace_back();
-  for (auto i : indices) {
+  for (auto nth = 0; nth < indices.size(); ++nth) {
+    auto i = indices[nth];
     groupCost += costs[i];
     groups.back().push_back(toTypedExpr(exprs[i]));
     projectedExprs_[exprs[i]] = groups.back().back();
     names.push_back(fmt::format("__temp{}", exprs[i]->id()));
     if (groupCost > targetCost) {
+      if (nth == indices.size() - 1) {
+	break;
+      }
       // Start new group after placing target cost worth.
       groups.emplace_back();
       groupCost = 0;
@@ -273,6 +279,7 @@ core::PlanNodePtr Optimization::maybeParallelProject(
     cses.forEach([&](PlanObjectCP o) {
       placed.unionSet(o->as<Expr>()->subexpressions());
     });
+    placed.unionSet(cses);
     auto extraColumns = columnBorder(top, placed);
     input = makeParallelProject(input, cses, previousPlaced, extraColumns);
   }

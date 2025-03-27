@@ -408,7 +408,7 @@ struct OptimizerOptions {
 
   /// Parallelizes independent projections over this many threads. 1 means no
   /// parallel projection.
-  bool parallelProjectWidth = 1;
+  int32_t parallelProjectWidth = 1;
 
   /// Produces skyline subfield sets of complex type columns as top level
   /// columns in table scan.
