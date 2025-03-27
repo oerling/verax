@@ -20,24 +20,32 @@
 
 namespace facebook::velox::exec {
 
+  /// Variant of ProjectNode that computes projections in
+  /// parallel. The exprs are given in groups, so that all exprs in
+  /// one group run together and all groups run in parallel. If lazies
+  /// are loaded, each lazy must be loaded by exactly one group. If
+  /// there are identity projections in the groups, possible lazies
+  /// are loaded as part of processing the group. One can additionally
+  /// specify 'noLoadIdentities' which are identity projected through
+  /// without loading. This last set must be disjoint from all columns
+  /// accessed by the exprs. The output type has 'names' first and
+  /// then 'noLoadIdentities'. The ith name corresponds to the ith
+  /// expr when exprs is flattened.
 class ParallelProjectNode : public core::PlanNode {
  public:
-  explicit ParallelProjectNode(core::PlanNodePtr input)
-      : PlanNode("ParallelProject"), sources_{input} {}
-
   ParallelProjectNode(
       const core::PlanNodeId& id,
       std::vector<std::string> names,
       std::vector<std::vector<core::TypedExprPtr>> exprs,
+      std::vector<std::string> noLoadIdentities,
       core::PlanNodePtr input)
       : PlanNode(id),
         sources_{input},
         names_(std::move(names)),
-        exprs_(std::move(exprs)) {}
+    exprs_(std::move(exprs)),
+    noLoadIdentities_(std::move(noLoadIdentities)){}
 
-  const RowTypePtr& outputType() const override {
-    return sources_[0]->outputType();
-  }
+  const RowTypePtr& outputType() const override;
 
   const std::vector<std::shared_ptr<const PlanNode>>& sources() const override {
     return sources_;
@@ -55,11 +63,16 @@ class ParallelProjectNode : public core::PlanNode {
     return exprs_;
   }
 
+  const std::vector<std::string> noLoadIdentities() const {
+    return noLoadIdentities_;
+  }
+  
  private:
   void addDetails(std::stringstream& /* stream */) const override {}
 
   std::vector<core::PlanNodePtr> sources_;
   std::vector<std::string> names_;
+  std::vector<std::string> noLoadIdentities_;
   std::vector<std::vector<core::TypedExprPtr>> exprs_;
 };
 
@@ -136,22 +149,6 @@ class ParallelProject : public Operator {
   std::vector<WorkUnit> work_;
   SelectivityVector allRows_;
   int32_t numProcessedInputRows_{0};
-};
-
-class ParallelProjectFactory : public Operator::PlanNodeTranslator {
- public:
-  ParallelProjectFactory() = default;
-
-  std::unique_ptr<Operator> toOperator(
-      DriverCtx* ctx,
-      int32_t id,
-      const core::PlanNodePtr& node) override {
-    if (auto project =
-            std::dynamic_pointer_cast<const ParallelProjectNode>(node)) {
-      return std::make_unique<ParallelProject>(id, ctx, project);
-    }
-    return nullptr;
-  }
 };
 
 } // namespace facebook::velox::exec

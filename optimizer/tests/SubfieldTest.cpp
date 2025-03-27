@@ -259,7 +259,7 @@ class SubfieldTest : public QueryTestBase,
     std::vector<core::TypedExprPtr> exprs;
     makeExprs(opts, names, exprs);
 
-    optimizerOptions_.parallelExprs = true;
+    optimizerOptions_.parallelProjectWidth = 8;
     auto builder = PlanBuilder()
       .tableScan("features", rowType )
       .addNode([&](std::string id, auto node) {

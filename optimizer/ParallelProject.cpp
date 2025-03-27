@@ -15,11 +15,41 @@
  */
 
 #include "optimizer/ParallelProject.h"
-#include "velox/exec/Task.h"
 #include "velox/common/base/AsyncSource.h"
+#include "velox/exec/Task.h"
 
 namespace facebook::velox::exec {
 
+
+  const RowTypePtr& ParallelProjectNode::outputType() const {
+    std::vector<std::string> names;
+    std::vector<TypePtr> types;
+    int32_t groupIdx =0;
+    int32_t exprIdx = 0;
+    int32_t groupSize = exprs_[0].size();
+    for (auto i = 0; i < names_.size(); ++i) {
+      names.push_back(names_[i]);
+      types.push_back(exprs_[groupIdx][exprIdx]->type());
+      if (++exprIdx == groupSize) {
+	++groupIdx;
+	exprIdx = 0;
+	if (groupIdx == exprs_.size()) {
+	  break;
+	}
+	groupSize = exprs_[groupIdx].size();
+      }
+    }
+    auto sourceType = sources_[0]->outputType();
+    for (auto& name : noLoadIdentities_) {
+      auto idx = sourceType->getChildIdx(name);
+      names.push_back(name);
+      types.push_back(sourceType->childAt(idx));
+    }
+
+    return ROW(std::move(names), std::move(types));
+  }
+
+  
 ParallelProject::ParallelProject(
     int32_t operatorId,
     DriverCtx* driverCtx,
@@ -53,7 +83,6 @@ bool checkAddIdentityProjection(
 }
 } // namespace
 
-  
 void ParallelProject::initialize() {
   Operator::initialize();
   std::vector<core::TypedExprPtr> allExprs;
@@ -66,7 +95,7 @@ void ParallelProject::initialize() {
   int32_t unitSize = exprs[unitIdx].size();
   work_.emplace_back();
   work_.back().execCtx = std::make_unique<core::ExecCtx>(
-							 operatorCtx_->pool(), operatorCtx_->driverCtx()->task->queryCtx().get());
+      operatorCtx_->pool(), operatorCtx_->driverCtx()->task->queryCtx().get());
 
   std::vector<core::TypedExprPtr> unitExprs;
   for (column_index_t i = 0; i < node_->names().size(); i++) {
@@ -92,8 +121,16 @@ void ParallelProject::initialize() {
       }
       work_.emplace_back();
       work_.back().execCtx = std::make_unique<core::ExecCtx>(
-							     operatorCtx_->pool(), operatorCtx_->driverCtx()->task->queryCtx().get());
+          operatorCtx_->pool(),
+          operatorCtx_->driverCtx()->task->queryCtx().get());
     }
+  }
+
+  int32_t outputIdx = node_->names().size();
+  auto sourceType = node_->sources()[0]->outputType();
+  for (auto& name : node_->noLoadIdentities()) {
+    auto idx = sourceType->getChildIdx(name);
+    identityProjections_.emplace_back(idx, outputIdx++);
   }
 }
 
@@ -130,9 +167,10 @@ RowVectorPtr ParallelProject::getOutput() {
 
   for (auto i = 0; i < work_.size(); ++i) {
     pending.push_back(std::make_shared<AsyncSource<WorkResult>>(
-								[i, &results, this]() { return doWork(i, results); }));
+        [i, &results, this]() { return doWork(i, results); }));
     auto item = pending.back();
-    operatorCtx_->task()->queryCtx()->executor()->add([item]() { item->prepare(); });
+    operatorCtx_->task()->queryCtx()->executor()->add(
+        [item]() { item->prepare(); });
   }
   std::exception_ptr error;
   for (auto i = 0; i < pending.size(); ++i) {
@@ -146,7 +184,8 @@ RowVectorPtr ParallelProject::getOutput() {
   }
 
   for (auto& projection : identityProjections_) {
-    results[projection.outputChannel] = input_->childAt(projection.inputChannel);
+    results[projection.outputChannel] =
+        input_->childAt(projection.inputChannel);
   }
   numProcessedInputRows_ = size;
   input_.reset();
@@ -176,5 +215,30 @@ std::unique_ptr<ParallelProject::WorkResult> ParallelProject::doWork(
   }
   return std::make_unique<WorkResult>(nullptr);
 }
+
+namespace {
+class ParallelProjectFactory : public Operator::PlanNodeTranslator {
+ public:
+  ParallelProjectFactory() = default;
+
+  std::unique_ptr<Operator> toOperator(
+      DriverCtx* ctx,
+      int32_t id,
+      const core::PlanNodePtr& node) override {
+    if (auto project =
+            std::dynamic_pointer_cast<const ParallelProjectNode>(node)) {
+      return std::make_unique<ParallelProject>(id, ctx, project);
+    }
+    return nullptr;
+  }
+};
+
+bool registerParallelProject() {
+  Operator::registerOperator(std::make_unique<ParallelProjectFactory>());
+  return true;
+}
+
+bool temp = registerParallelProject();
+} // namespace
 
 } // namespace facebook::velox::exec
