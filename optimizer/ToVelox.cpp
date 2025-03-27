@@ -307,7 +307,7 @@ core::TypedExprPtr Optimization::toTypedExpr(ExprCP expr) {
   if (it != projectedExprs_.end()) {
     return it->second;
   }
-  
+
   switch (expr->type()) {
     case PlanType::kColumn: {
       auto column = expr->as<Column>();
@@ -744,10 +744,10 @@ core::PlanNodePtr Optimization::makeFragment(
       auto input = makeFragment(op->input(), fragment, stages);
       auto project = op->as<Project>();
       if (opts_.parallelProjectWidth > 1) {
-	auto result = maybeParallelProject(project, input);
-	if (result) {
-	  return result;
-	}
+        auto result = maybeParallelProject(project, input);
+        if (result) {
+          return result;
+        }
       }
       std::vector<std::string> names;
       std::vector<core::TypedExprPtr> exprs;

@@ -37,12 +37,10 @@ FunctionRegistry* FunctionRegistry::instance() {
   static auto registry = std::make_unique<FunctionRegistry>();
   return registry.get();
 }
-  const FunctionMetadata* functionMetadata(Name name) {
-    return FunctionRegistry::instance()->metadata(name);
-  }
+const FunctionMetadata* functionMetadata(Name name) {
+  return FunctionRegistry::instance()->metadata(name);
+}
 
-
-  
 bool declareBuiltIn() {
   {
     auto metadata = std::make_unique<FunctionMetadata>();

@@ -188,40 +188,38 @@ float selfCost(ExprCP expr) {
       }
       return 10;
     }
-  case PlanType::kCall: {
-    auto metadata = expr->as<Call>()->metadata();
-    if (metadata) {
-      if (metadata->costFunc) {
-	return metadata->costFunc(expr->as<Call>());
+    case PlanType::kCall: {
+      auto metadata = expr->as<Call>()->metadata();
+      if (metadata) {
+        if (metadata->costFunc) {
+          return metadata->costFunc(expr->as<Call>());
+        }
+        return metadata->cost;
       }
-      return metadata->cost;
+      return 5;
     }
-    return 5;
-  }
-  default:
+    default:
       return 5;
   }
 }
 
-  float costWithChildren(ExprCP expr, const PlanObjectSet& notCounting) {
-    if (notCounting.contains(expr)) {
-      return 0;
-    }
-    switch (expr->type()) {
+float costWithChildren(ExprCP expr, const PlanObjectSet& notCounting) {
+  if (notCounting.contains(expr)) {
+    return 0;
+  }
+  switch (expr->type()) {
     case PlanType::kColumn:
       return selfCost(expr);
     case PlanType::kCall: {
       float cost = selfCost(expr);
       for (auto arg : expr->as<Call>()->args()) {
-	cost += costWithChildren(arg, notCounting);
+        cost += costWithChildren(arg, notCounting);
       }
       return cost;
     }
-    default: return 0;
-    }
-    }
+    default:
+      return 0;
+  }
+}
 
-
-  
-  
 } // namespace facebook::velox::optimizer

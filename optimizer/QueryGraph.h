@@ -338,7 +338,7 @@ struct FunctionMetadata {
 };
 
 const FunctionMetadata* functionMetadata(Name name);
-  
+
 /// Represents a function call or a special form, any expression with
 /// subexpressions.
 class Call : public Expr {
@@ -353,7 +353,7 @@ class Call : public Expr {
         name_(name),
         args_(std::move(args)),
         functions_(functions),
-	metadata_(functionMetadata(name_)) {
+        metadata_(functionMetadata(name_)) {
     for (auto arg : args_) {
       columns_.unionSet(arg->columns());
       subexpressions_.unionSet(arg->subexpressions());
@@ -393,7 +393,7 @@ class Call : public Expr {
   const FunctionMetadata* metadata() const {
     return metadata_;
   }
-  
+
  private:
   // name of function.
   Name const name_;

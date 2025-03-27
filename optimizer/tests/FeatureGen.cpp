@@ -236,7 +236,7 @@ core::TypedExprPtr makeFloatExpr(const FeatureOptions& opts) {
 void makeExprs(
     const FeatureOptions& opts,
     std::vector<std::string>& names,
-    std::vector<core::TypedExprPtr > &exprs) {
+    std::vector<core::TypedExprPtr>& exprs) {
   names = {"uid"};
   exprs = {uid()};
   auto numFloatExprs = (opts.floatStruct->size() * opts.floatExprsPct) / 100.0;
@@ -249,7 +249,7 @@ void makeExprs(
   if (!floatExprs.empty()) {
     names.push_back("floats");
     exprs.push_back(std::make_shared<core::CallTypedExpr>(
-							  ROW(std::move(floatTypes)), std::move(floatExprs), "row_constructor"));
+        ROW(std::move(floatTypes)), std::move(floatExprs), "row_constructor"));
   }
 }
 

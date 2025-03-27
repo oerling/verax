@@ -15,9 +15,9 @@
  */
 
 #include "optimizer/FunctionRegistry.h" //@manual
+#include "optimizer/ParallelProject.h" //@manual
 #include "optimizer/Plan.h" //@manual
 #include "optimizer/PlanUtils.h" //@manual
-#include "optimizer/ParallelProject.h" //@manual
 #include "velox/core/Expressions.h"
 
 namespace facebook::velox::optimizer {
@@ -101,10 +101,10 @@ PlanObjectSet makeCseBorder(
 }
 
 core::PlanNodePtr Optimization::makeParallelProject(
-						    core::PlanNodePtr input,
-						    const PlanObjectSet& topExprs,
-						    const PlanObjectSet& placed,
-						    const PlanObjectSet& extraColumns) {
+    core::PlanNodePtr input,
+    const PlanObjectSet& topExprs,
+    const PlanObjectSet& placed,
+    const PlanObjectSet& extraColumns) {
   std::vector<std::string> names;
   std::vector<int32_t> indices;
   std::vector<float> costs;
@@ -116,7 +116,9 @@ core::PlanNodePtr Optimization::makeParallelProject(
     costs.push_back(costWithChildren(o->as<Expr>(), placed));
     totalCost += costs.back();
   });
-  std::sort(indices.begin(), indices.end(), [&](int32_t l, int32_t r) { return costs[l] < costs[r];});
+  std::sort(indices.begin(), indices.end(), [&](int32_t l, int32_t r) {
+    return costs[l] < costs[r];
+  });
 
   // Sorted lowest cost first. Make even size groups.
   float targetCost = totalCost / opts_.parallelProjectWidth;
@@ -134,17 +136,23 @@ core::PlanNodePtr Optimization::makeParallelProject(
       groupCost = 0;
     }
   }
-  
+
   std::vector<std::string> extra;
   extraColumns.forEach([&](PlanObjectCP o) {
     auto e = toTypedExpr(o->as<Expr>());
-    if (auto* field = dynamic_cast<const core::FieldAccessTypedExpr*>(e.get())) {
-      names.push_back(field->name()); 
+    if (auto* field =
+            dynamic_cast<const core::FieldAccessTypedExpr*>(e.get())) {
+      names.push_back(field->name());
     } else {
       VELOX_UNREACHABLE();
     }
   });
-  return std::make_shared<exec::ParallelProjectNode>(idGenerator().next(), std::move(names), std::move(groups), std::move(extra), input);
+  return std::make_shared<exec::ParallelProjectNode>(
+      idGenerator().next(),
+      std::move(names),
+      std::move(groups),
+      std::move(extra),
+      input);
 }
 
 // Returns the columns used by Exprs in 'top', excluding columns only referenced
@@ -166,7 +174,7 @@ void columnBorder(
       }
       return;
     }
-  case PlanType::kAggregate:
+    case PlanType::kAggregate:
       VELOX_UNREACHABLE();
     default:
       return;
@@ -183,14 +191,15 @@ PlanObjectSet columnBorder(
   return result;
 }
 
-  float parallelBorder(
+float parallelBorder(
     ExprCP expr,
     const PlanObjectSet& placed,
     PlanObjectSet& result) {
-    // Cost returned for a subexpressoin that is parallelized. Siblings of these that are themselves not split should b members of the border.
-    constexpr float kSplit = -1;
-    constexpr float kTargetCost = 50;
-    if (placed.contains(expr)) {
+  // Cost returned for a subexpressoin that is parallelized. Siblings of these
+  // that are themselves not split should b members of the border.
+  constexpr float kSplit = -1;
+  constexpr float kTargetCost = 50;
+  if (placed.contains(expr)) {
     return 0;
   }
   switch (expr->type()) {
@@ -203,44 +212,45 @@ PlanObjectSet columnBorder(
       auto args = call->args();
       float allArgsCost = 0;
       float highestArgCost = 0;
-      for (auto i = 0; i <args.size(); ++i) {
-	auto arg = args[i];
+      for (auto i = 0; i < args.size(); ++i) {
+        auto arg = args[i];
         auto argCost = parallelBorder(arg, placed, result);
-	if (argCost > highestArgCost) {
-	  highestArgCost = argCost;
-	}
-	if (argCost == kSplit) {
-	  splitArgs.add(i);
-	}
-	allArgsCost += argCost;
+        if (argCost > highestArgCost) {
+          highestArgCost = argCost;
+        }
+        if (argCost == kSplit) {
+          splitArgs.add(i);
+        }
+        allArgsCost += argCost;
       }
       if (!splitArgs.empty()) {
-	// If some arg produced parallel pieces, the non-parallelized siblings are added to the border.
-	for (auto i = 0; i < args.size(); ++i) {
-	  if (!splitArgs.contains(i)) {
-	    result.add(args[i]);
-	  }
-	}
-	return kSplit;
-	}
+        // If some arg produced parallel pieces, the non-parallelized siblings
+        // are added to the border.
+        for (auto i = 0; i < args.size(); ++i) {
+          if (!splitArgs.contains(i)) {
+            result.add(args[i]);
+          }
+        }
+        return kSplit;
+      }
       if (allArgsCost > kTargetCost && highestArgCost < allArgsCost / 2) {
-	// The args are above the target and the biggest is less than half the total. Add the args to the border.
-	for (auto i = 0; i < args.size(); ++i) {
-	  result.add(args[i]);
-	}
-	return kSplit;
+        // The args are above the target and the biggest is less than half the
+        // total. Add the args to the border.
+        for (auto i = 0; i < args.size(); ++i) {
+          result.add(args[i]);
+        }
+        return kSplit;
       }
       return cost + allArgsCost;
     }
 
-  case PlanType::kAggregate:
+    case PlanType::kAggregate:
       VELOX_UNREACHABLE();
     default:
       return 0;
   }
 }
 
-  
 core::PlanNodePtr Optimization::maybeParallelProject(
     Project* project,
     core::PlanNodePtr input) {
@@ -266,11 +276,11 @@ core::PlanNodePtr Optimization::maybeParallelProject(
     auto extraColumns = columnBorder(top, placed);
     input = makeParallelProject(input, cses, previousPlaced, extraColumns);
   }
-  // Common prerequisites are placed, the expressions that are left  are a tree with no order 
+  // Common prerequisites are placed, the expressions that are left  are a tree
+  // with no order
   PlanObjectSet parallel;
-  top.forEach([&](PlanObjectCP o) {
-    parallelBorder(o->as<Expr>(), placed, parallel);
-  });
+  top.forEach(
+      [&](PlanObjectCP o) { parallelBorder(o->as<Expr>(), placed, parallel); });
   auto previousPlaced = placed;
   parallel.forEach([&](PlanObjectCP o) {
     placed.unionSet(o->as<Expr>()->subexpressions());
@@ -284,7 +294,8 @@ core::PlanNodePtr Optimization::maybeParallelProject(
     names.push_back(columns[i]->toString());
     finalExprs.push_back(toTypedExpr(exprs[i]));
   }
-  return std::make_shared<core::ProjectNode>(idGenerator().next(), std::move(names), std::move(finalExprs), input);
+  return std::make_shared<core::ProjectNode>(
+      idGenerator().next(), std::move(names), std::move(finalExprs), input);
 }
 
 } // namespace facebook::velox::optimizer

@@ -20,36 +20,34 @@
 
 namespace facebook::velox::exec {
 
-
-  const RowTypePtr& ParallelProjectNode::outputType() const {
-    std::vector<std::string> names;
-    std::vector<TypePtr> types;
-    int32_t groupIdx =0;
-    int32_t exprIdx = 0;
-    int32_t groupSize = exprs_[0].size();
-    for (auto i = 0; i < names_.size(); ++i) {
-      names.push_back(names_[i]);
-      types.push_back(exprs_[groupIdx][exprIdx]->type());
-      if (++exprIdx == groupSize) {
-	++groupIdx;
-	exprIdx = 0;
-	if (groupIdx == exprs_.size()) {
-	  break;
-	}
-	groupSize = exprs_[groupIdx].size();
+const RowTypePtr& ParallelProjectNode::outputType() const {
+  std::vector<std::string> names;
+  std::vector<TypePtr> types;
+  int32_t groupIdx = 0;
+  int32_t exprIdx = 0;
+  int32_t groupSize = exprs_[0].size();
+  for (auto i = 0; i < names_.size(); ++i) {
+    names.push_back(names_[i]);
+    types.push_back(exprs_[groupIdx][exprIdx]->type());
+    if (++exprIdx == groupSize) {
+      ++groupIdx;
+      exprIdx = 0;
+      if (groupIdx == exprs_.size()) {
+        break;
       }
+      groupSize = exprs_[groupIdx].size();
     }
-    auto sourceType = sources_[0]->outputType();
-    for (auto& name : noLoadIdentities_) {
-      auto idx = sourceType->getChildIdx(name);
-      names.push_back(name);
-      types.push_back(sourceType->childAt(idx));
-    }
-
-    return ROW(std::move(names), std::move(types));
+  }
+  auto sourceType = sources_[0]->outputType();
+  for (auto& name : noLoadIdentities_) {
+    auto idx = sourceType->getChildIdx(name);
+    names.push_back(name);
+    types.push_back(sourceType->childAt(idx));
   }
 
-  
+  return ROW(std::move(names), std::move(types));
+}
+
 ParallelProject::ParallelProject(
     int32_t operatorId,
     DriverCtx* driverCtx,

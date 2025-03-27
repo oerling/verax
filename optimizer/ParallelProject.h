@@ -20,17 +20,17 @@
 
 namespace facebook::velox::exec {
 
-  /// Variant of ProjectNode that computes projections in
-  /// parallel. The exprs are given in groups, so that all exprs in
-  /// one group run together and all groups run in parallel. If lazies
-  /// are loaded, each lazy must be loaded by exactly one group. If
-  /// there are identity projections in the groups, possible lazies
-  /// are loaded as part of processing the group. One can additionally
-  /// specify 'noLoadIdentities' which are identity projected through
-  /// without loading. This last set must be disjoint from all columns
-  /// accessed by the exprs. The output type has 'names' first and
-  /// then 'noLoadIdentities'. The ith name corresponds to the ith
-  /// expr when exprs is flattened.
+/// Variant of ProjectNode that computes projections in
+/// parallel. The exprs are given in groups, so that all exprs in
+/// one group run together and all groups run in parallel. If lazies
+/// are loaded, each lazy must be loaded by exactly one group. If
+/// there are identity projections in the groups, possible lazies
+/// are loaded as part of processing the group. One can additionally
+/// specify 'noLoadIdentities' which are identity projected through
+/// without loading. This last set must be disjoint from all columns
+/// accessed by the exprs. The output type has 'names' first and
+/// then 'noLoadIdentities'. The ith name corresponds to the ith
+/// expr when exprs is flattened.
 class ParallelProjectNode : public core::PlanNode {
  public:
   ParallelProjectNode(
@@ -42,8 +42,8 @@ class ParallelProjectNode : public core::PlanNode {
       : PlanNode(id),
         sources_{input},
         names_(std::move(names)),
-    exprs_(std::move(exprs)),
-    noLoadIdentities_(std::move(noLoadIdentities)){}
+        exprs_(std::move(exprs)),
+        noLoadIdentities_(std::move(noLoadIdentities)) {}
 
   const RowTypePtr& outputType() const override;
 
@@ -66,7 +66,7 @@ class ParallelProjectNode : public core::PlanNode {
   const std::vector<std::string> noLoadIdentities() const {
     return noLoadIdentities_;
   }
-  
+
  private:
   void addDetails(std::stringstream& /* stream */) const override {}
 

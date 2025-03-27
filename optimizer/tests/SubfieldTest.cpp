@@ -261,13 +261,13 @@ class SubfieldTest : public QueryTestBase,
 
     optimizerOptions_.parallelProjectWidth = 8;
     auto builder = PlanBuilder()
-      .tableScan("features", rowType )
-      .addNode([&](std::string id, auto node) {
-	return std::make_shared<core::ProjectNode>(id, std::move(names), std::move(exprs), node);
-      });
+                       .tableScan("features", rowType)
+                       .addNode([&](std::string id, auto node) {
+                         return std::make_shared<core::ProjectNode>(
+                             id, std::move(names), std::move(exprs), node);
+                       });
     auto plan = veloxString(planVelox(builder.planNode()));
-    std::cout <<  plan;
-    
+    std::cout << plan;
   }
 };
 
