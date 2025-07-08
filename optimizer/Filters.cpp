@@ -78,7 +78,6 @@ ExprVector extractPerTable(
   std::unordered_map<int32_t, std::vector<ExprVector>> perTable;
 
   for (auto i = 0; i < disjuncts.size(); ++i) {
-    auto& _and = orOfAnds[i];
     if (i > 0 && disjuncts[i]->allTables() != tables) {
       // Does not  depend on the same tables as the other disjuncts.
       return {};

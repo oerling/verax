@@ -102,8 +102,8 @@ void Optimization::trace(
     RelationOp& plan) {
   if (event & opts_.traceFlags) {
     std::cout << (event == kRetained ? "Retained: " : "Abandoned: ") << id
-              << ": " << cost.toString(true, true) << ": "
-              << " " << plan.toString(true, false) << std::endl;
+              << ": " << cost.toString(true, true) << ": " << " "
+              << plan.toString(true, false) << std::endl;
   }
 }
 
@@ -261,13 +261,13 @@ std::string PlanState::printPlan(RelationOpPtr op, bool detail) const {
 PlanPtr PlanSet::addPlan(RelationOpPtr plan, PlanState& state) {
   bool insert = plans.empty();
   int32_t replaceIndex = -1;
+  float shuffle = shuffleCost(plan->columns()) * state.cost.fanout;
   if (!insert) {
     // Compare with existing. If there is one with same distribution
     // and new is better, replace. If there is one with a different
     // distribution and the new one can produce the same distribution
     // by repartition, for cheaper, add the new one and delete the old
     // one.
-    float shuffle = shuffleCost(plan->columns()) * state.cost.fanout;
     for (auto i = 0; i < plans.size(); ++i) {
       auto old = plans[i].get();
       if (!(state.input == old->input)) {
@@ -304,13 +304,10 @@ PlanPtr PlanSet::addPlan(RelationOpPtr plan, PlanState& state) {
     }
   }
   auto newPlan = std::make_unique<Plan>(plan, state);
-  auto result = newPlan.get();
-  if (!bestPlan ||
-      bestPlan->cost.unitCost + bestPlan->cost.setupCost >
-          result->cost.unitCost + result->cost.setupCost) {
-    bestPlan = result;
-    bestCostWithShuffle = result->cost.unitCost + result->cost.setupCost +
-        shuffleCost(result->op->columns()) * result->cost.fanout;
+  auto* result = newPlan.get();
+  auto newPlanCost = result->cost.unitCost + result->cost.setupCost + shuffle;
+  if (bestCostWithShuffle == 0 || newPlanCost < bestCostWithShuffle) {
+    bestCostWithShuffle = newPlanCost;
   }
   if (replaceIndex >= 0) {
     plans[replaceIndex] = std::move(newPlan);

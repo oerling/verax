@@ -463,7 +463,7 @@ TEST_F(PlanTest, filterBreakup) {
           .planNode();
   auto reference = referenceBuilder_->getQueryPlan(19).plan;
   std::string(planString);
-  std::string(veloxString);
+  std::string veloxString;
   checkSame(plan, reference, &planString, &veloxString);
 
   // Expect the per table filters to be extracted from the OR.
