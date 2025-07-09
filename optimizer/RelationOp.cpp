@@ -321,7 +321,7 @@ std::string Aggregation::toString(bool recursive, bool detail) const {
   if (recursive) {
     out << input()->toString(true, detail) << " ";
   }
-  out << velox::core::AggregationNode::stepName(step) << " agg";
+  out << velox::core::AggregationNode::toName(step) << " agg";
   printCost(detail, out);
   return out.str();
 }
