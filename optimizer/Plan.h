@@ -1237,4 +1237,12 @@ RowTypePtr skylineStruct(BaseTableCP baseTable, ColumnCP column);
 /// Returns  the inverse join type, e.g. right outer from left outr.
 core::JoinType reverseJoinType(core::JoinType joinType);
 
+  /// Parses 'strDotted' as a dot separate separated sequence of
+  /// derived table id_ followed by numeric parts of correlation names
+  /// of placed tables. Sets the plan breakpoint to that. For example,
+  /// "0.2.6" means to break when looking at join order t2, t6 in dt0
+  /// (the top level dt). An empty argument clears the plan
+  /// breakpoint.
+  void setPlanBreakpoint(const std::string& strDotted);
+  
 } // namespace facebook::velox::optimizer

@@ -38,6 +38,66 @@ int32_t dbgNumPlaced = 0;
 /// right before evaluating the cost for the tables in dbgPlacedOrder.
 int32_t dbgPlaced[10];
 
+// Returns the plan object id of a table ro derived table given the numeric part
+// of the correlation name.
+int32_t findByCNum(int32_t cnum) {
+  auto* ctx = queryCtx();
+  auto max = ctx->maxId();
+  for (auto i = 0; i <= max; ++i) {
+    auto obj = ctx->objectAt(i);
+    if (!obj) {
+      continue;
+    }
+    if (obj->type() == PlanType::kTable) {
+      if (atoi(obj->as<BaseTable>()->cname + 1) == cnum) {
+        return i;
+      }
+    }
+    if (obj->type() == PlanType::kDerivedTable) {
+      if (atoi(obj->as<DerivedTable>()->cname + 2) == cnum) {
+        return i;
+      }
+    }
+  }
+  std::cout
+    << cnum
+      << " is not the number part of a correlation name of a table or derived table";
+  return -1;
+}
+
+void setPlanBreakpoint(const std::string& strDotted) {
+  auto str = strDotted;
+  // Convert dots to spaces.
+  for (auto& c : str) {
+    if (c == '.') {
+      c = ' ';
+    }
+  }
+  std::istringstream in(str);
+  int32_t count = -1;
+  std::string token;
+  for(;;) {
+    std::string token;
+    in >> token;
+    if (token.empty()) {
+      break;
+    }
+    int n = atoi(token.c_str());
+    if (count == -1) {
+      dbgDt = n;
+    } else {
+      dbgPlaced[count] = findByCNum(n);
+    }
+    ++count;
+    if (count > 10) {
+      break;
+    }
+  }
+  if (count == -1) {
+    dbgDt = -1;
+  }
+}
+
 void planBreakpoint() {
   // Set breakpoint here for looking at cost of join order in 'dbgPlacdOrder'.
   LOG(INFO) << "Join order breakpoint";
@@ -102,8 +162,8 @@ void Optimization::trace(
     RelationOp& plan) {
   if (event & opts_.traceFlags) {
     std::cout << (event == kRetained ? "Retained: " : "Abandoned: ") << id
-              << ": " << cost.toString(true, true) << ": " << " "
-              << plan.toString(true, false) << std::endl;
+              << ": " << cost.toString(true, true) << ": "
+              << " " << plan.toString(true, false) << std::endl;
   }
 }
 
