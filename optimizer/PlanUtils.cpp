@@ -59,4 +59,45 @@ std::string succinctNumber(double value, int32_t precision) {
       precision);
 }
 
+int32_t findByCNum(int32_t cnum) {
+  auto* ctx = queryCtx();
+  auto max = ctx->maxId();
+  for (auto i = 0; i <= max; ++i) {
+    auto obj = ctx->objectAt(i);
+    if (!obj) {
+      continue;
+    }
+    if (obj->type() == PlanType::kTable) {
+      if (atoi(obj->as<BaseTable>()->cname + 1) == cnum) {
+        return i;
+      }
+    }
+    if (obj->type() == PlanType::kDerivedTable) {
+      if (atoi(obj->as<DerivedTable>()->cname + 2) == cnum) {
+        return i;
+      }
+    }
+  }
+  VELOX_USER_FAIL(
+		   "{} is not the number part of a correlation name of a table or derived table", cnum);
+  return -1;
+}
+
+std::vector<int32_t> parseDottedNumbers(std::string_view strDotted) {
+  std::string str = std::string(strDotted);
+  // Convert dots to spaces.
+  for (auto& c : str) {
+    if (c == '.') {
+      c = ' ';
+    }
+  }
+  std::istringstream in(str);
+  std::vector<int32_t> numbers;
+  int32_t n;
+  while (in >> n) {
+    numbers.push_back(n);
+  }
+  return numbers;
+}
+
 } // namespace facebook::velox::optimizer

@@ -245,7 +245,7 @@ std::string Join::toString(bool recursive, bool detail) const {
       << joinTypeLabel(joinType);
   printCost(detail, out);
   if (detail && buildCost.unitCost > 0) {
-    out << "{ build=" << buildCost.toString(detail, true) << "}";
+    out << "{ build=" << buildCost.toString(detail, true) << "}\n";
   }
   if (recursive) {
     out << " (" << right->toString(true, detail) << ")";

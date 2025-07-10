@@ -118,4 +118,11 @@ Target transform(const V& set, Func func) {
   return result;
 }
 
+// Returns the plan object id of a table ro derived table given the numeric part
+// of the correlation name.
+int32_t findByCNum(int32_t cnum);
+
+/// Parses dot separated integers, '1.2.3" is {1, 2, 3}.
+std::vector<int32_t> parseDottedNumbers(std::string_view strDotted);
+
 } // namespace facebook::velox::optimizer

@@ -38,33 +38,6 @@ int32_t dbgNumPlaced = 0;
 /// right before evaluating the cost for the tables in dbgPlacedOrder.
 int32_t dbgPlaced[10];
 
-// Returns the plan object id of a table ro derived table given the numeric part
-// of the correlation name.
-int32_t findByCNum(int32_t cnum) {
-  auto* ctx = queryCtx();
-  auto max = ctx->maxId();
-  for (auto i = 0; i <= max; ++i) {
-    auto obj = ctx->objectAt(i);
-    if (!obj) {
-      continue;
-    }
-    if (obj->type() == PlanType::kTable) {
-      if (atoi(obj->as<BaseTable>()->cname + 1) == cnum) {
-        return i;
-      }
-    }
-    if (obj->type() == PlanType::kDerivedTable) {
-      if (atoi(obj->as<DerivedTable>()->cname + 2) == cnum) {
-        return i;
-      }
-    }
-  }
-  std::cout
-    << cnum
-      << " is not the number part of a correlation name of a table or derived table";
-  return -1;
-}
-
 void setPlanBreakpoint(const std::string& strDotted) {
   auto str = strDotted;
   // Convert dots to spaces.
@@ -76,7 +49,7 @@ void setPlanBreakpoint(const std::string& strDotted) {
   std::istringstream in(str);
   int32_t count = -1;
   std::string token;
-  for(;;) {
+  for (;;) {
     std::string token;
     in >> token;
     if (token.empty()) {
@@ -101,6 +74,20 @@ void setPlanBreakpoint(const std::string& strDotted) {
 void planBreakpoint() {
   // Set breakpoint here for looking at cost of join order in 'dbgPlacdOrder'.
   LOG(INFO) << "Join order breakpoint";
+}
+
+bool PlanState::mayConsiderNext(int32_t id) const {
+  auto it = std::find(dt->joinOrder.begin(), dt->joinOrder.end(), id);
+  if (it == dt->joinOrder.end()) {
+    return true;
+  }
+  auto end = it - dt->joinOrder.begin();
+  for (auto i = 0; i < end; ++i) {
+    if (!placed.BitSet::contains(dt->joinOrder[i])) {
+      return false;
+    }
+  }
+  return true;
 }
 
 void PlanState::setFirstTable(int32_t id) {
@@ -598,11 +585,17 @@ void forJoinedTables(const PlanState& state, Func func) {
           }
         }
         if (usable) {
-          func(join, join->rightTable(), join->lrFanout());
+          auto right = join->rightTable();
+          if (state.mayConsiderNext(right->id())) {
+            func(join, right, join->lrFanout());
+          }
         }
       } else {
         auto [table, fanout] = join->otherTable(placedTable);
         if (!state.dt->tableSet.contains(table)) {
+          continue;
+        }
+        if (!state.mayConsiderNext(table->id())) {
           continue;
         }
         func(join, table, fanout);
@@ -743,6 +736,9 @@ std::vector<JoinCandidate> Optimization::nextJoins(PlanState& state) {
   // Take the  first hand joined tables and bundle them with reducing joins that
   // can go on the build side.
   for (auto& candidate : candidates) {
+    if (state.dt->leftDeep) {
+      continue;
+    }
     auto bush = reducingJoins(state, candidate);
     if (!bush.tables.empty()) {
       bushes.push_back(std::move(bush));
@@ -758,7 +754,7 @@ std::vector<JoinCandidate> Optimization::nextJoins(PlanState& state) {
   if (candidates.empty()) {
     // There are no join edges. There could still be cross joins.
     state.dt->startTables.forEach([&](PlanObjectCP object) {
-      if (!state.placed.contains(object)) {
+      if (!state.placed.contains(object) && state.mayConsiderNext(object->id())) {
         candidates.emplace_back(nullptr, object, tableCardinality(object));
       }
     });
@@ -1650,7 +1646,11 @@ void Optimization::makeJoins(RelationOpPtr plan, PlanState& state) {
   auto& dt = state.dt;
   if (!plan) {
     std::vector<PlanObjectCP> firstTables;
-    dt->startTables.forEach([&](auto table) { firstTables.push_back(table); });
+    dt->startTables.forEach([&](auto table) {
+      if (state.mayConsiderNext(table->id())) {
+        firstTables.push_back(table);
+      }
+    });
     std::vector<float> scores(firstTables.size());
     for (auto i = 0; i < firstTables.size(); ++i) {
       auto table = firstTables[i];

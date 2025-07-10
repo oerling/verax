@@ -891,6 +891,16 @@ struct DerivedTable : public PlanObject {
   int32_t limit{-1};
   int32_t offset{0};
 
+  /// Only consider left deep join orders
+  bool leftDeep{false};
+
+  /// Set of PlanObject ids for 'tables'. Specifies join order
+  /// constraint. Use only for join order hint.  table with id
+  /// joinOrder[i] can only be placed after tables before it are
+  /// placed. If the table's id is not mentioned there is no
+  /// restriction.
+  std::vector<int32_t, QGAllocator<int32_t>> joinOrder;
+  
   /// Adds an equijoin edge between 'left' and 'right'. The flags correspond to
   /// the like-named members in Join.
   void addJoinEquality(
@@ -963,6 +973,10 @@ struct DerivedTable : public PlanObject {
   /// before adding 'this' as a join side because join sides must have
   /// a cardinality guess.
   void makeInitialPlan();
+
+  /// Parses 'str' as a partial join order. Throws if cannot interpret
+  /// 'str'. Format is subject to change, see implementation.
+  void setJoinOrderHint(std::string_view str);
 
  private:
   // Imports the joins in 'this' inside 'firstDt', which must be a
