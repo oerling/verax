@@ -33,7 +33,8 @@ void Model::precompute() {
       set.insert(e.coordinates[dim]);
     }
     std::vector<float> values;
-    //VELOX_CHECK_GT(set.size(), 1, "A dimension must have more than one values: dim={}", i);
+    // VELOX_CHECK_GT(set.size(), 1, "A dimension must have more than one
+    // values: dim={}", i);
     for (auto v : set) {
       values.push_back(v);
     }
@@ -71,41 +72,45 @@ std::vector<int32_t> Model::findDims(const std::vector<float>& point) const {
   return result;
 }
 
-  std::vector<DimSample> Model::slopes(const std::vector<int32_t>& point, const std::vector<float>& coords) const {
-    int32_t pointIdx = linearIdx(point);
-    float measureAtPoint = measures_[pointIdx];
-    std::vector<DimSample> result;
-    for (auto i = 0; i < rank_; ++i) {
-      DimSample sample;
-      float coord = coords[i];
-      int32_t idx = point[i];
-      if (idx == sizes_[i] - 1) {
-	--idx;
-	pointIdx -= stride_[i];
-      }
-      float mhigh = measures_[pointIdx + stride_[i]];
-      float nlow = measures_[pointIdx];
-      float k = (mhigh - mlow) / (axis_[idx + 1] - axis_[i][idx]); 
-      sample.multiplier = (coord - mlow) * k;
-      result.push_back(sample)l;;
+std::vector<Model::DimSample> Model::slopes(
+    const std::vector<int32_t>& point,
+    const std::vector<float>& coords) const {
+  int32_t pointIdx = linearIdx(point);
+  float measureAtPoint = measures_[pointIdx];
+  std::vector<DimSample> result;
+  for (auto i = 0; i < rank_; ++i) {
+    DimSample sample;
+    float coord = coords[i];
+    int32_t idx = point[i];
+    if (idx == sizes_[i] - 1) {
+      --idx;
+      pointIdx -= stride_[i];
     }
-}
-    
-
-
-  float Model::query(const std::vector<float>& coords) const {
-    auto point = closestPoint(coords);
-    auto slopes = slopes(point);
-    float sum = 0;
-    for (auto i = 0; i < rank_; ++i) {
-      auto& slope = slopes[i];
-      float k = (slope.measure2 - slope.measure1) / (slope.coord2 - slope.coord1);
-      if (i == 0) {
-	sum = slope.measure1;
-      }
-      sum += dims[i] * k * (dims[i] - slope.coord1);
-    }
-    return sum;
+    sample.idx1 = idx;
+    sample.idx2 = idx + 1;
+    float mhigh = measures_[pointIdx + stride_[i]];
+    float mlow = measures_[pointIdx];
+    float k = (mhigh - mlow) / (axis_[i][idx + 1] - axis_[i][idx]);
+    sample.multiplier = (coord - mlow) * k;
+    result.push_back(sample);
   }
+  return result;
+}
+
+float Model::query(const std::vector<float>& coords) const {
+  auto point = findDims(coords);
+  auto samples = slopes(point, coords);
+  float sum = 0;
+  for (auto i = 0; i < rank_; ++i) {
+    auto& slope = samples[i];
+    float k = (slope.measure2 - slope.measure1) / (slope.coord2 - slope.coord1);
+    if (i == 0) {
+      sum = slope.measure1;
+    } else {
+      sum *= slope.multiplier;
+    }
+  }
+  return sum;
+}
 
 } // namespace facebook::velox::optimizer

@@ -35,7 +35,7 @@ class Model {
     // index along the dimension to the point below.
     int32_t idx1;
     // index along the dimension to the point above.
-    int32_tt idx2;
+    int32_t idx2;
     // Coordinate at idx1
     float coord1;
     // Coordinate at idx2
@@ -44,6 +44,7 @@ class Model {
     float measure1;
     // measure at idx2.
     float measure2;
+    float multiplier;
   };
 
   Model(int32_t rank) : rank_(rank) {}
@@ -59,7 +60,7 @@ class Model {
   int32_t linearIdx(const std::vector<int32_t>& indices) const;
 
   /// Returns the measures from the two closest points along each dimension.
-  std::vector<DimSample> slopes(std::vector<int32_t> point, const std::vector<float>& coords) const;
+  std::vector<DimSample> slopes(const std::vector<int32_t>& point, const std::vector<float>& coords) const;
 
   /// Returns the index along each dimension to the closest value that is
   /// greater or equal   to the corresponding coordinate of position.
