@@ -74,27 +74,22 @@ std::vector<int32_t> Model::findDims(const std::vector<float>& point) const {
   std::vector<DimSample> Model::slopes(const std::vector<int32_t>& point, const std::vector<float>& coords) const {
     int32_t pointIdx = linearIdx(point);
     float measureAtPoint = measures_[pointIdx];
+    std::vector<DimSample> result;
     for (auto i = 0; i < rank_; ++i) {
       DimSample sample;
       float coord = coords[i];
       int32_t idx = point[i];
-      if (idx == 0) {
-	sample.idx1 = 0;
-	sample.idx2 = 1;
-      } else if (idx == sizes_[i] - 1) {
-	sample.idx1 = idx - 1;
-	sample.idx2 = idx; 
-      } else {
-	if (axis_[i][idx] == coord) {
-	  
-	}
-	float mhigh = measures_[pointIdx + stride_[i]];
-	float nlow = measures_[pointIdx];
-	float k = (mhigh - mlow) / (axis_[idx + 1] - axis_[i][idx]); 
-	sample.multiplier = coord - mlow) * k;
-
+      if (idx == sizes_[i] - 1) {
+	--idx;
+	pointIdx -= stride_[i];
       }
+      float mhigh = measures_[pointIdx + stride_[i]];
+      float nlow = measures_[pointIdx];
+      float k = (mhigh - mlow) / (axis_[idx + 1] - axis_[i][idx]); 
+      sample.multiplier = (coord - mlow) * k;
+      result.push_back(sample)l;;
     }
+}
     
 
 
