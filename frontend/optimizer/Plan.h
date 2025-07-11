@@ -350,6 +350,10 @@ struct PlanState {
   // breakpoint before a specific join order gets costted.
   std::vector<int32_t> dbgPlacedTables;
 
+  /// True if PlanObject with 'id' is eligible as next in join order
+  /// per possible join order hint in 'dt'.
+  bool mayConsiderNext(int32_t id) const;
+  
   /// Updates 'cost_' to reflect 'op' being placed on top of the partial plan.
   void addCost(RelationOp& op);
 
@@ -1236,5 +1240,13 @@ RowTypePtr skylineStruct(BaseTableCP baseTable, ColumnCP column);
 
 /// Returns  the inverse join type, e.g. right outer from left outr.
 core::JoinType reverseJoinType(core::JoinType joinType);
-
+  
+  /// Parses 'strDotted' as a dot separate separated sequence of
+  /// derived table id_ followed by numeric parts of correlation names
+  /// of placed tables. Sets the plan breakpoint to that. For example,
+  /// "0.2.6" means to break when looking at join order t2, t6 in dt0
+  /// (the top level dt). An empty argument clears the plan
+  /// breakpoint.
+  void setPlanBreakpoint(const std::string& strDotted);
+  
 } // namespace facebook::velox::optimizer

@@ -22,6 +22,15 @@
 #include "velox/expression/FunctionSignature.h"
 #include "velox/expression/SignatureBinder.h"
 
+DEFINE_string(break_at_order, "", "Hits planBreakpoint() before costing the "
+	      "specified join order. 0.5.2 means dt 0 (top level) with t5 "
+	      "and t2 placed in the partial plan");
+
+// Stopgap to substitute for SQL plan hint.
+DEFINE_string(top_join_order, "", "Dot separated list of numeric parts "
+	      "of correlation names. Prefix with 'l' if only left deep orders "
+	      "and 'L' for left deep and no existences on build side");
+
 namespace facebook::velox::optimizer {
 
 using namespace facebook::velox;
@@ -53,6 +62,10 @@ DerivedTableP Optimization::makeQueryGraph() {
   currentSelect_ = root_;
   root->cname = toName(fmt::format("dt{}", ++nameCounter_));
   makeQueryGraph(inputPlan_, kAllAllowedInDt);
+#ifndef NDEBUG
+  setPlanBreakpoint(FLAGS_break_at_order);
+#endif
+  root_->setJoinOrderHint(FLAGS_top_join_order);
   return root_;
 }
 
