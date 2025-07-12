@@ -33,17 +33,18 @@ class Model {
   /// Describes a position of a point to query along one dimension.
   struct DimSample {
     // index along the dimension to the point below.
-    int32_t idx1;
+    int32_t idx1{0};
     // index along the dimension to the point above.
-    int32_t idx2;
+    int32_t idx2{0};
     // Coordinate at idx1
-    float coord1;
+    float coord1{0};
     // Coordinate at idx2
-    float coord2;
+    float coord2{0};
     // measure at idx1.
-    float measure1;
+    float measure1{0};
     // measure at idx2.
-    float measure2;
+    float measure2{0};
+    float projected;
     float multiplier;
   };
 
@@ -60,7 +61,9 @@ class Model {
   int32_t linearIdx(const std::vector<int32_t>& indices) const;
 
   /// Returns the measures from the two closest points along each dimension.
-  std::vector<DimSample> slopes(const std::vector<int32_t>& point, const std::vector<float>& coords) const;
+  std::vector<DimSample> slopes(
+      const std::vector<int32_t>& point,
+      const std::vector<float>& coords) const;
 
   /// Returns the index along each dimension to the closest value that is
   /// greater or equal   to the corresponding coordinate of position.
@@ -74,6 +77,22 @@ class Model {
     std::vector<float> coordinates;
     float measure;
   };
+
+  // Represents a pair of points that are offset on only one axis.
+  struct Interval {
+    // The point with measure 'm1'
+    std::vector<int32_t> point;
+    // The index of m2, such that all other coordinates are the same.
+    int32_t idx2;
+    float m1;
+    float m2;
+  };
+
+  std::vector<std::vector<Interval>> fillIntervals() const;
+
+  std::vector<int32_t> pointAtLinIdx(int32_t linIdx) const;
+
+  float at(const std::vector<int32_t>& point) const;
 
   const int32_t rank_;
 

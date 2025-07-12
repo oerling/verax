@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "velox/common/base/Exceptions.h"
 #include "optimizer/Model.h" //@manual
 #include <algorithm>
 #include <cmath>
@@ -21,20 +22,31 @@
 
 namespace facebook::velox::optimizer {
 
+namespace {
+float distance(const std::vector<int32_t>& p1, const std::vector<int32_t>& p2) {
+  float sum = 0.0f;
+  for (size_t i = 0; i < p1.size(); ++i) {
+    sum += pow(p1[i] - p2[i], 2);
+  }
+  return sqrt(sum);
+}
+} // namespace
+
 void Model::insert(std::vector<float> dimensions, float measure) {
-  // VELOX_CHECK_EQ(dimensions.size(), rank_, "Bad umber of dimensions");
+  VELOX_CHECK_EQ(dimensions.size(), rank_, "Bad umber of dimensions");
   entries_.emplace_back(std::move(dimensions), measure);
 }
-int32_t numCells = 1;
+
 void Model::precompute() {
+  int32_t numCells = 1;
   for (auto dim = 0; dim < rank_; ++dim) {
     std::unordered_set<float> set;
     for (auto& e : entries_) {
       set.insert(e.coordinates[dim]);
     }
     std::vector<float> values;
-    // VELOX_CHECK_GT(set.size(), 1, "A dimension must have more than one
-    // values: dim={}", i);
+    VELOX_CHECK_GT(set.size(), 1, "A dimension must have more than one"
+		   "values: dim={}", dim);
     for (auto v : set) {
       values.push_back(v);
     }
@@ -52,14 +64,65 @@ void Model::precompute() {
     measures_[linIdx] = e.measure;
   }
   entries_.clear();
+
+  // For each dimension, the set of intervals where the end points differ only
+  // along the dimension.
+  std::vector<std::vector<Interval>> intervals(rank_);
+}
+
+std::vector<std::vector<Model::Interval>> Model::fillIntervals() const {
+  std::vector<std::vector<Interval>> intervals(rank_);
+  for (auto i = 0; i < measures_.size(); ++i) {
+    if (!std::isnan(measures_[i])) {
+      auto point = pointAtLinIdx(i);
+      auto measure = measures_[i];
+      for (auto i = 0; i < rank_; ++i) {
+        auto cursor = point;
+        int32_t startIdx = point[i];
+        for (int32_t idx = startIdx - 1; idx >= 0; --idx) {
+          cursor[i] = idx;
+          float m = at(cursor);
+          if (!std::isnan(m)) {
+            intervals[i].push_back(Interval{
+                .point = cursor, .idx2 = point[i], .m1 = m, .m2 = measure});
+            break;
+          }
+        }
+        for (int32_t idx = startIdx + 1; idx < sizes_[i]; ++idx) {
+          cursor[i] = idx;
+          float m = at(cursor);
+          if (!std::isnan(m)) {
+            intervals[i].push_back(
+                Interval{.point = point, .idx2 = idx, .m1 = measure, .m2 = m});
+            break;
+          }
+        }
+      }
+    }
+  }
+  return intervals;
 }
 
 int32_t Model::linearIdx(const std::vector<int32_t>& indices) const {
   int32_t idx = 0;
   for (auto i = 0; i < indices.size(); ++i) {
+    VELOX_CHECK_LT(indices[i], sizes_[i]);
     idx += indices[i] * stride_[i];
   }
   return idx;
+}
+
+float Model::at(const std::vector<int32_t>& point) const {
+  return measures_[linearIdx(point)];
+}
+
+std::vector<int32_t> Model::pointAtLinIdx(int32_t linIdx) const {
+  std::vector<int32_t> point(rank_);
+  for (auto i = rank_ - 1; i >= 0; --i) {
+    point[i] = linIdx / stride_[i];
+    linIdx = linIdx % stride_[i];
+  }
+  return point;
 }
 
 std::vector<int32_t> Model::findDims(const std::vector<float>& point) const {
@@ -85,13 +148,17 @@ std::vector<Model::DimSample> Model::slopes(
     if (idx == sizes_[i] - 1) {
       --idx;
       pointIdx -= stride_[i];
+    } else if (coords[i] < axis_[i][idx] && idx > 0) {
+      --idx;
+      pointIdx -= stride_[i];
     }
-    sample.idx1 = idx;
+      sample.idx1 = idx;
     sample.idx2 = idx + 1;
     float mhigh = measures_[pointIdx + stride_[i]];
     float mlow = measures_[pointIdx];
     float k = (mhigh - mlow) / (axis_[i][idx + 1] - axis_[i][idx]);
-    sample.multiplier = (coord - mlow) * k;
+    sample.projected = (measures_[pointIdx] + (coord - mlow) * k);
+    sample.multiplier = sample.projected / measureAtPoint;
     result.push_back(sample);
   }
   return result;
@@ -105,7 +172,7 @@ float Model::query(const std::vector<float>& coords) const {
     auto& slope = samples[i];
     float k = (slope.measure2 - slope.measure1) / (slope.coord2 - slope.coord1);
     if (i == 0) {
-      sum = slope.measure1;
+      sum = slope.projected;
     } else {
       sum *= slope.multiplier;
     }

@@ -17,7 +17,8 @@ add_subdirectory(tests)
 add_subdirectory(connectors)
 
 add_library(velox_md_model Model.cpp)
-		    
+
+target_link_libraries(velox_md_model velox_exception)
 
 add_library(
   velox_verax
