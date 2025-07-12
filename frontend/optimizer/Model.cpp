@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-#include "velox/common/base/Exceptions.h"
 #include "optimizer/Model.h" //@manual
 #include <algorithm>
 #include <cmath>
 #include <unordered_set>
+#include "velox/common/base/Exceptions.h"
 
 namespace facebook::velox::optimizer {
 
@@ -45,8 +45,12 @@ void Model::precompute() {
       set.insert(e.coordinates[dim]);
     }
     std::vector<float> values;
-    VELOX_CHECK_GT(set.size(), 1, "A dimension must have more than one"
-		   "values: dim={}", dim);
+    VELOX_CHECK_GT(
+        set.size(),
+        1,
+        "A dimension must have more than one"
+        "values: dim={}",
+        dim);
     for (auto v : set) {
       values.push_back(v);
     }
@@ -152,7 +156,7 @@ std::vector<Model::DimSample> Model::slopes(
       --idx;
       pointIdx -= stride_[i];
     }
-      sample.idx1 = idx;
+    sample.idx1 = idx;
     sample.idx2 = idx + 1;
     float mhigh = measures_[pointIdx + stride_[i]];
     float mlow = measures_[pointIdx];

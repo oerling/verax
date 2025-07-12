@@ -48,7 +48,6 @@ target_link_libraries(
   velox_parse_expression
   velox_parse_utils)
 
-
 add_executable(velox_model_test ModelTest.cpp)
 
 add_test(velox_model_test velox_model_test)

@@ -46,4 +46,3 @@ add_dependencies(velox_verax velox_hive_connector)
 
 target_link_libraries(velox_verax velox_core velox_connector_metadata
                       velox_multifragment_plan velox_connector velox_md_model)
-

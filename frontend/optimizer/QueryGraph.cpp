@@ -1177,25 +1177,26 @@ void DerivedTable::makeInitialPlan() {
   optimization->memo()[key] = std::move(state.plans);
 }
 
-  void DerivedTable::setJoinOrderHint(std::string_view str) {
-    if (str.empty()) {
-      return;
-    }
-    int32_t start = 0;
-    if (str[0] == 'L' || str[0] == 'l') {
-      leftDeep = true;
-      if (str[0] == 'L') {
-	noImportOfExists = true;
-      }
-      start = 1;
-    }
-    auto order = parseDottedNumbers(std::string_view(str.data() + start, str.size() - start));
-    joinOrder.insert(joinOrder.end(), order.begin(), order.end());
-    for (auto& id : joinOrder) {
-      id = findByCNum(id);
-    }
+void DerivedTable::setJoinOrderHint(std::string_view str) {
+  if (str.empty()) {
+    return;
   }
-  
+  int32_t start = 0;
+  if (str[0] == 'L' || str[0] == 'l') {
+    leftDeep = true;
+    if (str[0] == 'L') {
+      noImportOfExists = true;
+    }
+    start = 1;
+  }
+  auto order = parseDottedNumbers(
+      std::string_view(str.data() + start, str.size() - start));
+  joinOrder.insert(joinOrder.end(), order.begin(), order.end());
+  for (auto& id : joinOrder) {
+    id = findByCNum(id);
+  }
+}
+
 std::string DerivedTable::toString() const {
   std::stringstream out;
   out << "{dt " << cname << " from ";

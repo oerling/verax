@@ -79,7 +79,8 @@ int32_t findByCNum(int32_t cnum) {
     }
   }
   VELOX_USER_FAIL(
-		   "{} is not the number part of a correlation name of a table or derived table", cnum);
+      "{} is not the number part of a correlation name of a table or derived table",
+      cnum);
   return -1;
 }
 

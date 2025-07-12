@@ -754,7 +754,8 @@ std::vector<JoinCandidate> Optimization::nextJoins(PlanState& state) {
   if (candidates.empty()) {
     // There are no join edges. There could still be cross joins.
     state.dt->startTables.forEach([&](PlanObjectCP object) {
-      if (!state.placed.contains(object) && state.mayConsiderNext(object->id())) {
+      if (!state.placed.contains(object) &&
+          state.mayConsiderNext(object->id())) {
         candidates.emplace_back(nullptr, object, tableCardinality(object));
       }
     });

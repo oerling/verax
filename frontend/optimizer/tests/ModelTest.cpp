@@ -18,14 +18,11 @@
 
 #include <gtest/gtest.h>
 
-
-
 using namespace facebook::velox::optimizer;
 
-class ModelTest : public testing::Test {
-};
+class ModelTest : public testing::Test {};
 
-TEST_F(ModelTest,  dim1) {
+TEST_F(ModelTest, dim1) {
   Model m1(1);
   m1.insert({10}, 10);
   m1.insert({20}, 20);
@@ -37,5 +34,3 @@ TEST_F(ModelTest,  dim1) {
   EXPECT_EQ(30, m1.query({25}));
   EXPECT_EQ(50, m1.query({35}));
 }
-
-

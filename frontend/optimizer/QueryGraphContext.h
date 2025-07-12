@@ -240,7 +240,7 @@ class QueryGraphContext {
   int32_t maxId() const {
     return objects_.size() - 1;
   }
-  
+
   /// Allocates 'size' bytes from the arena of 'this'. The allocation lives
   /// until free() is called on it or the arena is destroyed.
   void* allocate(size_t size) {
