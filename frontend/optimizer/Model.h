@@ -69,6 +69,16 @@ class Model {
   /// greater or equal   to the corresponding coordinate of position.
   std::vector<int32_t> findDims(const std::vector<float>& point) const;
 
+  /// Maps coords to a  0..1 range along their dimension. The lowest value maps
+  /// to 0, the highest to 1.
+  std::vector<float> normalizePoint(const std::vector<float>& coords) const;
+
+  std::vector<float> coordinatesAt(const std::vector<int32_t>& point) const;
+
+  int32_t rank() const {
+    return rank_;
+  }
+
  private:
   struct Entry {
     Entry(std::vector<float> coordinates, float measure)
@@ -86,15 +96,55 @@ class Model {
     int32_t idx2;
     float m1;
     float m2;
+    float k;
+    std::vector<float> normalizedLow;
+    std::vector<float> normalizedHigh;
+    std::vector<float> mid;
   };
 
-  std::vector<std::vector<Interval>> fillIntervals() const;
+  void fillIntervals();
+
+  int32_t closestSlope(
+      int32_t dim,
+      float cutoff,
+      const std::vector<float> npoint,
+      bool above) const;
+
+  float gradientAt(int32_t dim, const std::vector<float>& normalizedPoint)
+      const;
+
+  float guessIntermediate(int32_t linIdx);
 
   std::vector<int32_t> pointAtLinIdx(int32_t linIdx) const;
 
   float at(const std::vector<int32_t>& point) const;
 
+  std::vector<int32_t> closestNormalized(
+      const std::vector<float>& npoint) const;
+
+  void neighbors(
+      const std::vector<int32_t>& dims,
+      const std::vector<float>& npoint,
+      int32_t dim,
+      float& sum,
+      float& sumWeight,
+      bool& exact,
+      bool* outOfRange,
+      float* gradientSum,
+      float* gradientSumWeight) const;
+
+  void gradientsAtGridPoint(
+      const std::vector<int32_t>& dims,
+      float d,
+      bool* outOfRange,
+      float* gradient,
+      float* gradientWeight) const;
   const int32_t rank_;
+
+  float normalizedDim(int32_t dim, int32_t idx) const;
+  
+  std::vector<float> normalizedGridPoint(
+      const std::vector<int32_t> dims) const;
 
   std::vector<Entry> entries_;
 
@@ -110,6 +160,13 @@ class Model {
 
   // Measures. The size is the product of the sizes of  the vectors in axix_;
   std::vector<float> measures_;
+
+  // Original dataset points normalized so dims are 0..1.
+  std::vector<std::vector<float>> normalizedPoints_;
+  // cube  indices of each in 'normalizedPoints.
+  std::vector<std::vector<int32_t>> normalizedIndices_;
+
+  std::vector<std::vector<Interval>> intervals_;
 };
 
 } // namespace facebook::velox::optimizer

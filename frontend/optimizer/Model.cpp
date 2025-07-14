@@ -23,6 +23,14 @@
 namespace facebook::velox::optimizer {
 
 namespace {
+
+/// For purposes of the model being within 1/1M of the range of a
+/// dimension is as good as equal. A normalized distance > 1.e-6 is
+/// a match.
+bool nearZero(float f) {
+  return f < 1e-6 && f > -1e-6;
+}
+
 float distance(const std::vector<int32_t>& p1, const std::vector<int32_t>& p2) {
   float sum = 0.0f;
   for (size_t i = 0; i < p1.size(); ++i) {
@@ -30,6 +38,25 @@ float distance(const std::vector<int32_t>& p1, const std::vector<int32_t>& p2) {
   }
   return sqrt(sum);
 }
+
+float distance(const std::vector<float>& p1, const std::vector<float>& p2) {
+  float sum = 0.0f;
+  for (size_t i = 0; i < p1.size(); ++i) {
+    sum += pow(p1[i] - p2[i], 2);
+  }
+  return sqrt(sum);
+}
+
+std::vector<float> midPoint(
+    const std::vector<float>& p1,
+    const std::vector<float>& p2) {
+  auto r = p1;
+  for (auto i = 0; i < p1.size(); ++i) {
+    r[i] = (r[i] + p2[i]) / 2;
+  }
+  return r;
+}
+
 } // namespace
 
 void Model::insert(std::vector<float> dimensions, float measure) {
@@ -64,6 +91,8 @@ void Model::precompute() {
   measures_.resize(numCells, std::nan(""));
   for (auto& e : entries_) {
     auto dims = findDims(e.coordinates);
+    normalizedIndices_.push_back(dims);
+    normalizedPoints_.push_back(normalizePoint(e.coordinates));
     auto linIdx = linearIdx(dims);
     measures_[linIdx] = e.measure;
   }
@@ -71,11 +100,16 @@ void Model::precompute() {
 
   // For each dimension, the set of intervals where the end points differ only
   // along the dimension.
-  std::vector<std::vector<Interval>> intervals(rank_);
+  fillIntervals();
+  for (auto i = 0; i < measures_.size(); ++i) {
+    if (std::isnan(measures_[i])) {
+      measures_[i] = guessIntermediate(i);
+    }
+  }
 }
 
-std::vector<std::vector<Model::Interval>> Model::fillIntervals() const {
-  std::vector<std::vector<Interval>> intervals(rank_);
+void Model::fillIntervals() {
+  intervals_.resize(rank_);
   for (auto i = 0; i < measures_.size(); ++i) {
     if (!std::isnan(measures_[i])) {
       auto point = pointAtLinIdx(i);
@@ -83,20 +117,11 @@ std::vector<std::vector<Model::Interval>> Model::fillIntervals() const {
       for (auto i = 0; i < rank_; ++i) {
         auto cursor = point;
         int32_t startIdx = point[i];
-        for (int32_t idx = startIdx - 1; idx >= 0; --idx) {
-          cursor[i] = idx;
-          float m = at(cursor);
-          if (!std::isnan(m)) {
-            intervals[i].push_back(Interval{
-                .point = cursor, .idx2 = point[i], .m1 = m, .m2 = measure});
-            break;
-          }
-        }
         for (int32_t idx = startIdx + 1; idx < sizes_[i]; ++idx) {
           cursor[i] = idx;
           float m = at(cursor);
           if (!std::isnan(m)) {
-            intervals[i].push_back(
+            intervals_[i].push_back(
                 Interval{.point = point, .idx2 = idx, .m1 = measure, .m2 = m});
             break;
           }
@@ -104,7 +129,96 @@ std::vector<std::vector<Model::Interval>> Model::fillIntervals() const {
       }
     }
   }
-  return intervals;
+  for (auto i = 0; i < rank_; ++i) {
+    for (auto& interval : intervals_[i]) {
+      interval.k = (interval.m2 - interval.m1) /
+          (axis_[i][interval.idx2] - axis_[i][interval.point[i]]);
+      interval.normalizedLow = normalizePoint(coordinatesAt(interval.point));
+      auto highPoint = interval.point;
+      highPoint[i] = interval.idx2;
+      interval.normalizedHigh = normalizePoint(coordinatesAt(highPoint));
+      interval.mid = midPoint(interval.normalizedLow, interval.normalizedHigh);
+    }
+  }
+}
+
+std::vector<int32_t> Model::closestNormalized(
+    const std::vector<float>& npoint) const {
+  int32_t idx = -1;
+  float dist = -1;
+  for (auto i = 0; i < normalizedPoints_.size(); ++i) {
+    auto d = distance(npoint, normalizedPoints_[i]);
+    if (d < dist || idx == -1) {
+      dist = d;
+      idx = i;
+    }
+  }
+  return normalizedIndices_[idx];
+}
+
+float Model::guessIntermediate(int32_t linIdx) {
+  auto indices = pointAtLinIdx(linIdx);
+  auto point = normalizePoint(coordinatesAt(indices));
+  auto closest = closestNormalized(point);
+  float m = at(closest);
+  for (auto i = 0; i < rank_; ++i) {
+    auto k = gradientAt(i, point);
+    auto pos = axis_[i][closest[i]];
+    auto posToFind = axis_[i][indices[i]];
+    m += k * (posToFind - pos);
+  }
+
+  return m;
+}
+
+int32_t Model::closestSlope(
+    int32_t dim,
+    float cutoff,
+    const std::vector<float> npoint,
+    bool above) const {
+  int32_t best = -1;
+  float bestDist = -1;
+  for (auto i = 0; i < intervals_[dim].size(); ++i) {
+    auto& slope = intervals_[dim][i];
+    bool isAbove = cutoff < slope.mid[dim];
+    if (isAbove != above) {
+      continue;
+    }
+    float d = distance(npoint, slope.mid);
+    if (best == -1 || d < bestDist) {
+      best = i;
+      bestDist = d;
+    }
+  }
+  return best;
+}
+
+float Model::gradientAt(int32_t dim, const std::vector<float>& npoint) const {
+  std::unordered_set<int32_t> slopeIdx;
+  for (auto i = 0; i < rank_; ++i) {
+    auto above = closestSlope(i, npoint[i], npoint, true);
+    auto below = closestSlope(i, npoint[i], npoint, false);
+    if (above != -1) {
+      slopeIdx.insert(above);
+    }
+    if (below != -1) {
+      slopeIdx.insert(below);
+    }
+  }
+
+  float sumWeight = 0;
+  float sum = 0;
+  for (auto idx : slopeIdx) {
+    auto& slope = intervals_[dim][idx];
+    auto d = distance(slope.mid, npoint);
+    if (nearZero(d)) {
+      return slope.k;
+    }
+    float w = 1.0 / d;
+    sum += slope.k * w;
+    sumWeight += w;
+  }
+  return sum / sumWeight;
 }
 
 int32_t Model::linearIdx(const std::vector<int32_t>& indices) const {
@@ -118,6 +232,24 @@ int32_t Model::linearIdx(const std::vector<int32_t>& indices) const {
 
 float Model::at(const std::vector<int32_t>& point) const {
   return measures_[linearIdx(point)];
+}
+
+std::vector<float> Model::normalizePoint(
+    const std::vector<float>& point) const {
+  std::vector<float> result(point.size());
+  for (auto i = 0; i < point.size(); ++i) {
+    result[i] = (point[i] - axis_[i][0]) / (axis_[i].back() - axis_[i][0]);
+  }
+  return result;
+}
+
+std::vector<float> Model::coordinatesAt(
+    const std::vector<int32_t>& point) const {
+  std::vector<float> result(point.size());
+  for (auto i = 0; i < point.size(); ++i) {
+    result[i] = axis_[i][point[i]];
+  }
+  return result;
 }
 
 std::vector<int32_t> Model::pointAtLinIdx(int32_t linIdx) const {
@@ -139,49 +271,128 @@ std::vector<int32_t> Model::findDims(const std::vector<float>& point) const {
   return result;
 }
 
-std::vector<Model::DimSample> Model::slopes(
-    const std::vector<int32_t>& point,
-    const std::vector<float>& coords) const {
-  int32_t pointIdx = linearIdx(point);
-  float measureAtPoint = measures_[pointIdx];
-  std::vector<DimSample> result;
+std::vector<float> Model::normalizedGridPoint(
+    const std::vector<int32_t> dims) const {
+  std::vector<float> result(rank_);
   for (auto i = 0; i < rank_; ++i) {
-    DimSample sample;
-    float coord = coords[i];
-    int32_t idx = point[i];
-    if (idx == sizes_[i] - 1) {
-      --idx;
-      pointIdx -= stride_[i];
-    } else if (coords[i] < axis_[i][idx] && idx > 0) {
-      --idx;
-      pointIdx -= stride_[i];
-    }
-    sample.idx1 = idx;
-    sample.idx2 = idx + 1;
-    float mhigh = measures_[pointIdx + stride_[i]];
-    float mlow = measures_[pointIdx];
-    float k = (mhigh - mlow) / (axis_[i][idx + 1] - axis_[i][idx]);
-    sample.projected = (measures_[pointIdx] + (coord - mlow) * k);
-    sample.multiplier = sample.projected / measureAtPoint;
-    result.push_back(sample);
+    result[i] =
+        (axis_[i][dims[i]] - axis_[i][0]) / (axis_[i].back() - axis_[i][0]);
   }
   return result;
 }
 
-float Model::query(const std::vector<float>& coords) const {
-  auto point = findDims(coords);
-  auto samples = slopes(point, coords);
-  float sum = 0;
+  float Model::normalizedDim(int32_t dim, int32_t idx) const {
+    return (axis_[dim][idx] - axis_[dim][0]) / (axis_[0].back() - axis_[dim][0]);
+  }
+  
+void Model::gradientsAtGridPoint(
+    const std::vector<int32_t>& dims,
+    float d,
+    bool* outOfRange,
+    float* gradient,
+    float* gradientWeight) const {
   for (auto i = 0; i < rank_; ++i) {
-    auto& slope = samples[i];
-    float k = (slope.measure2 - slope.measure1) / (slope.coord2 - slope.coord1);
-    if (i == 0) {
-      sum = slope.projected;
-    } else {
-      sum *= slope.multiplier;
+    if (outOfRange[i]) {
+      auto linIdx = linearIdx(dims);
+      float k = (measures_[linIdx] - measures_[linIdx - stride_[i]]) /
+          (normalizedDim(i, dims[i]) - normalizedDim(i, dims[i] - 1));
+      if (nearZero(d)) {
+        gradient[i] = k;
+      } else {
+        gradient[i] += k * (1.0 / d);
+        gradientWeight[i] += 1.0 / d;
+      }
     }
   }
-  return sum;
+}
+
+void Model::neighbors(
+    const std::vector<int32_t>& dims,
+    const std::vector<float>& npoint,
+    int32_t dim,
+    float& sum,
+    float& sumWeight,
+    bool& exact,
+    bool* outOfRange,
+    float* gradient,
+    float* gradientWeight) const {
+  if (dim == rank_) {
+    auto normalizedCorner = normalizedGridPoint(dims);
+    float d = 0;
+    d = distance(npoint, normalizedCorner);
+    float measure = at(dims);
+    if (nearZero(d)) {
+      exact = true;
+      sum = measure;
+      gradientsAtGridPoint(dims, 0, outOfRange, gradient, gradientWeight);
+      return;
+    }
+    sum += measure * (1.0 / d);
+    sumWeight += 1.0 / d;
+    gradientsAtGridPoint(dims, d, outOfRange, gradient, gradientWeight);
+
+    return;
+  }
+  neighbors(
+      dims,
+      npoint,
+      dim + 1,
+      sum,
+      sumWeight,
+      exact,
+      outOfRange,
+      gradient,
+      gradientWeight);
+  if (exact) {
+    return;
+  }
+  auto corner = dims;
+  if (dims[dim] == 0) {
+    return;
+  }
+  corner = dims;
+  --corner[dim];
+  neighbors(
+      corner,
+      npoint,
+      dim + 1,
+      sum,
+      sumWeight,
+      exact,
+      outOfRange,
+      gradient,
+      gradientWeight);
+}
+
+float Model::query(const std::vector<float>& coords) const {
+  auto dims = findDims(coords);
+  auto npoint = normalizePoint(coords);
+  // Point where out of range dims are cropped to the boundary.
+  auto innerPoint = npoint;
+  constexpr int32_t kMaxRank = 12;
+  bool outOfRange[kMaxRank] = {};
+  float gradient[kMaxRank] = {};
+  float gradientWeight[kMaxRank] = {};
+  float sum = 0;
+  float sumWeight = 0;
+  for (auto i = 0; i < rank_; ++i) {
+    VELOX_CHECK_GE(
+		   coords[i], axis_[i][0], "Points below samples range not allowed");
+    if (coords[i] > axis_[i].back()) {
+      outOfRange[i] = true;
+      innerPoint[i] = 1;
+    }
+  }
+  bool exact = false;
+  neighbors(
+	    dims, innerPoint, 0, sum, sumWeight, exact, outOfRange, gradient, gradientWeight);
+  for (auto dim = 0; dim < rank_; ++dim) {
+    if (outOfRange[dim]) {
+      float k = exact ? gradient[dim] : gradient[dim] / gradientWeight[dim];
+      sum += k * (npoint[dim] - 1);
+    }
+  }
+  return exact ? sum : sum / sumWeight;
 }
 
 } // namespace facebook::velox::optimizer
