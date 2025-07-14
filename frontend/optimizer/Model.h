@@ -142,9 +142,8 @@ class Model {
   const int32_t rank_;
 
   float normalizedDim(int32_t dim, int32_t idx) const;
-  
-  std::vector<float> normalizedGridPoint(
-      const std::vector<int32_t> dims) const;
+
+  std::vector<float> normalizedGridPoint(const std::vector<int32_t> dims) const;
 
   std::vector<Entry> entries_;
 

@@ -24,8 +24,7 @@ using namespace facebook::velox;
 using namespace facebook::velox::optimizer;
 
 class ModelTest : public testing::Test {
-protected:
-
+ protected:
   static float qs(Model* m, const char* chars) {
     std::vector<float> point;
     std::string str(chars);
@@ -35,12 +34,12 @@ protected:
       point.push_back(f);
     }
     if (point.size() != m->rank()) {
-      std::cout << "Expect " << m->rank() <<  " dims.\n";
+      std::cout << "Expect " << m->rank() << " dims.\n";
       return -1;
     }
     f = m->query(point);
     std::cout << f << " at {";
-    for (auto c : point ) {
+    for (auto c : point) {
       std::cout << c << " ";
     }
     std::cout << "}\n";
@@ -94,10 +93,9 @@ TEST_F(ModelTest, dim3) {
   for (auto i = 0; i < 4; ++i) {
     for (auto j = 0; j < 4; ++j) {
       for (auto k = 0; k < 4; ++k) {
-	m.insert({i, j, k}, (i + 1) + (j + 1) * 2 + (k + 1) * 3);
+        m.insert({i, j, k}, (i + 1) + (j + 1) * 2 + (k + 1) * 3);
       }
     }
   }
   m.precompute();
-      
 }

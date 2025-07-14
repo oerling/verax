@@ -281,10 +281,10 @@ std::vector<float> Model::normalizedGridPoint(
   return result;
 }
 
-  float Model::normalizedDim(int32_t dim, int32_t idx) const {
-    return (axis_[dim][idx] - axis_[dim][0]) / (axis_[0].back() - axis_[dim][0]);
-  }
-  
+float Model::normalizedDim(int32_t dim, int32_t idx) const {
+  return (axis_[dim][idx] - axis_[dim][0]) / (axis_[0].back() - axis_[dim][0]);
+}
+
 void Model::gradientsAtGridPoint(
     const std::vector<int32_t>& dims,
     float d,
@@ -377,7 +377,7 @@ float Model::query(const std::vector<float>& coords) const {
   float sumWeight = 0;
   for (auto i = 0; i < rank_; ++i) {
     VELOX_CHECK_GE(
-		   coords[i], axis_[i][0], "Points below samples range not allowed");
+        coords[i], axis_[i][0], "Points below samples range not allowed");
     if (coords[i] > axis_[i].back()) {
       outOfRange[i] = true;
       innerPoint[i] = 1;
@@ -385,7 +385,15 @@ float Model::query(const std::vector<float>& coords) const {
   }
   bool exact = false;
   neighbors(
-	    dims, innerPoint, 0, sum, sumWeight, exact, outOfRange, gradient, gradientWeight);
+      dims,
+      innerPoint,
+      0,
+      sum,
+      sumWeight,
+      exact,
+      outOfRange,
+      gradient,
+      gradientWeight);
   for (auto dim = 0; dim < rank_; ++dim) {
     if (outOfRange[dim]) {
       float k = exact ? gradient[dim] : gradient[dim] / gradientWeight[dim];
