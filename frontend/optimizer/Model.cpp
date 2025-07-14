@@ -167,7 +167,8 @@ float Model::guessIntermediate(int32_t linIdx) {
     auto posToFind = axis_[i][indices[i]];
     m += k * (posToFind - pos);
   }
-
+  normalizedPoints_.push_back(point);
+  normalizedIndices_.push_back(indices);
   return m;
 }
 
@@ -330,7 +331,6 @@ void Model::neighbors(
     sum += measure * (1.0 / d);
     sumWeight += 1.0 / d;
     gradientsAtGridPoint(dims, d, outOfRange, gradient, gradientWeight);
-
     return;
   }
   neighbors(
@@ -343,13 +343,15 @@ void Model::neighbors(
       outOfRange,
       gradient,
       gradientWeight);
-  if (exact) {
+
+  // Return if exact match found or if there is no lower value of 'dim' or if coordinate of dim is outside of cube.
+  if (exact || dims[dim] == 0 || outOfRange[dim]) {
     return;
   }
+
+
+  // See the cell below the coordinate on the axis of dim.
   auto corner = dims;
-  if (dims[dim] == 0) {
-    return;
-  }
   corner = dims;
   --corner[dim];
   neighbors(
@@ -394,13 +396,17 @@ float Model::query(const std::vector<float>& coords) const {
       outOfRange,
       gradient,
       gradientWeight);
+  if (!exact) {
+    sum /= sumWeight;
+  }
+  // for the dims with coordinate outside of the cube, follow the gradient.
   for (auto dim = 0; dim < rank_; ++dim) {
     if (outOfRange[dim]) {
       float k = exact ? gradient[dim] : gradient[dim] / gradientWeight[dim];
       sum += k * (npoint[dim] - 1);
     }
   }
-  return exact ? sum : sum / sumWeight;
+  return sum;
 }
 
 } // namespace facebook::velox::optimizer
