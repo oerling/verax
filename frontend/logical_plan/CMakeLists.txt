@@ -23,6 +23,12 @@ velox_link_libraries(
   velox_fe_logical_plan_builder
   velox_fe_logical_plan
   velox_connector_metadata
-  velox_exec)
+  velox_exec
+  velox_function_registry
+  velox_functions_prestosql
+  velox_aggregates
+  velox_parse_expression
+  velox_parse_parser
+  velox_parse_utils)
 
 add_subdirectory(tests)

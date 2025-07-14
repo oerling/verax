@@ -16,7 +16,7 @@
 #pragma once
 
 #include "velox/common/Enums.h"
-#include "velox/frontend/logical_plan/Expr.h"
+#include "logical_plan/Expr.h" //@manual
 #include "velox/type/Variant.h"
 
 namespace facebook::velox::logical_plan {

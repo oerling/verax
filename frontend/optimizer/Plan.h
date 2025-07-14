@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include "logical_plan/LogicalPlanNode.h"
 #include "optimizer/Cost.h" //@manual
 #include "optimizer/RelationOp.h" //@manual
 #include "velox/connectors/Connector.h"
