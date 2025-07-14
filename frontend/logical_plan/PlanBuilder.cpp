@@ -15,10 +15,10 @@
  */
 
 #include "logical_plan/PlanBuilder.h" //@manual
+#include "optimizer/connectors/ConnectorMetadata.h" //@manual
 #include "velox/connectors/Connector.h"
 #include "velox/exec/Aggregate.h"
 #include "velox/exec/AggregateFunctionRegistry.h"
-#include "optimizer/connectors/ConnectorMetadata.h" //@manual
 #include "velox/functions/FunctionRegistry.h"
 #include "velox/parse/Expressions.h"
 
@@ -501,7 +501,7 @@ PlanBuilder& PlanBuilder::sort(const std::vector<std::string>& sortingKeys) {
     auto expr = resolveScalarTypes(orderBy.expr);
 
     sortingFields.push_back(
-			    SortingField{expr, SortOrder(orderBy.ascending, orderBy.nullsFirst)});
+        SortingField{expr, SortOrder(orderBy.ascending, orderBy.nullsFirst)});
   }
 
   node_ = std::make_shared<SortNode>(nextId(), node_, sortingFields);
@@ -680,7 +680,7 @@ void NameMappings::setAlias(const std::string& alias) {
   }
 }
 
-  void NameMappings::merge(const NameMappings& other) {
+void NameMappings::merge(const NameMappings& other) {
   for (const auto& [name, id] : other.mappings_) {
     if (mappings_.count(name) != 0) {
       VELOX_CHECK(!name.alias.has_value());

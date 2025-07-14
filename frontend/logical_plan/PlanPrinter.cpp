@@ -15,7 +15,7 @@
  */
 
 #include "logical_plan/PlanPrinter.h" //@manual
-#include "logical_plan/ExprPrinter.h"  //@manual
+#include "logical_plan/ExprPrinter.h" //@manual
 
 namespace facebook::velox::logical_plan {
 
