@@ -344,11 +344,11 @@ void Model::neighbors(
       gradient,
       gradientWeight);
 
-  // Return if exact match found or if there is no lower value of 'dim' or if coordinate of dim is outside of cube.
+  // Return if exact match found or if there is no lower value of 'dim' or if
+  // coordinate of dim is outside of cube.
   if (exact || dims[dim] == 0 || outOfRange[dim]) {
     return;
   }
-
 
   // See the cell below the coordinate on the axis of dim.
   auto corner = dims;

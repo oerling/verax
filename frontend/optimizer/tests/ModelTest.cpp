@@ -54,7 +54,7 @@ class ModelTest : public testing::Test {
       float margin,
       const std::vector<float>& point) {
     EXPECT_TRUE(closeEnough(expected, estimate, margin))
-      << "Expect " << expected << " got " << estimate << " at "
+        << "Expect " << expected << " got " << estimate << " at "
         << pointString(point);
   }
 
@@ -92,7 +92,11 @@ class ModelTest : public testing::Test {
         break;
       }
       std::cout << fmt::format(
-			       "{} {} {}: {}\n", copy[i].error, copy[i].estimate, copy[i].expected, pointString(copy[i].point));
+          "{} {} {}: {}\n",
+          copy[i].error,
+          copy[i].estimate,
+          copy[i].expected,
+          pointString(copy[i].point));
     }
   }
 
