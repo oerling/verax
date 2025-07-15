@@ -85,6 +85,19 @@ class QueryTestBase : public exec::test::LocalRunnerTestBase {
       std::string* planString = nullptr,
       std::string* errorString = nullptr);
 
+  optimizer::PlanAndStats planVelox(
+      const logical_plan::PlanNodePtr& plan,
+      std::string* planString = nullptr,
+      std::string* errorString = nullptr);
+
+
+  template <typename PlanPtr>
+  optimizer::PlanAndStats planVelox(
+				    const PlanPtr& plan,
+      std::string* planString,
+      std::string* errorString);
+
+  
   std::string veloxString(const std::string& sql);
 
   std::string veloxString(const runner::MultiFragmentPlanPtr& plan);

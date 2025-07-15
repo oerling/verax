@@ -17,7 +17,7 @@
 #pragma once
 
 #include "optimizer/Schema.h" //@manual
-
+#include "logical_plan/LogicalPlanNode.h" //@manual
 #include "velox/core/PlanNode.h"
 
 /// Defines subclasses of PlanObject for describing the logical
@@ -358,6 +358,12 @@ struct FunctionMetadata {
       const core::CallTypedExpr* call,
       std::vector<PathCP>& paths)>
       explode;
+
+  std::function<std::unordered_map<PathCP, logical_plan::ExprPtr>(
+      const logical_plan::CallExpr* call,
+      std::vector<PathCP>& paths)>
+      logicalExplode;
+
 };
 
 const FunctionMetadata* functionMetadata(Name name);

@@ -78,14 +78,41 @@ Optimization::Optimization(
     runner::MultiFragmentPlan::Options options)
     : schema_(schema),
       opts_(std::move(opts)),
-      inputPlan_(plan),
+      inputPlan_(&plan),
       history_(history),
       queryCtx_(std::move(_queryCtx)),
       evaluator_(evaluator),
       options_(options),
       isSingle_(options_.numWorkers == 1) {
+  initialize();
+}
+
+Optimization::Optimization(
+			   const logical_plan::PlanNode& plan,
+    const Schema& schema,
+    History& history,
+    std::shared_ptr<core::QueryCtx> _queryCtx,
+    velox::core::ExpressionEvaluator& evaluator,
+    OptimizerOptions opts,
+    runner::MultiFragmentPlan::Options options)
+    : schema_(schema),
+      opts_(std::move(opts)),
+      logicalPlan_(&plan),
+      history_(history),
+      queryCtx_(std::move(_queryCtx)),
+      evaluator_(evaluator),
+      options_(options),
+      isSingle_(options_.numWorkers == 1) {
+  initialize();
+}
+
+  void Optimization::initialize() {
   queryCtx()->optimization() = this;
-  root_ = makeQueryGraph();
+  if (inputPlan_) {
+    root_ = makeQueryGraph();
+  } else {
+    root_ = makeQueryGraphFromLogical();
+  }
   root_->distributeConjuncts();
   root_->addImpliedJoins();
   root_->linkTablesToJoins();
@@ -95,6 +122,7 @@ Optimization::Optimization(
   setDerivedTableOutput(root_, inputPlan_);
 }
 
+  
 void Optimization::trace(
     int32_t event,
     int32_t id,

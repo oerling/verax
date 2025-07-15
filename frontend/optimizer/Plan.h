@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include "logical_plan/LogicalPlanNode.h //@manual
 #include "optimizer/Cost.h" //@manual
 #include "optimizer/RelationOp.h" //@manual
 #include "velox/connectors/Connector.h"
@@ -117,6 +118,23 @@ struct PlanSubfields {
   std::string toString() const;
 };
 
+/// PlanNode output columns and function arguments with accessed subfields.
+struct LogicalPlanSubfields {
+  std::unordered_map<const logical_plan::PlanNode*, ResultAccess> nodeFields;
+  std::unordered_map<const logical_plan::Expr*, ResultAccess> argFields;
+
+  bool hasColumn(logical_plan::PlanNode* node, int32_t ordinal) const {
+    auto it = nodeFields.find(node);
+    if (it == nodeFields.end()) {
+      return false;
+    }
+    return it->second.resultPaths.count(ordinal) != 0;
+  }
+
+  std::string toString() const;
+};
+
+  
 /// Struct for resolving which PlanNode or Lambda defines which
 /// FieldAccessTypedExpr for column and subfield tracking.
 struct ContextSource {
@@ -125,6 +143,15 @@ struct ContextSource {
   int32_t lambdaOrdinal{-1};
 };
 
+/// Struct for resolving which logical PlanNode or Lambda defines which
+/// field for column and subfield tracking.
+struct LogicalContextSource {
+  const logical_plan::PlanNode* planNode;
+  const logical_plan::CallExpr* call;
+  int32_t lambdaOrdinal{-1};
+};
+
+  
 /// Utility for making a getter from a Step.
 core::TypedExprPtr stepToGetter(Step, core::TypedExprPtr arg);
 /// Lists the subfield paths physically produced by a source. The
@@ -523,6 +550,17 @@ class Optimization {
       runner::MultiFragmentPlan::Options options =
           runner::MultiFragmentPlan::Options{.numWorkers = 5, .numDrivers = 5});
 
+  Optimization(
+	       const logical_plan::PlanNode& plan,
+      const Schema& schema,
+      History& history,
+      std::shared_ptr<core::QueryCtx> queryCtx,
+      velox::core::ExpressionEvaluator& evaluator,
+      OptimizerOptions opts = OptimizerOptions(),
+      runner::MultiFragmentPlan::Options options =
+          runner::MultiFragmentPlan::Options{.numWorkers = 5, .numDrivers = 5});
+
+  
   /// Returns the optimized RelationOp plan for 'plan' given at construction.
   PlanPtr bestPlan();
 
@@ -688,10 +726,15 @@ class Optimization {
     return mask & ~(1UL << static_cast<int32_t>(op));
   }
 
+  void initialize();
+  
   // Initializes a tree of DerivedTables with JoinEdges from 'plan' given at
   // construction. Sets 'root_' to the root DerivedTable.
   DerivedTableP makeQueryGraph();
 
+    DerivedTableP makeQueryGraphFromLogical();
+
+  
   // Converts 'plan' to PlanObjects and records join edges into
   // 'currentSelect_'. If 'node' does not match  allowedInDt, wraps 'node' in a
   // new DerivedTable.
@@ -756,6 +799,14 @@ class Optimization {
       const std::vector<const RowType*>& context,
       const std::vector<ContextSource>& sources);
 
+  void markFieldAccessed(
+    const LogicalContextSource& source,
+    int32_t ordinal,
+    std::vector<Step>& steps,
+    bool isControl,
+    const std::vector<const RowType*>& context,
+    const std::vector<LogicalContextSource>& sources);
+  
   void markSubfields(
       const core::ITypedExpr* expr,
       std::vector<Step>& steps,
@@ -763,13 +814,31 @@ class Optimization {
       const std::vector<const RowType*> context,
       const std::vector<ContextSource>& sources);
 
-  void markAllSubfields(const RowType* type, const core::PlanNode* node);
+    void markSubfields(
+      const logical_plan::Expr* expr,
+      std::vector<Step>& steps,
+      bool isControl,
+      const std::vector<const RowType*> context,
+      const std::vector<LogicalContextSource>& sources);
 
+  void markAllSubfields(const RowType* type, const core::PlanNode* node);
+void markAllSubfields(
+    const RowType* type,
+    const lp::PlanNode* node);
+  
   void markControl(const core::PlanNode* node);
+
+  void markControl(const logical_plan::::PlanNode* node);
 
   void markColumnSubfields(
       const core::PlanNode* node,
       const std::vector<core::FieldAccessTypedExprPtr>& columns,
+      int32_t source);
+
+
+  void markColumnSubfields(
+      const logical_plan::PlanNode* node,
+      const std::vector<logical_plan::Expr>& columns,
       int32_t source);
 
   bool isSubfield(
@@ -1054,8 +1123,11 @@ class Optimization {
 
   OptimizerOptions opts_;
 
+  logical_plan::PlanNode* logicalPlan_{nullptr};
+
+  
   // Top level plan to optimize.
-  const velox::core::PlanNode& inputPlan_;
+  const velox::core::PlanNode* inputPlan_{nullptr};
 
   // Source of historical cost/cardinality information.
   History& history_;
@@ -1111,6 +1183,13 @@ class Optimization {
 
   // Column and subfield info for items that only affect column values.
   PlanSubfields payloadSubfields_;
+  
+  // Column and subfield access info for filters, joins, grouping and other
+  // things affecting result row selection.
+  LogicalPlanSubfields logicalControlSubfields_;
+
+  // Column and subfield info for items that only affect column values.
+  LogicalPlanSubfields logicalPayloadSubfields_;
 
   /// Expressions corresponding to skyline paths over a subfield decomposable
   /// function.
@@ -1237,4 +1316,6 @@ RowTypePtr skylineStruct(BaseTableCP baseTable, ColumnCP column);
 /// Returns  the inverse join type, e.g. right outer from left outr.
 core::JoinType reverseJoinType(core::JoinType joinType);
 
+  PathCP stepsToPath(const std::vector<Step>& steps);
+  
 } // namespace facebook::velox::optimizer

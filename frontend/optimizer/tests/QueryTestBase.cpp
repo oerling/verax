@@ -234,8 +234,9 @@ optimizer::PlanAndStats QueryTestBase::planSql(
   return planVelox(plan, planString, errorString);
 }
 
-optimizer::PlanAndStats QueryTestBase::planVelox(
-    const core::PlanNodePtr& plan,
+  template <typename PlanPtr>
+optimizer::PlanAndStats QueryTestBase::plan(
+    const PlanPtr& plan,
     std::string* planString,
     std::string* errorString) {
   ++queryCounter_;
@@ -293,6 +294,23 @@ optimizer::PlanAndStats QueryTestBase::planVelox(
   facebook::velox::optimizer::queryCtx() = nullptr;
   return planAndStats;
 }
+
+    optimizer::PlanAndStats planVelox(
+      const core::PlanNodePtr& plan,
+      std::string* planString,
+      std::string* errorString); {
+      return plan(plan, planString, errorString);
+    }
+  
+    optimizer::PlanAndStats planVelox(
+      const logical_plan::PlanNodePtr& plan,
+      std::string* planString,
+      std::string* errorString); {
+      return plan(plan, planString, errorString);
+    }
+  
+
+  
 TestResult QueryTestBase::runVelox(const core::PlanNodePtr& plan) {
   TestResult result;
   auto fragmentedPlan =

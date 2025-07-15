@@ -26,13 +26,12 @@ namespace facebook::velox::optimizer {
 
 using namespace facebook::velox;
 
-std::string veloxToString(const core::PlanNode* plan) {
-  return plan->toString(true, true);
-}
+  using namespace lp = facebook::velox::logical_plan;
+  
 
 void Optimization::setDerivedTableOutput(
     DerivedTableP dt,
-    const velox::core::PlanNode& planNode) {
+    const velox::logical_plan::PlanNode& planNode) {
   auto& outputType = planNode.outputType();
   for (auto i = 0; i < outputType->size(); ++i) {
     auto fieldType = outputType->childAt(i);
@@ -47,7 +46,8 @@ void Optimization::setDerivedTableOutput(
 }
 
 DerivedTableP Optimization::makeQueryGraph() {
-  markAllSubfields(inputPlan_.outputType().get(), &inputPlan_);
+
+  markAllSubfields(logicalPlan_->outputType().get(), logicalPlan_);
   auto* root = make<DerivedTable>();
   root_ = root;
   currentSelect_ = root_;
@@ -56,13 +56,9 @@ DerivedTableP Optimization::makeQueryGraph() {
   return root_;
 }
 
-const std::string* columnName(const core::TypedExprPtr& expr) {
-  if (auto column =
-          dynamic_cast<const core::FieldAccessTypedExpr*>(expr.get())) {
-    if (column->inputs().empty() ||
-        dynamic_cast<const core::InputTypedExpr*>(column->inputs()[0].get())) {
-      return &column->name();
-    }
+const std::string* columnName(const lp::Expr& expr) {
+  if (expr->isInputReference()) {
+    return &expr->asUnchecked<lp::InputReferenceExpr>()->name();
   }
   return nullptr;
 }
