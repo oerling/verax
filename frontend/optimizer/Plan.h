@@ -15,7 +15,7 @@
  */
 #pragma once
 
-#include "logical_plan/LogicalPlanNode.h //@manual
+#include "logical_plan/LogicalPlanNode.h" //@manual
 #include "optimizer/Cost.h" //@manual
 #include "optimizer/RelationOp.h" //@manual
 #include "velox/connectors/Connector.h"
@@ -26,6 +26,10 @@
 /// Planning-time data structures. Represent the state of the planning process
 /// plus utilities.
 namespace facebook::velox::optimizer {
+
+  inline   bool isSpecialForm(const logical_plan::Expr* expr,, logical_plan::SpecialForm form) {
+    return expr->isSpecialForm() && expr->asUnchecked<lp::SpecialForm>()->form() == form;
+  }
 
 /// Represents a path over an Expr of complex type. Used as a key
 /// for a map from unique step+optionl subscript expr pairs to the

@@ -764,14 +764,6 @@ std::optional<ExprCP> Optimization::translateSubfieldFunction(
   return callExpr;
 }
 
-ExprCP Optimization::translateColumn(const std::string& name) {
-  auto column = renames_.find(name);
-  if (column != renames_.end()) {
-    return column->second;
-  }
-  VELOX_FAIL("could not resolve name {}", name);
-}
-
 ExprVector Optimization::translateColumns(
     const std::vector<core::FieldAccessTypedExprPtr>& source) {
   ExprVector result{source.size()};
@@ -1137,28 +1129,6 @@ const Type* pathType(const Type* type, PathCP path) {
     }
   }
   return type;
-}
-
-void Optimization::makeSubfieldColumns(
-    BaseTable* baseTable,
-    ColumnCP column,
-    const BitSet& paths) {
-  SubfieldProjections projections;
-  auto* ctx = queryCtx();
-  float card =
-      baseTable->schemaTable->columnGroups[0]->distribution().cardinality *
-      baseTable->filterSelectivity;
-  paths.forEach([&](auto id) {
-    auto* path = ctx->pathById(id);
-    auto type = pathType(column->value().type, path);
-    Value value(type, card);
-    auto name = fmt::format("{}.{}", column->name(), path->toString());
-    auto* subcolumn =
-        make<Column>(toName(name), baseTable, value, column, path);
-    baseTable->columns.push_back(subcolumn);
-    projections.pathToExpr[path] = subcolumn;
-  });
-  allColumnSubfields_[column] = std::move(projections);
 }
 
 void Optimization::addProjection(const core::ProjectNode* project) {

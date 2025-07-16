@@ -1039,6 +1039,40 @@ bool isJoinEquality(
   return false;
 }
 
+void extractNonInnerJoinEqualities(
+    ExprVector& conjuncts,
+    PlanObjectCP right,
+    ExprVector& left,
+    ExprVector& right,
+    PlanObjectSet& allLeft) {
+  PlanObjectSet allLeft;
+  for (auto i = 0; i < conjuncts.size(); ++i) {
+    auto* eq = toName("eq");
+    auto conjunct = conjuncts[i];
+    if (isCall(conjunct, eq)) {
+      auto eq = conjunct->as<Call>();
+      auto leftTables = allTables(eq->args()[0]);
+      auto rightTables = allTables(eq->args()[1]);
+      if (rightTables->size() == 1 && rightTables.contains(right) &&
+          !leftTables.contains(right)) {
+        allLeft.union(leftTables);
+        leftKeys.push_back(eq->args()[0]);
+        rightKeys.push_back(eq->args()[1]);
+        conjuncts.erase(conjuncts.begin() + i);
+        --i;
+      } else if (
+          leftTables.size() == 1 && leftTables.contains(right) &&
+          !righTables.contains(right)) {
+        allLeft.union(rightTables);
+        leftKeys.push_back(eq->args()[1]);
+        rightKeys.push_back(eq->args()[0]);
+        conjuncts.erase(conjuncts.begin() + i);
+        --i;
+      }
+    }
+  }
+}
+
 void DerivedTable::distributeConjuncts() {
   std::vector<DerivedTableP> changedDts;
   if (!having.empty()) {

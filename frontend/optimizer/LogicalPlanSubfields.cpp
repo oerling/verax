@@ -27,10 +27,6 @@ using namespace facebook::velox;
   using namespace lp = facebook::velox::logical_plan;
   
 namespace {
-  bool isSpecialForm(const Expr* expr,, lp::SpecialForm form) {
-    return expr->isSpecialForm() && expr->asUnchecked<lp::SpecialForm>()->form() == form;
-  }
-
   template <typename T>
 int64_t integerValueInner(const variant* variant) {
   return variant->value<T>();
