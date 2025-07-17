@@ -1152,7 +1152,7 @@ PlanObjectP Optimization::makeQueryGraph(
     }
     makeQueryGraph(*node.inputAt(0), makeDtIf(allowedInDt, PlanType::kOrderBy));
     currentSelect_->orderBy =
-      translateOrderBy(*reinterpret_cast<const lp::SortNode*>(&node));
+        translateOrderBy(*reinterpret_cast<const lp::SortNode*>(&node));
     return currentSelect_;
   }
   if (kind == lp::NodeKind::kLimit) {

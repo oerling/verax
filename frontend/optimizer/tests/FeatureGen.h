@@ -80,5 +80,4 @@ void makeLogicalExprs(
     std::vector<std::string>& names,
     std::vector<logical_plan::ExprPtr>& exprs);
 
- 
 } // namespace facebook::velox::optimizer::test

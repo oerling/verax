@@ -421,7 +421,7 @@ TEST_P(LogicalSubfieldTest, maps) {
   // We expect the genie to explode and the filters to be first.
   {
     auto builder =
-      lp::PlanBuilder()
+        lp::PlanBuilder()
             .tableScan(kHiveConnectorId, "features", fields)
             .project(
                 {"exploding_genie(uid, float_features, id_list_features, id_score_list_features) as g"})
@@ -439,8 +439,8 @@ TEST_P(LogicalSubfieldTest, maps) {
   }
   {
     auto builder =
-      lp::PlanBuilder()
-        .tableScan(kHiveConnectorId, "features", fields)
+        lp::PlanBuilder()
+            .tableScan(kHiveConnectorId, "features", fields)
             .project(
                 {"transform(id_list_features[201800::INTEGER], x -> x + 1) as ids"});
 

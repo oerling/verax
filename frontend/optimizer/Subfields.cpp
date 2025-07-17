@@ -456,7 +456,6 @@ core::TypedExprPtr stepToGetter(Step step, core::TypedExprPtr arg) {
       VELOX_NYI();
   }
 }
-  
 
 std::string PlanSubfields::toString() const {
   std::stringstream out;

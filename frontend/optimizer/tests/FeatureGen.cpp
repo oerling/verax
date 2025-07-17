@@ -18,8 +18,8 @@
 #include "velox/vector/tests/utils/VectorMaker.h"
 
 namespace facebook::velox::optimizer::test {
-  namespace lp = facebook::velox::logical_plan;
-  
+namespace lp = facebook::velox::logical_plan;
+
 RowTypePtr makeRowType(
     const std::vector<RowVectorPtr>& vectors,
     int32_t column) {
@@ -260,7 +260,7 @@ lp::ExprPtr floatFeatures() {
   return std::make_shared<lp::InputReferenceExpr>(
       MAP(INTEGER(), REAL()), "float_features");
 }
-  
+
 lp::ExprPtr intLiteral(int32_t i) {
   return std::make_shared<lp::ConstantExpr>(INTEGER(), variant(i));
 }
@@ -273,7 +273,7 @@ lp::ExprPtr rand() {
   lp::ExprPtr r = std::make_shared<lp::CallExpr>(
       INTEGER(), "rand", std::vector<lp::ExprPtr>{intLiteral(5)});
   return std::make_shared<lp::SpecialFormExpr>(
-					       REAL(), lp::SpecialForm::kCast, std::vector<lp::ExprPtr>{r});
+      REAL(), lp::SpecialForm::kCast, std::vector<lp::ExprPtr>{r});
 }
 
 lp::ExprPtr plus(lp::ExprPtr x, lp::ExprPtr y) {
@@ -302,7 +302,7 @@ lp::ExprPtr uid() {
 lp::ExprPtr bigintMod(lp::ExprPtr x, int64_t y) {
   lp::ExprPtr lit = std::make_shared<lp::ConstantExpr>(BIGINT(), variant(y));
   return std::make_shared<lp::CallExpr>(
-					BIGINT(), "mod", std::vector<lp::ExprPtr>{x, lit});
+      BIGINT(), "mod", std::vector<lp::ExprPtr>{x, lit});
 }
 
 lp::ExprPtr bigintEq(lp::ExprPtr x, int64_t y) {
@@ -314,7 +314,9 @@ lp::ExprPtr bigintEq(lp::ExprPtr x, int64_t y) {
 lp::ExprPtr uidCond(lp::ExprPtr f) {
   auto cond = bigintEq(bigintMod(uid(), 10), 0);
   return std::make_shared<lp::SpecialFormExpr>(
-					REAL(), lp::SpecialForm::kIf, std::vector<lp::ExprPtr>{cond, f, plusOne(f)});
+      REAL(),
+      lp::SpecialForm::kIf,
+      std::vector<lp::ExprPtr>{cond, f, plusOne(f)});
 }
 
 lp::ExprPtr makeFloatExpr(const FeatureOptions& opts) {
@@ -359,5 +361,4 @@ void makeLogicalExprs(
   }
 }
 
-  
 } // namespace facebook::velox::optimizer::test

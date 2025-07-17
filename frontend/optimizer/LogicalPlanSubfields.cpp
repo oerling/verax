@@ -438,7 +438,10 @@ lp::ExprPtr stepToLogicalPlanGetter(Step step, lp::ExprPtr arg) {
         return std::make_shared<lp::SpecialFormExpr>(
             type,
             lp::SpecialForm::kDereference,
-            std::vector<lp::ExprPtr>{arg, std::make_shared<lp::ConstantExpr>(BIGINT(), variant(step.id))});
+            std::vector<lp::ExprPtr>{
+                arg,
+                std::make_shared<lp::ConstantExpr>(
+                    BIGINT(), variant(step.id))});
       }
     }
     case StepKind::kSubscript: {
@@ -473,8 +476,7 @@ lp::ExprPtr stepToLogicalPlanGetter(Step step, lp::ExprPtr arg) {
       return std::make_shared<lp::CallExpr>(
           type->childAt(0),
           "subscript",
-          std::vector<lp::ExprPtr>{
-              arg, makeKey<int32_t>(INTEGER(), step.id)});
+          std::vector<lp::ExprPtr>{arg, makeKey<int32_t>(INTEGER(), step.id)});
     }
 
     default:
