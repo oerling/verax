@@ -16,8 +16,8 @@
 
 #include "optimizer/FunctionRegistry.h" //@manual
 #include "optimizer/tests/FeatureGen.h" //@manual
-#include "optimizer/tests/QueryTestBase.h" //@manual
 #include "optimizer/tests/Genies.h"
+#include "optimizer/tests/QueryTestBase.h" //@manual
 
 #include "velox/common/base/tests/GTestUtils.h"
 #include "velox/exec/tests/utils/PlanBuilder.h"
@@ -30,7 +30,7 @@ using namespace facebook::velox;
 using namespace facebook::velox::optimizer;
 using namespace facebook::velox::optimizer::test;
 using namespace facebook::velox::exec::test;
- 
+
 class SubfieldTest : public QueryTestBase,
                      public testing::WithParamInterface<int32_t> {
  protected:

@@ -234,7 +234,7 @@ optimizer::PlanAndStats QueryTestBase::planSql(
   return planVelox(plan, planString, errorString);
 }
 
-  template <typename PlanPtr>
+template <typename PlanPtr>
 optimizer::PlanAndStats QueryTestBase::planFromTree(
     const PlanPtr& plan,
     std::string* planString,
@@ -295,20 +295,20 @@ optimizer::PlanAndStats QueryTestBase::planFromTree(
   return planAndStats;
 }
 
-  optimizer::PlanAndStats QueryTestBase::planVelox(
-      const core::PlanNodePtr& plan,
-      std::string* planString,
-      std::string* errorString) {
-      return planFromTree(plan, planString, errorString);
-    }
-  
-  optimizer::PlanAndStats QueryTestBase::planVelox(
-      const logical_plan::LogicalPlanNodePtr& plan,
-      std::string* planString,
-      std::string* errorString) {
-      return planFromTree(plan, planString, errorString);
-    }
-    
+optimizer::PlanAndStats QueryTestBase::planVelox(
+    const core::PlanNodePtr& plan,
+    std::string* planString,
+    std::string* errorString) {
+  return planFromTree(plan, planString, errorString);
+}
+
+optimizer::PlanAndStats QueryTestBase::planVelox(
+    const logical_plan::LogicalPlanNodePtr& plan,
+    std::string* planString,
+    std::string* errorString) {
+  return planFromTree(plan, planString, errorString);
+}
+
 TestResult QueryTestBase::runVelox(const core::PlanNodePtr& plan) {
   TestResult result;
   auto fragmentedPlan =

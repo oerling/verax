@@ -88,7 +88,7 @@ Optimization::Optimization(
 }
 
 Optimization::Optimization(
-			   const logical_plan::LogicalPlanNode& plan,
+    const logical_plan::LogicalPlanNode& plan,
     const Schema& schema,
     History& history,
     std::shared_ptr<core::QueryCtx> _queryCtx,
@@ -106,7 +106,7 @@ Optimization::Optimization(
   initialize();
 }
 
-  void Optimization::initialize() {
+void Optimization::initialize() {
   queryCtx()->optimization() = this;
   if (inputPlan_) {
     root_ = makeQueryGraph();
@@ -125,7 +125,7 @@ Optimization::Optimization(
     setDerivedTableOutput(root_, *logicalPlan_);
   }
 }
-  
+
 void Optimization::trace(
     int32_t event,
     int32_t id,

@@ -92,13 +92,12 @@ class QueryTestBase : public exec::test::LocalRunnerTestBase {
       std::string* planString = nullptr,
       std::string* errorString = nullptr);
 
-
   template <typename PlanPtr>
   optimizer::PlanAndStats planFromTree(
-				    const PlanPtr& plan,
+      const PlanPtr& plan,
       std::string* planString,
       std::string* errorString);
-  
+
   std::string veloxString(const std::string& sql);
 
   std::string veloxString(const runner::MultiFragmentPlanPtr& plan);

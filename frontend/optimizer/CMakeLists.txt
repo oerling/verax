@@ -19,9 +19,9 @@ add_subdirectory(connectors)
 add_library(
   velox_verax
   ToGraph.cpp
-  LogicalPlanToGraph.cpp 
+  LogicalPlanToGraph.cpp
   Subfields.cpp
-LogicalPlanSubfields.cpp
+  LogicalPlanSubfields.cpp
   Plan.cpp
   BitSet.cpp
   ParallelExpr.cpp
@@ -42,6 +42,6 @@ LogicalPlanSubfields.cpp
 
 add_dependencies(velox_verax velox_hive_connector)
 
-target_link_libraries(velox_verax velox_core velox_connector_metadata
-  velox_fe_logical_plan
-                      velox_multifragment_plan velox_connector)
+target_link_libraries(
+  velox_verax velox_core velox_connector_metadata velox_fe_logical_plan
+  velox_multifragment_plan velox_connector)

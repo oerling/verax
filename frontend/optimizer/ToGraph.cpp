@@ -995,7 +995,7 @@ PlanObjectP Optimization::makeBaseTable(const core::TableScanNode* tableScan) {
   return baseTable;
 }
 
-  const Type* pathType(const Type* type, PathCP path);
+const Type* pathType(const Type* type, PathCP path);
 
 void Optimization::addProjection(const core::ProjectNode* project) {
   exprSource_ = project->sources()[0].get();

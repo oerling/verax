@@ -16,9 +16,9 @@
 
 #pragma once
 
+#include "logical_plan/ExprPrinter.h" //@manual
 #include "logical_plan/LogicalPlanNode.h" //@manual
 #include "logical_plan/PlanPrinter.h" //@manual
-#include "logical_plan/ExprPrinter.h" //@manual
 #include "optimizer/Schema.h" //@manual
 #include "velox/core/PlanNode.h"
 
@@ -442,7 +442,7 @@ using CallCP = const Call*;
 
 /// True if 'expr' is a call to function 'name'.
 bool isCallExpr(ExprCP expr, Name name);
-  
+
 /// Represents a lambda. May occur as an immediate argument of selected
 /// functions.
 class Lambda : public Expr {

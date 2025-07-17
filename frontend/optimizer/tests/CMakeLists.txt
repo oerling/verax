@@ -13,8 +13,15 @@
 # limitations under the License.
 
 add_executable(
-  velox_plan_test PlanTest.cpp Tpch.cpp ParquetTpchTest.cpp QueryTestBase.cpp
-  SubfieldTest.cpp LogicalSubFieldTest.cpp FeatureGen.cpp Genies.cpp)
+  velox_plan_test
+  PlanTest.cpp
+  Tpch.cpp
+  ParquetTpchTest.cpp
+  QueryTestBase.cpp
+  SubfieldTest.cpp
+  LogicalSubFieldTest.cpp
+  FeatureGen.cpp
+  Genies.cpp)
 
 add_test(velox_plan_test velox_plan_test)
 

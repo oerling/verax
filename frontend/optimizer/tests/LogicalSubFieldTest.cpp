@@ -25,14 +25,13 @@
 
 DEFINE_string(subfield_data_path, "", "Data directory for subfield test data");
 
-
 using namespace facebook::velox;
 using namespace facebook::velox::optimizer;
 using namespace facebook::velox::optimizer::test;
 using namespace facebook::velox::exec::test;
- 
+
 class LogicalSubfieldTest : public QueryTestBase,
-                     public testing::WithParamInterface<int32_t> {
+                            public testing::WithParamInterface<int32_t> {
  protected:
   static void SetUpTestCase() {
     testDataPath_ = FLAGS_subfield_data_path;

@@ -59,13 +59,13 @@ std::string succinctNumber(double value, int32_t precision) {
       precision);
 }
 
-  namespace {
+namespace {
 template <typename T>
 int64_t integerValueInner(const variant* variant) {
   return variant->value<T>();
 }
-  }
-  
+} // namespace
+
 int64_t integerValue(const variant* variant) {
   switch (variant->kind()) {
     case TypeKind::TINYINT:
@@ -81,17 +81,17 @@ int64_t integerValue(const variant* variant) {
   }
 }
 
-  
-  std::optional<int64_t> maybeIntegerLiteral(const logical_plan::ConstantExpr* expr) {
-    switch (expr->typeKind()) {
-    case TypeKind::TINYINT :
-    case TypeKind::SMALLINT :
-    case TypeKind::INTEGER :
-    case TypeKind::BIGINT :
+std::optional<int64_t> maybeIntegerLiteral(
+    const logical_plan::ConstantExpr* expr) {
+  switch (expr->typeKind()) {
+    case TypeKind::TINYINT:
+    case TypeKind::SMALLINT:
+    case TypeKind::INTEGER:
+    case TypeKind::BIGINT:
       return integerValue(&expr->value());
-    default: return std::nullopt;
-    }
+    default:
+      return std::nullopt;
   }
+}
 
-  
 } // namespace facebook::velox::optimizer

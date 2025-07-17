@@ -27,9 +27,12 @@
 /// plus utilities.
 namespace facebook::velox::optimizer {
 
-  inline  bool isSpecialForm(const logical_plan::Expr* expr, logical_plan::SpecialForm form) {
-    return expr->isSpecialForm() && expr->asUnchecked<logical_plan::SpecialFormExpr>()->form() == form;
-  }
+inline bool isSpecialForm(
+    const logical_plan::Expr* expr,
+    logical_plan::SpecialForm form) {
+  return expr->isSpecialForm() &&
+      expr->asUnchecked<logical_plan::SpecialFormExpr>()->form() == form;
+}
 
 /// Represents a path over an Expr of complex type. Used as a key
 /// for a map from unique step+optionl subscript expr pairs to the
@@ -104,11 +107,13 @@ struct VariantPtrHasher {
 };
 
 struct VariantPtrComparer {
-  bool operator()(const std::unique_ptr<variant>& left, const std::unique_ptr<variant>& right) const {
+  bool operator()(
+      const std::unique_ptr<variant>& left,
+      const std::unique_ptr<variant>& right) const {
     return *left == *right;
   }
 };
-  
+
 /// Set of accessed subfields given ordinal of output column or function
 /// argument.
 struct ResultAccess {
@@ -136,10 +141,12 @@ struct PlanSubfields {
 
 /// PlanNode output columns and function arguments with accessed subfields.
 struct LogicalPlanSubfields {
-  std::unordered_map<const logical_plan::LogicalPlanNode*, ResultAccess> nodeFields;
+  std::unordered_map<const logical_plan::LogicalPlanNode*, ResultAccess>
+      nodeFields;
   std::unordered_map<const velox::logical_plan::Expr*, ResultAccess> argFields;
 
-  bool hasColumn(const logical_plan::LogicalPlanNode* node, int32_t ordinal) const {
+  bool hasColumn(const logical_plan::LogicalPlanNode* node, int32_t ordinal)
+      const {
     auto it = nodeFields.find(node);
     if (it == nodeFields.end()) {
       return false;
@@ -150,7 +157,6 @@ struct LogicalPlanSubfields {
   std::string toString() const;
 };
 
-  
 /// Struct for resolving which PlanNode or Lambda defines which
 /// FieldAccessTypedExpr for column and subfield tracking.
 struct ContextSource {
@@ -167,7 +173,6 @@ struct LogicalContextSource {
   int32_t lambdaOrdinal{-1};
 };
 
-  
 /// Utility for making a getter from a Step.
 core::TypedExprPtr stepToGetter(Step, core::TypedExprPtr arg);
 /// Lists the subfield paths physically produced by a source. The
@@ -567,7 +572,7 @@ class Optimization {
           runner::MultiFragmentPlan::Options{.numWorkers = 5, .numDrivers = 5});
 
   Optimization(
-	       const logical_plan::LogicalPlanNode& plan,
+      const logical_plan::LogicalPlanNode& plan,
       const Schema& schema,
       History& history,
       std::shared_ptr<core::QueryCtx> queryCtx,
@@ -579,7 +584,7 @@ class Optimization {
   Optimization(const Optimization& other) = delete;
 
   void operator==(Optimization& other) = delete;
-  
+
   /// Returns the optimized RelationOp plan for 'plan' given at construction.
   PlanPtr bestPlan();
 
@@ -746,12 +751,12 @@ class Optimization {
   }
 
   void initialize();
-  
+
   // Initializes a tree of DerivedTables with JoinEdges from 'plan' given at
   // construction. Sets 'root_' to the root DerivedTable.
   DerivedTableP makeQueryGraph();
 
-    DerivedTableP makeQueryGraphFromLogical();
+  DerivedTableP makeQueryGraphFromLogical();
 
   // Converts 'plan' to PlanObjects and records join edges into
   // 'currentSelect_'. If 'node' does not match  allowedInDt, wraps 'node' in a
@@ -760,14 +765,14 @@ class Optimization {
       const velox::core::PlanNode& node,
       uint64_t allowedInDt);
 
-    PlanObjectP makeQueryGraph(
+  PlanObjectP makeQueryGraph(
       const logical_plan::LogicalPlanNode& node,
       uint64_t allowedInDt);
 
   // Converts a table scan into a BaseTable wen building a DerivedTable.
   PlanObjectP makeBaseTable(const core::TableScanNode* tableScan);
 
-    PlanObjectP makeBaseTable(const logical_plan::TableScanNode* tableScan);
+  PlanObjectP makeBaseTable(const logical_plan::TableScanNode* tableScan);
 
   // Decomposes complex type columns into parts projected out as top
   // level if subfield pushdown is on.
@@ -780,21 +785,21 @@ class Optimization {
   // being assembled.
   void addProjection(const core::ProjectNode* project);
 
-    void addProjection(const logical_plan::ProjectNode* project);
-  
+  void addProjection(const logical_plan::ProjectNode* project);
+
   // Interprets a Filter node and adds its information into the DerivedTable
   // being assembled.
   void addFilter(const core::FilterNode* Filter);
 
-    void addFilter(const logical_plan::FilterNode* Filter);
+  void addFilter(const logical_plan::FilterNode* Filter);
 
   // Interprets an AggregationNode and adds its information to the DerivedTable
   // being assembled.
-    PlanObjectP addAggregation(
+  PlanObjectP addAggregation(
       const core::AggregationNode& aggNode,
       uint64_t allowedInDt);
 
-    PlanObjectP addAggregation(
+  PlanObjectP addAggregation(
       const logical_plan::AggregateNode& aggNode,
       uint64_t allowedInDt);
 
@@ -808,7 +813,6 @@ class Optimization {
       DerivedTableP dt,
       const velox::logical_plan::LogicalPlanNode& planNode);
 
-  
   // Returns a literal from applying 'call' or 'cast' to 'literals'. nullptr if
   // not successful.
   ExprCP tryFoldConstant(
@@ -821,7 +825,6 @@ class Optimization {
       const logical_plan::SpecialFormExpr* cast,
       const ExprVector& literals);
 
-  
   // Returns a constant expression if 'typedExprcan be folded, nullptr
   // otherwise.
   std::shared_ptr<const exec::ConstantExpr> foldConstant(
@@ -836,7 +839,7 @@ class Optimization {
   // produces a complex type.
   std::vector<int32_t> usedArgs(const core::ITypedExpr* call);
 
-    std::vector<int32_t> usedArgs(const logical_plan::Expr* call);
+  std::vector<int32_t> usedArgs(const logical_plan::Expr* call);
 
   void markFieldAccessed(
       const ContextSource& source,
@@ -847,13 +850,13 @@ class Optimization {
       const std::vector<ContextSource>& sources);
 
   void markFieldAccessed(
-    const LogicalContextSource& source,
-    int32_t ordinal,
-    std::vector<Step>& steps,
-    bool isControl,
-    const std::vector<const RowType*>& context,
-    const std::vector<LogicalContextSource>& sources);
-  
+      const LogicalContextSource& source,
+      int32_t ordinal,
+      std::vector<Step>& steps,
+      bool isControl,
+      const std::vector<const RowType*>& context,
+      const std::vector<LogicalContextSource>& sources);
+
   void markSubfields(
       const core::ITypedExpr* expr,
       std::vector<Step>& steps,
@@ -861,7 +864,7 @@ class Optimization {
       const std::vector<const RowType*> context,
       const std::vector<ContextSource>& sources);
 
-    void markSubfields(
+  void markSubfields(
       const logical_plan::Expr* expr,
       std::vector<Step>& steps,
       bool isControl,
@@ -869,10 +872,10 @@ class Optimization {
       const std::vector<LogicalContextSource>& sources);
 
   void markAllSubfields(const RowType* type, const core::PlanNode* node);
-void markAllSubfields(
-    const RowType* type,
-    const logical_plan::LogicalPlanNode* node);
-  
+  void markAllSubfields(
+      const RowType* type,
+      const logical_plan::LogicalPlanNode* node);
+
   void markControl(const core::PlanNode* node);
 
   void markControl(const logical_plan::LogicalPlanNode* node);
@@ -881,7 +884,6 @@ void markAllSubfields(
       const core::PlanNode* node,
       const std::vector<core::FieldAccessTypedExprPtr>& columns,
       int32_t source);
-
 
   void markColumnSubfields(
       const logical_plan::LogicalPlanNode* node,
@@ -894,11 +896,10 @@ void markAllSubfields(
       core::TypedExprPtr& input);
 
   bool isSubfield(
-		  const logical_plan::Expr* expr,
+      const logical_plan::Expr* expr,
       Step& step,
       logical_plan::ExprPtr& input);
 
-  
   // if 'step' applied to result of the function of 'metadata'
   // corresponds to an argument, returns the ordinal of the argument/
   std::optional<int32_t> stepToArg(
@@ -915,10 +916,10 @@ void markAllSubfields(
       bool controlOnly,
       bool payloadOnly);
 
-    // Makes a deduplicated Expr tree from 'expr'.
+  // Makes a deduplicated Expr tree from 'expr'.
   ExprCP translateExpr(const velox::core::TypedExprPtr& expr);
 
-    ExprCP translateExpr(const logical_plan::ExprPtr& expr);
+  ExprCP translateExpr(const logical_plan::ExprPtr& expr);
 
   // For comparisons, swaps the args to have a canonical form for
   // deduplication. E.g column op constant, and Smaller plan object id
@@ -933,7 +934,7 @@ void markAllSubfields(
   // Returns a deduplicated Literal from the value in 'constant'.
   ExprCP makeConstant(const core::ConstantTypedExprPtr& constant);
 
-    ExprCP makeConstant(const logical_plan::ConstantExpr& constant);
+  ExprCP makeConstant(const logical_plan::ConstantExpr& constant);
 
   ExprCP translateLambda(const velox::core::LambdaTypedExpr* lambda);
 
@@ -963,7 +964,6 @@ void markAllSubfields(
       ColumnCP& resultColumn,
       const logical_plan::LogicalPlanNode*& context);
 
-  
   // Translates a complex type function where the generated Exprs  depend on the
   // accessed subfields.
   std::optional<ExprCP> translateSubfieldFunction(
@@ -974,7 +974,6 @@ void markAllSubfields(
       const logical_plan::CallExpr* call,
       const FunctionMetadata* metadata);
 
-  
   // Calls translateSubfieldFunction() if not already called.
   void ensureFunctionSubfields(const core::TypedExprPtr& expr);
 
@@ -991,7 +990,7 @@ void markAllSubfields(
       const core::TypedExprPtr& base,
       ColumnCP column);
 
-    ExprCP makeGettersOverSkyline(
+  ExprCP makeGettersOverSkyline(
       const std::vector<Step>& steps,
       const SubfieldProjections* skyline,
       const logical_plan::ExprPtr& base,
@@ -1003,9 +1002,7 @@ void markAllSubfields(
       const velox::core::TypedExprPtr& input,
       ExprVector& flat);
 
-  void translateConjuncts(
-      const logical_plan::ExprPtr& input,
-      ExprVector& flat);
+  void translateConjuncts(const logical_plan::ExprPtr& input, ExprVector& flat);
 
   // Converts 'name' to a deduplicated ExprCP. If 'name' is assigned to an
   // expression in a projection, returns the deduplicated ExprPtr of the
@@ -1016,8 +1013,7 @@ void markAllSubfields(
   ExprVector translateColumns(
       const std::vector<velox::core::FieldAccessTypedExprPtr>& source);
 
-  ExprVector translateColumns(
-			      const std::vector<logical_plan::ExprPtr>& source);
+  ExprVector translateColumns(const std::vector<logical_plan::ExprPtr>& source);
 
   // Adds a JoinEdge corresponding to 'join' to the enclosing DerivedTable.
   void translateJoin(const velox::core::AbstractJoinNode& join);
@@ -1042,7 +1038,6 @@ void markAllSubfields(
   AggregationP translateAggregation(
       const logical_plan::AggregateNode& aggregation);
 
-  
   // Adds 'node' and descendants to query graph wrapped inside a
   // DerivedTable. Done for joins to the right of non-inner joins,
   // group bys as non-top operators, whenever descendents of 'node'
@@ -1228,14 +1223,12 @@ void markAllSubfields(
     return leaf;
   }
 
-  
   const Schema& schema_;
 
   OptimizerOptions opts_;
 
   const logical_plan::LogicalPlanNode* logicalPlan_{nullptr};
 
-  
   // Top level plan to optimize.
   const velox::core::PlanNode* inputPlan_{nullptr};
 
@@ -1254,8 +1247,6 @@ void markAllSubfields(
 
   const logical_plan::LogicalPlanNode* logicalExprSource_{nullptr};
 
-
-  
   // Maps names in project noes of 'inputPlan_' to deduplicated Exprs.
   std::unordered_map<std::string, ExprCP> renames_;
 
@@ -1267,9 +1258,13 @@ void markAllSubfields(
   // for leaves, e.g. constants.
   ExprDedupMap exprDedup_;
 
+  std::unordered_map<
+      std::unique_ptr<variant>,
+      ExprCP,
+      VariantPtrHasher,
+      VariantPtrComparer>
+      constantDedup_;
 
-  std::unordered_map<std::unique_ptr<variant>, ExprCP, VariantPtrHasher, VariantPtrComparer> constantDedup_;
-  
   // Dedup map from name+ExprVector to corresponding Call Expr.
   FunctionDedupMap functionDedup_;
 
@@ -1300,7 +1295,7 @@ void markAllSubfields(
 
   // Column and subfield info for items that only affect column values.
   PlanSubfields payloadSubfields_;
-  
+
   // Column and subfield access info for filters, joins, grouping and other
   // things affecting result row selection.
   LogicalPlanSubfields logicalControlSubfields_;
@@ -1314,7 +1309,7 @@ void markAllSubfields(
       functionSubfields_;
 
   std::unordered_map<const logical_plan::CallExpr*, SubfieldProjections>
-  logicalFunctionSubfields_;
+      logicalFunctionSubfields_;
 
   // Every unique path step, expr pair. For paths c.f1.f2 and c.f1.f3 there are
   // 3 entries: c.f1 and c.f1.f2 and c1.f1.f3, where the two last share the same
@@ -1325,7 +1320,8 @@ void markAllSubfields(
   // 'functionSubfields_'.
   std::unordered_set<const core::CallTypedExpr*> translatedSubfieldFuncs_;
 
-    std::unordered_set<const logical_plan::CallExpr*> logicalTranslatedSubfieldFuncs_;
+  std::unordered_set<const logical_plan::CallExpr*>
+      logicalTranslatedSubfieldFuncs_;
 
   /// If subfield extraction is pushed down, then these give the skyline
   /// subfields for a column for control and payload situations. The same column
@@ -1350,9 +1346,10 @@ void markAllSubfields(
 
   // Map from leaf PlanNode to corresponding PlanObject
   std::unordered_map<const core::PlanNode*, PlanObjectCP> planLeaves_;
-  std::unordered_map<const logical_plan::LogicalPlanNode*, PlanObjectCP> logicalPlanLeaves_;
+  std::unordered_map<const logical_plan::LogicalPlanNode*, PlanObjectCP>
+      logicalPlanLeaves_;
 
-    // Map from plan object id to pair of handle with pushdown filters and list of
+  // Map from plan object id to pair of handle with pushdown filters and list of
   // filters to eval on the result from the handle.
   std::unordered_map<
       int32_t,
@@ -1439,7 +1436,7 @@ RowTypePtr skylineStruct(BaseTableCP baseTable, ColumnCP column);
 /// Returns  the inverse join type, e.g. right outer from left outr.
 core::JoinType reverseJoinType(core::JoinType joinType);
 
-  PathCP stepsToPath(const std::vector<Step>& steps);
-  variant* subscriptLiteral(TypeKind kind, const Step& step);
-  
+PathCP stepsToPath(const std::vector<Step>& steps);
+variant* subscriptLiteral(TypeKind kind, const Step& step);
+
 } // namespace facebook::velox::optimizer
