@@ -175,7 +175,11 @@ struct LogicalContextSource {
 
 /// Utility for making a getter from a Step.
 core::TypedExprPtr stepToGetter(Step, core::TypedExprPtr arg);
-/// Lists the subfield paths physically produced by a source. The
+
+  logical_plan::ExprPtr stepToLogicalPlanGetter(Step, logical_plan::ExprPtr arg);
+
+
+  /// Lists the subfield paths physically produced by a source. The
 /// source can be a column or a complex type function. This is empty
 /// if the whole object corresponding to the type of the column or
 /// function is materialized. Suppose a type of map<int, float>. If

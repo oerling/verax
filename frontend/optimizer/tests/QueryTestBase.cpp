@@ -319,6 +319,16 @@ TestResult QueryTestBase::runVelox(const core::PlanNodePtr& plan) {
   return runFragmentedPlan(fragmentedPlan);
 }
 
+TestResult QueryTestBase::runVelox(const logical_plan::LogicalPlanNodePtr& plan) {
+  TestResult result;
+  auto fragmentedPlan =
+      planVelox(plan, &result.planString, &result.errorString);
+  if (!fragmentedPlan.plan) {
+    return result;
+  }
+  return runFragmentedPlan(fragmentedPlan);
+}
+  
 void QueryTestBase::waitForCompletion(
     const std::shared_ptr<runner::LocalRunner>& runner) {
   if (runner) {

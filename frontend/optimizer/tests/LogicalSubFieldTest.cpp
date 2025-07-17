@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "logical_plan/PlanBuilder.h" //@manual
 #include "optimizer/FunctionRegistry.h" //@manual
 #include "optimizer/tests/FeatureGen.h" //@manual
 #include "optimizer/tests/Genies.h" //@manual
@@ -29,6 +30,7 @@ using namespace facebook::velox;
 using namespace facebook::velox::optimizer;
 using namespace facebook::velox::optimizer::test;
 using namespace facebook::velox::exec::test;
+namespace lp = facebook::velox::logical_plan;
 
 class LogicalSubfieldTest : public QueryTestBase,
                             public testing::WithParamInterface<int32_t> {
@@ -109,12 +111,12 @@ class LogicalSubfieldTest : public QueryTestBase,
     auto explodingMetadata = std::make_unique<FunctionMetadata>(*metadata);
     instance->registerFunction("genie", std::move(metadata));
 
-    explodingMetadata->explode = explodeGenie;
+    explodingMetadata->logicalExplode = logicalExplodeGenie;
     instance->registerFunction("exploding_genie", std::move(explodingMetadata));
   }
 
-  static std::unordered_map<PathCP, core::TypedExprPtr> explodeGenie(
-      const core::CallTypedExpr* call,
+  static std::unordered_map<PathCP, lp::ExprPtr> logicalExplodeGenie(
+      const lp::CallExpr* call,
       std::vector<PathCP>& paths) {
     // This function understands paths like .__1[cc], .__2[cc],
     // .__3[cc] where __x is an ordinal field reference and cc is an integer
@@ -123,7 +125,7 @@ class LogicalSubfieldTest : public QueryTestBase,
     // idslf[11][1], then the trailing part is ignored. The returned map will
     // have the expression for each distinct path that begins with one of .__1,
     // .__2, .__3 followed by an integer subscript.
-    std::unordered_map<PathCP, core::TypedExprPtr> result;
+    std::unordered_map<PathCP, lp::ExprPtr> result;
     for (auto& path : paths) {
       auto& steps = path->steps();
       if (steps.size() < 2) {
@@ -143,33 +145,34 @@ class LogicalSubfieldTest : public QueryTestBase,
 
       // Here, for the sake of example, we make every odd key return identity.
       if (steps[1].id % 2 == 1) {
-        result[prefixPath] = stepToGetter(steps[1], args[nth]);
+        result[prefixPath] = stepToLogicalPlanGetter(steps[1], args[nth]);
         continue;
       }
 
       // For changed float_features, we add the feature id to the value.
       if (nth == 1) {
-        result[prefixPath] = std::make_shared<core::CallTypedExpr>(
+        result[prefixPath] = std::make_shared<lp::CallExpr>(
             REAL(),
-            std::vector<core::TypedExprPtr>{
-                stepToGetter(steps[1], args[nth]),
-                std::make_shared<core::ConstantTypedExpr>(
-                    REAL(), variant(static_cast<float>(steps[1].id)))},
-            "plus");
+            "plus",
+            std::vector<lp::ExprPtr>{
+                stepToLogicalPlanGetter(steps[1], args[nth]),
+                std::make_shared<lp::ConstantExpr>(
+                    REAL(), variant(static_cast<float>(steps[1].id)))});
         continue;
       }
 
       // For changed id list features, we do array_distinct on the list.
       if (nth == 2) {
-        result[prefixPath] = std::make_shared<core::CallTypedExpr>(
+        result[prefixPath] = std::make_shared<lp::CallExpr>(
             ARRAY(BIGINT()),
-            std::vector<core::TypedExprPtr>{stepToGetter(steps[1], args[nth])},
-            "array_distinct");
+            "array_distinct",
+            std::vector<lp::ExprPtr>{
+                stepToLogicalPlanGetter(steps[1], args[nth])});
         continue;
       }
 
       // Access to idslf. Identity.
-      result[prefixPath] = stepToGetter(steps[1], args[nth]);
+      result[prefixPath] = stepToLogicalPlanGetter(steps[1], args[nth]);
     }
     return result;
   }
@@ -214,26 +217,55 @@ class LogicalSubfieldTest : public QueryTestBase,
     return result;
   }
 
-  void testParallelExpr(FeatureOptions& opts, const RowTypePtr& rowType) {
-    std::vector<std::string> names;
-    std::vector<core::TypedExprPtr> exprs;
+  std::vector<std::string> fieldNames(const RowTypePtr& type) {
+    std::vector<std::string> result;
+    for (auto i = 0; i < type->size(); ++i) {
+      result.push_back(type->nameOf(i));
+    }
+    return result;
+  }
 
+  void testParallelExpr(FeatureOptions& opts, const RowTypePtr& rowType) {
+    core::PlanNodePtr veloxPlan;
     // No randoms in test expr, different runs must come out the same.
     opts.randomPct = 0;
-    makeExprs(opts, names, exprs);
 
-    optimizerOptions_.parallelProjectWidth = 8;
-    auto builder = PlanBuilder()
-                       .tableScan("features", rowType)
-                       .addNode([&](std::string id, auto node) {
-                         return std::make_shared<core::ProjectNode>(
-                             id, std::move(names), std::move(exprs), node);
-                       });
-    auto fragmentedPlan = planVelox(builder.planNode());
+    {
+      std::vector<std::string> names;
+      std::vector<core::TypedExprPtr> exprs;
+
+      opts.rng.seed(1);
+      makeExprs(opts, names, exprs);
+
+      auto builder = PlanBuilder()
+                         .tableScan("features", rowType)
+                         .addNode([&](std::string id, auto node) {
+                           return std::make_shared<core::ProjectNode>(
+                               id, std::move(names), std::move(exprs), node);
+                         });
+      veloxPlan = builder.planNode();
+    }
+
+    std::vector<std::string> names;
+    std::vector<lp::ExprPtr> exprs;
+
+    opts.rng.seed(1);
+    makeLogicalExprs(opts, names, exprs);
+    lp::PlanBuilder::Context ctx;
+    auto builder = lp::PlanBuilder(ctx).tableScan(
+        kHiveConnectorId, "features", fieldNames(rowType));
+    lp::LogicalPlanNodePtr logicalPlan = std::make_shared<lp::ProjectNode>(
+        ctx.planNodeIdGenerator->next(),
+        builder.build(),
+        std::move(names),
+        std::move(exprs));
+
+    auto fragmentedPlan = planVelox(logicalPlan);
     auto plan = veloxString(fragmentedPlan.plan);
+
     expectRegexp(plan, "ParallelProject");
     std::cout << plan;
-    assertSame(builder.planNode(), fragmentedPlan);
+    assertSame(veloxPlan, fragmentedPlan);
   }
 };
 
@@ -249,11 +281,12 @@ TEST_P(LogicalSubfieldTest, structs) {
   writeToFile(filePath, vectors);
   tablesCreated();
 
-  auto builder = PlanBuilder()
-                     .tableScan("structs", rowType)
-                     .project({"s.s1 as a", "s.s3[0] as arr0"});
+  auto builder =
+      lp::PlanBuilder()
+          .tableScan(kHiveConnectorId, "structs", fieldNames(rowType))
+          .project({"s.s1 as a", "s.s3[0] as arr0"});
 
-  auto plan = veloxString(planVelox(builder.planNode()).plan);
+  auto plan = veloxString(planVelox(builder.build()).plan);
   expectRegexp(plan, "s.*Subfields.*s.s3\\[0\\]");
   expectRegexp(plan, "s.*Subfields.*s.s1");
 }
@@ -263,6 +296,7 @@ TEST_P(LogicalSubfieldTest, maps) {
   opts.rng.seed(1);
   auto vectors = makeFeatures(1, 100, opts, pool_.get());
   auto rowType = std::dynamic_pointer_cast<const RowType>(vectors[0]->type());
+  auto fields = fieldNames(rowType);
   auto fs = filesystems::getFileSystem(testDataPath_, {});
   fs->mkdir(testDataPath_ + "/features");
   auto filePath = testDataPath_ + "/features/features.dwrf";
@@ -273,141 +307,147 @@ TEST_P(LogicalSubfieldTest, maps) {
 
   writeToFile(filePath, vectors, config);
   tablesCreated();
-
   std::string plan;
-  auto planNodeIdGenerator = std::make_shared<core::PlanNodeIdGenerator>();
-  auto builder =
-      PlanBuilder(planNodeIdGenerator)
-          .tableScan("features", rowType)
-          .project({"uid", "float_features as ff"})
-          .hashJoin(
-              {"uid"},
-              {"opt_uid"},
-              PlanBuilder(planNodeIdGenerator)
-                  .tableScan("features", rowType)
-                  .filter(
-                      "uid % 2 = 1 and cast(float_features[10300::INTEGER] as integer) % 2 = 0")
-                  .project({"uid as opt_uid", "float_features as opt_ff"})
-                  .planNode(),
-              "",
-              {"ff", "uid", "opt_uid", "opt_ff"},
-              core::JoinType::kLeft)
-          .project(
-              {"uid",
-               "opt_uid",
-               "ff[10100::INTEGER] as f10",
-               "ff[10200::INTEGER] as f20",
-               "opt_ff[10100::INTEGER] as o10",
-               "opt_ff[10200::INTEGER] as o20"});
 
-  plan = veloxString(planVelox(builder.planNode()).plan);
-  std::cout << plan << std::endl;
+  {
+    lp::PlanBuilder::Context ctx;
+    auto builder =
+        lp::PlanBuilder(ctx)
+            .tableScan(kHiveConnectorId, "features", fields)
+            .project({"uid", "float_features as ff"})
+            .join(
+                lp::PlanBuilder(ctx)
+                    .tableScan(kHiveConnectorId, "features", fields)
+                    .filter(
+                        "uid % 2 = 1 and cast(float_features[10300::INTEGER] as integer) % 2 = 0")
+                    .project({"uid as opt_uid", "float_features as opt_ff"}),
+                "uid = opt_uid",
+                lp::JoinType::kLeft)
+            .project(
+                {"uid",
+                 "opt_uid",
+                 "ff[10100::INTEGER] as f10",
+                 "ff[10200::INTEGER] as f20",
+                 "opt_ff[10100::INTEGER] as o10",
+                 "opt_ff[10200::INTEGER] as o20"});
 
-  builder =
-      PlanBuilder()
-          .tableScan("features", rowType)
-          .project(
-              {"float_features[10100::INTEGER] as f1",
-               "float_features[10200::INTEGER] as f2",
-               "id_score_list_features[200800::INTEGER][100000::INTEGER]"});
-  plan = veloxString(planVelox(builder.planNode()).plan);
-  expectRegexp(plan, "float_features.*Subfields.*float_features.10100.");
-  expectRegexp(plan, "float_features.*Subfields.*float_features.10200.");
-  expectRegexp(
-      plan,
-      "id_score_list_features.*Subfields.* id_score_list_features.200800.*\\[100000\\]");
-  expectRegexp(plan, "ubfield.*id_list", false);
-
-  builder = PlanBuilder()
-                .tableScan("features", rowType)
-                .project(
-                    {"float_features[10000::INTEGER] as ff",
-                     "id_score_list_features[200800::INTEGER] as sc1",
-                     "id_list_features as idlf"})
-                .project({"sc1[1::INTEGER] + 1::REAL as score"});
-  plan = veloxString(planVelox(builder.planNode()).plan);
-  expectRegexp(
-      plan,
-      "id_score_list_features.*Subfields:.*\\[ id_score_list_features.200800.*\\[1\\]");
-  expectRegexp(plan, "ubfield.*id_list", false);
-  expectRegexp(plan, "ubfield.*float_f", false);
-
-  builder = PlanBuilder()
-                .tableScan("features", rowType)
-                .project(
-                    {"float_features[10100::INTEGER] as ff",
-                     "id_score_list_features[200800::INTEGER] as sc1",
-                     "id_list_features as idlf",
-                     "uid"})
-                .project(
-                    {"sc1[1::INTEGER] + 1::REAL as score",
-                     "idlf[cast(uid % 100 as INTEGER)] as any"});
-  plan = veloxString(planVelox(builder.planNode()).plan);
-  expectRegexp(
-      plan, "id_list_features.*Subfields:.* id_list_features\\[\\*\\]");
-
+    plan = veloxString(planVelox(builder.build()).plan);
+    std::cout << plan << std::endl;
+  }
+  {
+    auto builder =
+        lp::PlanBuilder()
+            .tableScan(kHiveConnectorId, "features", fields)
+            .project(
+                {"float_features[10100::INTEGER] as f1",
+                 "float_features[10200::INTEGER] as f2",
+                 "id_score_list_features[200800::INTEGER][100000::INTEGER]"});
+    plan = veloxString(planVelox(builder.build()).plan);
+    expectRegexp(plan, "float_features.*Subfields.*float_features.10100.");
+    expectRegexp(plan, "float_features.*Subfields.*float_features.10200.");
+    expectRegexp(
+        plan,
+        "id_score_list_features.*Subfields.* id_score_list_features.200800.*\\[100000\\]");
+    expectRegexp(plan, "ubfield.*id_list", false);
+  }
+  {
+    auto builder = lp::PlanBuilder()
+                       .tableScan(kHiveConnectorId, "features", fields)
+                       .project(
+                           {"float_features[10000::INTEGER] as ff",
+                            "id_score_list_features[200800::INTEGER] as sc1",
+                            "id_list_features as idlf"})
+                       .project({"sc1[1::INTEGER] + 1::REAL as score"});
+    plan = veloxString(planVelox(builder.build()).plan);
+    expectRegexp(
+        plan,
+        "id_score_list_features.*Subfields:.*\\[ id_score_list_features.200800.*\\[1\\]");
+    expectRegexp(plan, "ubfield.*id_list", false);
+    expectRegexp(plan, "ubfield.*float_f", false);
+  }
+  {
+    auto builder = lp::PlanBuilder()
+                       .tableScan(kHiveConnectorId, "features", fields)
+                       .project(
+                           {"float_features[10100::INTEGER] as ff",
+                            "id_score_list_features[200800::INTEGER] as sc1",
+                            "id_list_features as idlf",
+                            "uid"})
+                       .project(
+                           {"sc1[1::INTEGER] + 1::REAL as score",
+                            "idlf[cast(uid % 100 as INTEGER)] as any"});
+    plan = veloxString(planVelox(builder.build()).plan);
+    expectRegexp(
+        plan, "id_list_features.*Subfields:.* id_list_features\\[\\*\\]");
+  }
   declareGenies();
 
   // Selected fields of genie are accessed. The uid and idslf args are not
   // accessed and should not be in the table scan.
-  builder =
-      PlanBuilder()
-          .tableScan("features", rowType)
-          .project(
-              {"genie(uid, float_features, id_list_features, id_score_list_features) as g"})
-          // Access some fields of the genie by name, others by index.
-          .project(
-              {"g.ff[10200::INTEGER] as f2",
-               "g.__1[10100::INTEGER] as f11",
-               "g.__1[10200::INTEGER] + 22::REAL  as f2b",
-               "g.idlf[201600::INTEGER] as idl100"});
+  {
+    auto builder =
+        lp::PlanBuilder()
+            .tableScan(kHiveConnectorId, "features", fields)
+            .project(
+                {"genie(uid, float_features, id_list_features, id_score_list_features) as g"})
+            // Access some fields of the genie by name, others by index.
+            .project(
+                {"g.ff[10200::INTEGER] as f2",
+                 "g.__1[10100::INTEGER] as f11",
+                 "g.__1[10200::INTEGER] + 22::REAL  as f2b",
+                 "g.idlf[201600::INTEGER] as idl100"});
 
-  plan = veloxString(planVelox(builder.planNode()).plan);
-  expectRegexp(plan, "float_features.*Subfield.*float_features.10200");
-  expectRegexp(plan, "id_list_features.*Subfields.*id_list_features.201600");
-
+    plan = veloxString(planVelox(builder.build()).plan);
+    expectRegexp(plan, "float_features.*Subfield.*float_features.10200");
+    expectRegexp(plan, "id_list_features.*Subfields.*id_list_features.201600");
+  }
   // All of genie is returned.
-  builder =
-      PlanBuilder()
-          .tableScan("features", rowType)
-          .project(
-              {"genie(uid, float_features, id_list_features, id_score_list_features) as g"})
-          .project(
-              {"g",
-               "g.__1[10100::INTEGER] as f10",
-               "g.__1[10200::INTEGER] as f2",
-               "g.__2[200600::INTEGER] as idl100"});
+  {
+    auto builder =
+        lp::PlanBuilder()
+            .tableScan(kHiveConnectorId, "features", fields)
+            .project(
+                {"genie(uid, float_features, id_list_features, id_score_list_features) as g"})
+            .project(
+                {"g",
+                 "g.__1[10100::INTEGER] as f10",
+                 "g.__1[10200::INTEGER] as f2",
+                 "g.__2[200600::INTEGER] as idl100"});
 
-  plan = veloxString(planVelox(builder.planNode()).plan);
-  std::cout << plan << std::endl;
+    plan = veloxString(planVelox(builder.build()).plan);
+    std::cout << plan << std::endl;
+  }
 
   // We expect the genie to explode and the filters to be first.
-  builder =
-      PlanBuilder()
-          .tableScan("features", rowType)
-          .project(
-              {"exploding_genie(uid, float_features, id_list_features, id_score_list_features) as g"})
-          .project({"g.__1 as ff", "g as gg"})
-          .project(
-              {"ff[10100::INTEGER] as f10",
-               "ff[10100::INTEGER] as f11",
-               "ff[10200::INTEGER] as f2",
-               "gg.__1[10200::INTEGER] + 22::REAL as f2b",
-               "gg.__2[200600::INTEGER] as idl100"})
-          .filter("f10 < 10::REAL and f11 < 10::REAL");
+  {
+    auto builder =
+      lp::PlanBuilder()
+            .tableScan(kHiveConnectorId, "features", fields)
+            .project(
+                {"exploding_genie(uid, float_features, id_list_features, id_score_list_features) as g"})
+            .project({"g.__1 as ff", "g as gg"})
+            .project(
+                {"ff[10100::INTEGER] as f10",
+                 "ff[10100::INTEGER] as f11",
+                 "ff[10200::INTEGER] as f2",
+                 "gg.__1[10200::INTEGER] + 22::REAL as f2b",
+                 "gg.__2[200600::INTEGER] as idl100"})
+            .filter("f10 < 10::REAL and f11 < 10::REAL");
 
-  plan = veloxString(planVelox(builder.planNode()).plan);
-  std::cout << plan << std::endl;
+    plan = veloxString(planVelox(builder.build()).plan);
+    std::cout << plan << std::endl;
+  }
+  {
+    auto builder =
+      lp::PlanBuilder()
+        .tableScan(kHiveConnectorId, "features", fields)
+            .project(
+                {"transform(id_list_features[201800::INTEGER], x -> x + 1) as ids"});
 
-  builder =
-      PlanBuilder()
-          .tableScan("features", rowType)
-          .project(
-              {"transform(id_list_features[201800::INTEGER], x -> x + 1) as ids"});
-
-  auto result = runVelox(builder.planNode());
-  auto expected = extractAndIncrementIdList(vectors, 201800);
-  assertEqualResults(expected, result.results);
+    auto result = runVelox(builder.build());
+    auto expected = extractAndIncrementIdList(vectors, 201800);
+    assertEqualResults(expected, result.results);
+  }
 
   testParallelExpr(opts, rowType);
 }

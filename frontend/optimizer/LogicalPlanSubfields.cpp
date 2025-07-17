@@ -415,28 +415,36 @@ std::vector<int32_t> Optimization::usedChannels(
 namespace {
 
 template <typename T>
-core::TypedExprPtr makeKey(const TypePtr& type, T v) {
-  return std::make_shared<core::ConstantTypedExpr>(type, variant(v));
+lp::ExprPtr makeKey(const TypePtr& type, T v) {
+  return std::make_shared<lp::ConstantExpr>(type, variant(v));
 }
 } // namespace
 
-core::TypedExprPtr stepToGetter(Step step, core::TypedExprPtr arg) {
+lp::ExprPtr stepToLogicalPlanGetter(Step step, lp::ExprPtr arg) {
   switch (step.kind) {
     case StepKind::kField: {
       if (step.field) {
         auto& type = arg->type()->childAt(
             arg->type()->as<TypeKind::ROW>().getChildIdx(step.field));
-        return std::make_shared<core::FieldAccessTypedExpr>(
-            type, arg, step.field);
+        return std::make_shared<lp::SpecialFormExpr>(
+            type,
+            lp::SpecialForm::kDereference,
+            std::vector<lp::ExprPtr>{
+                arg,
+                std::make_shared<lp::ConstantExpr>(
+                    VARCHAR(), variant(step.field))});
       } else {
         auto& type = arg->type()->childAt(step.id);
-        return std::make_shared<core::DereferenceTypedExpr>(type, arg, step.id);
+        return std::make_shared<lp::SpecialFormExpr>(
+            type,
+            lp::SpecialForm::kDereference,
+            std::vector<lp::ExprPtr>{arg, std::make_shared<lp::ConstantExpr>(BIGINT(), variant(step.id))});
       }
     }
     case StepKind::kSubscript: {
       auto& type = arg->type();
       if (type->kind() == TypeKind::MAP) {
-        core::TypedExprPtr key;
+        lp::ExprPtr key;
         switch (type->as<TypeKind::MAP>().childAt(0)->kind()) {
           case TypeKind::VARCHAR:
             key = makeKey(VARCHAR(), step.field);
@@ -457,16 +465,16 @@ core::TypedExprPtr stepToGetter(Step step, core::TypedExprPtr arg) {
             VELOX_FAIL("Unsupported key type");
         }
 
-        return std::make_shared<core::CallTypedExpr>(
+        return std::make_shared<lp::CallExpr>(
             type->as<TypeKind::MAP>().childAt(1),
-            std::vector<core::TypedExprPtr>{arg, key},
-            "subscript");
+            "subscript",
+            std::vector<lp::ExprPtr>{arg, key});
       }
-      return std::make_shared<core::CallTypedExpr>(
+      return std::make_shared<lp::CallExpr>(
           type->childAt(0),
-          std::vector<core::TypedExprPtr>{
-              arg, makeKey<int32_t>(INTEGER(), step.id)},
-          "subscript");
+          "subscript",
+          std::vector<lp::ExprPtr>{
+              arg, makeKey<int32_t>(INTEGER(), step.id)});
     }
 
     default:

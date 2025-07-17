@@ -16,6 +16,7 @@
 #pragma once
 
 #include <folly/Random.h>
+#include "frontend/logical_plan/LogicalPlanNode.h" //@manual
 #include "velox/core/Expressions.h"
 #include "velox/vector/ComplexVector.h"
 
@@ -74,4 +75,10 @@ void makeExprs(
     std::vector<std::string>& names,
     std::vector<core::TypedExprPtr>& exprs);
 
+void makeLogicalExprs(
+    const FeatureOptions& opts,
+    std::vector<std::string>& names,
+    std::vector<logical_plan::ExprPtr>& exprs);
+
+ 
 } // namespace facebook::velox::optimizer::test

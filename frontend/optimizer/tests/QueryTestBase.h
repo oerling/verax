@@ -69,6 +69,8 @@ class QueryTestBase : public exec::test::LocalRunnerTestBase {
 
   TestResult runVelox(const core::PlanNodePtr& plan);
 
+  TestResult runVelox(const logical_plan::LogicalPlanNodePtr& plan);
+
   TestResult runFragmentedPlan(optimizer::PlanAndStats& plan);
 
   /// Checks that 'reference' and 'experiment' produce the same result.

@@ -758,7 +758,6 @@ ExprVector Optimization::translateColumns(
 
 AggregationP Optimization::translateAggregation(
     const lp::AggregateNode& source) {
-  using velox::core::AggregationNode;
   auto* aggregation =
       make<Aggregation>(nullptr, translateColumns(source.groupingKeys()));
   std::unordered_map<std::string, ExprCP> keyRenames;
@@ -1116,7 +1115,7 @@ PlanObjectP Optimization::makeQueryGraph(
     return wrapInDt(node);
   }
   if (kind == lp::NodeKind::kTableScan) {
-    return makeBaseTable(reinterpret_cast<const core::TableScanNode*>(&node));
+    return makeBaseTable(reinterpret_cast<const lp::TableScanNode*>(&node));
   }
   if (kind == lp::NodeKind::kProject) {
     makeQueryGraph(*node.inputAt(0), allowedInDt);
@@ -1153,7 +1152,7 @@ PlanObjectP Optimization::makeQueryGraph(
     }
     makeQueryGraph(*node.inputAt(0), makeDtIf(allowedInDt, PlanType::kOrderBy));
     currentSelect_->orderBy =
-        translateOrderBy(*reinterpret_cast<const core::OrderByNode*>(&node));
+      translateOrderBy(*reinterpret_cast<const lp::SortNode*>(&node));
     return currentSelect_;
   }
   if (kind == lp::NodeKind::kLimit) {
