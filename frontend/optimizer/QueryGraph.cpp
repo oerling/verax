@@ -1042,28 +1042,27 @@ bool isJoinEquality(
 void extractNonInnerJoinEqualities(
     ExprVector& conjuncts,
     PlanObjectCP right,
-    ExprVector& left,
-    ExprVector& right,
+    ExprVector& leftKeys,
+    ExprVector& rightKeys,
     PlanObjectSet& allLeft) {
-  PlanObjectSet allLeft;
   for (auto i = 0; i < conjuncts.size(); ++i) {
     auto* eq = toName("eq");
     auto conjunct = conjuncts[i];
-    if (isCall(conjunct, eq)) {
+    if (isCallExpr(conjunct, eq)) {
       auto eq = conjunct->as<Call>();
-      auto leftTables = allTables(eq->args()[0]);
-      auto rightTables = allTables(eq->args()[1]);
-      if (rightTables->size() == 1 && rightTables.contains(right) &&
+      auto leftTables = eq->args()[0]->allTables();
+      auto rightTables = eq->args()[1]->allTables();
+      if (rightTables.size() == 1 && rightTables.contains(right) &&
           !leftTables.contains(right)) {
-        allLeft.union(leftTables);
+        allLeft.unionSet(leftTables);
         leftKeys.push_back(eq->args()[0]);
         rightKeys.push_back(eq->args()[1]);
         conjuncts.erase(conjuncts.begin() + i);
         --i;
       } else if (
           leftTables.size() == 1 && leftTables.contains(right) &&
-          !righTables.contains(right)) {
-        allLeft.union(rightTables);
+          !rightTables.contains(right)) {
+        allLeft.unionSet(rightTables);
         leftKeys.push_back(eq->args()[1]);
         rightKeys.push_back(eq->args()[0]);
         conjuncts.erase(conjuncts.begin() + i);

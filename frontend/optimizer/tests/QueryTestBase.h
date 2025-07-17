@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#pragma once
+
 #include <folly/executors/CPUThreadPoolExecutor.h>
 #include <gflags/gflags.h>
 #include "optimizer/SchemaResolver.h" //@manual
@@ -86,17 +88,16 @@ class QueryTestBase : public exec::test::LocalRunnerTestBase {
       std::string* errorString = nullptr);
 
   optimizer::PlanAndStats planVelox(
-      const logical_plan::PlanNodePtr& plan,
+      const logical_plan::LogicalPlanNodePtr& plan,
       std::string* planString = nullptr,
       std::string* errorString = nullptr);
 
 
   template <typename PlanPtr>
-  optimizer::PlanAndStats planVelox(
+  optimizer::PlanAndStats planFromTree(
 				    const PlanPtr& plan,
       std::string* planString,
       std::string* errorString);
-
   
   std::string veloxString(const std::string& sql);
 

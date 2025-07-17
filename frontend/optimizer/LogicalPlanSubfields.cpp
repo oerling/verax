@@ -24,37 +24,16 @@ namespace facebook::velox::optimizer {
 
 using namespace facebook::velox;
 
-  using namespace lp = facebook::velox::logical_plan;
-  
+namespace lp = facebook::velox::logical_plan;
+
 namespace {
-  template <typename T>
-int64_t integerValueInner(const variant* variant) {
-  return variant->value<T>();
-}
 
-int64_t integerValue(const variant* variant) {
-  switch (variant->kind()) {
-    case TypeKind::TINYINT:
-      return integerValueInner<int8_t>(variant);
-    case TypeKind::SMALLINT:
-      return integerValueInner<int16_t>(variant);
-    case TypeKind::INTEGER:
-      return integerValueInner<int32_t>(variant);
-    case TypeKind::BIGINT:
-      return integerValueInner<int64_t>(variant);
-    default:
-      VELOX_FAIL();
-  }
-}
-
-  RowTypePtr lambdaArgType(const lp::Expr* expr) {
-    auto* l = dynamic_cast<const lp::LambdaExpr*>(expr);
+RowTypePtr lambdaArgType(const lp::Expr* expr) {
+  auto* l = dynamic_cast<const lp::LambdaExpr*>(expr);
   VELOX_CHECK_NOT_NULL(l);
   return l->signature();
 }
 } // namespace
-
-
 
 PathCP stepsToPath(const std::vector<Step>& steps) {
   std::vector<Step> reverse;
@@ -64,34 +43,32 @@ PathCP stepsToPath(const std::vector<Step>& steps) {
   return queryCtx()->toPath(make<Path>(std::move(reverse)));
 }
 
-  void Optimization::markFieldAccessed(
+void Optimization::markFieldAccessed(
     const LogicalContextSource& source,
     int32_t ordinal,
     std::vector<Step>& steps,
     bool isControl,
     const std::vector<const RowType*>& context,
     const std::vector<LogicalContextSource>& sources) {
-  auto fields = isControl ? &logicalControlSubfields_ : &logicalPayloadSubfields_;
+  auto fields =
+      isControl ? &logicalControlSubfields_ : &logicalPayloadSubfields_;
   if (source.planNode) {
-    auto kind = source.planNode->kind(); 
+    auto kind = source.planNode->kind();
     auto path = stepsToPath(steps);
     fields->nodeFields[source.planNode].resultPaths[ordinal].add(path->id());
     if (kind == lp::NodeKind::kProject) {
-      auto* project =
-          reinterpret_cast<const lp::ProjectNode*>(source.planNode);
+      auto* project = reinterpret_cast<const lp::ProjectNode*>(source.planNode);
       markSubfields(
           project->expressions()[ordinal].get(),
           steps,
           isControl,
-          std::vector<const RowType*>{
-              project->inputs()[0]->outputType().get()},
+          std::vector<const RowType*>{project->inputs()[0]->outputType().get()},
           std::vector<LogicalContextSource>{
               LogicalContextSource{.planNode = project->inputs()[0].get()}});
       return;
     }
-    if (kind == lp::NodeKind::kAggregation) {
-      auto* agg =
-          reinterpret_cast<const lp::AggregationNode*>(source.planNode);
+    if (kind == lp::NodeKind::kAggregate) {
+      auto* agg = reinterpret_cast<const lp::AggregateNode*>(source.planNode);
       std::vector<const RowType*> inputContext = {
           agg->inputs()[0]->outputType().get()};
       std::vector<LogicalContextSource> inputSources = {
@@ -104,13 +81,25 @@ PathCP stepsToPath(const std::vector<Step>& steps) {
         return;
       }
       auto& aggregate = agg->aggregates()[ordinal - keys.size()];
-      markSubfields(
-          aggregate.inputs(), empty, isControl, inputContext, inputSources);
-      if (aggregate.filter()) {
-        markSubfields(
-		      aggregate.filter().get(), empty, isControl, inputContext, inputSources);
+      for (auto& in : aggregate->inputs()) {
+        markSubfields(in.get(), empty, isControl, inputContext, inputSources);
       }
-      markColumnSubfields(agg, aggregate.sortingKeys, 0);
+      if (aggregate->filter()) {
+        markSubfields(
+            aggregate->filter().get(),
+            empty,
+            isControl,
+            inputContext,
+            inputSources);
+      }
+      for (auto& field : aggregate->ordering()) {
+        markSubfields(
+            field.expression.get(),
+            empty,
+            isControl,
+            inputContext,
+            inputSources);
+      }
       return;
     }
     auto& sourceInputs = source.planNode->inputs();
@@ -162,88 +151,88 @@ std::optional<int32_t> Optimization::stepToArg(
   return std::nullopt;
 }
 
-  lp::ConstantExpr* maybeFoldConstant(lp::Expr* expr) {
-    if (expr->isConstant()) {
-      return expr->asUnchecked<lp::ConstantExpr>();
-    }
-    return nullptr;
+const lp::ConstantExpr* maybeFoldConstant(const lp::Expr* expr) {
+  if (expr->isConstant()) {
+    return expr->asUnchecked<lp::ConstantExpr>();
   }
-  
+  return nullptr;
+}
+
 void Optimization::markSubfields(
-				 const lp::Expr* expr,
+    const lp::Expr* expr,
     std::vector<Step>& steps,
     bool isControl,
     const std::vector<const RowType*> context,
     const std::vector<LogicalContextSource>& sources) {
   auto kind = expr->kind();
   if (expr->isInputReference()) {
+    auto& name = expr->asUnchecked<lp::InputReferenceExpr>()->name();
     for (auto i = 0; i < sources.size(); ++i) {
-        auto maybeIdx = context[i]->getChildIdxIfExists(field->name());
-        if (maybeIdx.has_value()) {
-          auto source = sources[i];
-          markFieldAccessed(
-              source, maybeIdx.value(), steps, isControl, context, sources);
-          return;
-        }
+      auto maybeIdx = context[i]->getChildIdxIfExists(name);
+      if (maybeIdx.has_value()) {
+        auto source = sources[i];
+        markFieldAccessed(
+            source, maybeIdx.value(), steps, isControl, context, sources);
+        return;
       }
-      VELOX_FAIL("Field not found {}", field->name());
     }
+    VELOX_FAIL("Field not found {}", name);
+  }
 
   if (isSpecialForm(expr, lp::SpecialForm::kDereference)) {
-
     VELOX_CHECK(expr->inputAt(1)->isConstant());
-    auto* field = expr->inputAt(1)->asUnchecked<lp::ConstantExpr>();;
+    auto* field = expr->inputAt(1)->asUnchecked<lp::ConstantExpr>();
     auto* input = expr->inputAt(0).get();
-      Name name = nullptr;
-      auto fieldIndex = maybeIntegerLiteral(field);
-      if (fieldIndex.has_value()) {
-	name = toName(input->type()->as<TypeKind::ROW>().nameOf(fieldIndex.value()));
-      } else {
-	name = toName(field->value().as<TypeKind::VARCHAR>());
-      }
-      steps.push_back(Step{
-	  .kind = StepKind::kField,
-	.field = (name == nullptr || strlen(name) == 0) ? nullptr : name,
-	.id = fieldIndex.has_value() ? fieldIndex.value() : 0});
+    Name name = nullptr;
+    auto fieldIndex = maybeIntegerLiteral(field);
+    if (fieldIndex.has_value()) {
+      name =
+          toName(input->type()->as<TypeKind::ROW>().nameOf(fieldIndex.value()));
+    } else {
+      name = toName(field->value().value<TypeKind::VARCHAR>());
+    }
+    steps.push_back(Step{
+        .kind = StepKind::kField,
+        .field = (name == nullptr || strlen(name) == 0) ? nullptr : name,
+        .id = fieldIndex.has_value() ? fieldIndex.value() : 0});
     markSubfields(input, steps, isControl, context, sources);
     steps.pop_back();
     return;
+  }
+  if (expr->isCall()) {
+    auto& name = expr->asUnchecked<lp::CallExpr>()->name();
+    if (name == "cardinality") {
+      steps.push_back(Step{.kind = StepKind::kCardinality});
+      markSubfields(expr->inputAt(0).get(), steps, isControl, context, sources);
+      steps.pop_back();
+      return;
     }
-    if (expr->isCall()) {
-      auto& name = expr->asUnchecked<lp::CallExpr>()->name();
-      if (name == "cardinality") {
-	steps.push_back(Step{.kind = StepKind::kCardinality});
-	markSubfields(
-		    expr->inputAt(0).get(), steps, isControl, context, sources);
-	steps.pop_back();
-	return;
-      }
     if (name == "subscript" || name == "element_at") {
-      auto* constant = maybeFoldConstant(expr->inputAt(1));
+      auto* constant = maybeFoldConstant(expr->inputAt(1).get());
       if (!constant) {
         std::vector<Step> subSteps;
         markSubfields(
-		      expr->inputAt(1).get(), subSteps, isControl, context, sources);
+            expr->inputAt(1).get(), subSteps, isControl, context, sources);
         steps.push_back(Step{.kind = StepKind::kSubscript, .allFields = true});
         markSubfields(
-		      expr->inputs()[0].get(), steps, isControl, context, sources);
+            expr->inputs()[0].get(), steps, isControl, context, sources);
         steps.pop_back();
         return;
       }
-     variant& value = constant->value();
-      if (value->type()->kind() == TypeKind::VARCHAR) {
-        std::string str = value->as<TypeKind::VARCHAR>();
+      auto& value = constant->value();
+      if (value.kind() == TypeKind::VARCHAR) {
+        std::string str = value.value<TypeKind::VARCHAR>();
         steps.push_back(
             Step{.kind = StepKind::kSubscript, .field = toName(str)});
         markSubfields(
-		      expr->inputs()[0].get(), steps, isControl, context, sources);
+            expr->inputs()[0].get(), steps, isControl, context, sources);
         steps.pop_back();
         return;
       }
-      auto id = integerValue(value);
+      auto id = integerValue(&value);
       steps.push_back(Step{.kind = StepKind::kSubscript, .id = id});
       markSubfields(
-		    expr->inputs()[0].get(), steps, isControl, context, sources);
+          expr->inputs()[0].get(), steps, isControl, context, sources);
       steps.pop_back();
       return;
     }
@@ -252,14 +241,16 @@ void Optimization::markSubfields(
       for (auto i = 0; i < expr->inputs().size(); ++i) {
         std::vector<Step> steps;
         markSubfields(
-		      expr->inputs()[i].get(), steps, isControl, context, sources);
+            expr->inputs()[i].get(), steps, isControl, context, sources);
       }
       return;
     }
     // The function has non-default metadata. Record subfields.
-    auto* fields = isControl ? &controlSubfields_ : &payloadSubfields_;
+    auto* call = reinterpret_cast<const lp::CallExpr*>(expr);
+    auto* fields =
+        isControl ? &logicalControlSubfields_ : &logicalPayloadSubfields_;
     auto path = stepsToPath(steps);
-    fields->argFields[expr].resultPaths[ResultAccess::kSelf].add(path->id());
+    fields->argFields[call].resultPaths[ResultAccess::kSelf].add(path->id());
     for (auto i = 0; i < expr->inputs().size(); ++i) {
       if (metadata->subfieldArg.has_value() &&
           i == metadata->subfieldArg.value()) {
@@ -281,7 +272,7 @@ void Optimization::markSubfields(
               argPath->id());
           newSteps.pop_back();
           markSubfields(
-			expr->inputs()[maybeNth.value()].get(),
+              expr->inputs()[maybeNth.value()].get(),
               newSteps,
               isControl,
               context,
@@ -302,43 +293,42 @@ void Optimization::markSubfields(
         auto argType = lambdaArgType(expr->inputs()[i].get());
         std::vector<const RowType*> newContext = {argType.get()};
         newContext.insert(newContext.end(), context.begin(), context.end());
-        std::vector<LogicalContextSource> newSources = {
-	  LogicalContextSource{.call = expr->asUnchecked<lp::CallExpr>(), .lambdaOrdinal = i}};
+        std::vector<LogicalContextSource> newSources = {LogicalContextSource{
+            .call = expr->asUnchecked<lp::CallExpr>(), .lambdaOrdinal = i}};
         newSources.insert(newSources.end(), sources.begin(), sources.end());
 
-        auto* l = 
-	  expr->inputAt(i)->asUnchecked<lp::LambdaExpr>();
-	std::vector<Step> empty;
+        auto* l = expr->inputAt(i)->asUnchecked<lp::LambdaExpr>();
+        std::vector<Step> empty;
         markSubfields(
             l->body().get(), empty, isControl, newContext, newSources);
         continue;
         markSubfields(
-		      expr->inputs()[i].get(), empty, isControl, context, sources);
+            expr->inputs()[i].get(), empty, isControl, context, sources);
         continue;
       }
       // The argument is not special, just mark through without path.
       std::vector<Step> empty;
       markSubfields(
-		    expr->inputs()[i].get(), empty, isControl, context, sources);
+          expr->inputs()[i].get(), empty, isControl, context, sources);
     }
     return;
   }
-    if (expr->isConstant()) {
+  if (expr->isConstant()) {
     return;
   }
-    if (expr->isSpecialForm()) {
-      for (auto i = 0; i < expr->inputs().size(); ++i) {
-        std::vector<Step> steps;
-        markSubfields(
-		      expr->inputs()[i].get(), steps, isControl, context, sources);
-      }
-      return;
+  if (expr->isSpecialForm()) {
+    for (auto i = 0; i < expr->inputs().size(); ++i) {
+      std::vector<Step> steps;
+      markSubfields(
+          expr->inputs()[i].get(), steps, isControl, context, sources);
     }
-  VELOX_UNREACHABLE("Unhandled expr: {}", expr->toString());
+    return;
+  }
+  VELOX_UNREACHABLE("Unhandled expr: {}", lp::ExprPrinter::toText(*expr));
 }
 
 void Optimization::markColumnSubfields(
-    const lp::PlanNode* node,
+    const lp::LogicalPlanNode* node,
     const std::vector<logical_plan::ExprPtr>& columns,
     int32_t source) {
   std::vector<const RowType*> context = {
@@ -351,39 +341,40 @@ void Optimization::markColumnSubfields(
   }
 }
 
-void Optimization::markControl(const lp::PlanNode* node) {
-  auto name = node->name();
-  if (auto* join = dynamic_cast<const core::AbstractJoinNode*>(node)) {
-    markColumnSubfields(node, join->leftKeys(), 0);
-    markColumnSubfields(node, join->rightKeys(), 1);
-    if (auto* filter = join->filter().get()) {
+void Optimization::markControl(const lp::LogicalPlanNode* node) {
+  auto kind = node->kind();
+  if (kind == lp::NodeKind::kJoin) {
+    auto* join = reinterpret_cast<const lp::JoinNode*>(node);
+    if (auto* filter = join->condition().get()) {
       std::vector<const RowType*> context = {
-          join->inputs()[0]->outputType().get(),
-          join->inputs()[1]->outputType().get()};
+          join->left()->outputType().get(), join->right()->outputType().get()};
       std::vector<LogicalContextSource> sources = {
-          {.planNode = join->inputs()[0].get()},
-          {.planNode = join->inputs()[1].get()}};
+          {.planNode = join->left().get()}, {.planNode = join->right().get()}};
       std::vector<Step> steps;
       markSubfields(filter, steps, true, context, sources);
     }
-  } else if (name == "Filter") {
+  } else if (kind == lp::NodeKind::kFilter) {
     std::vector<const RowType*> context = {
-        node->inputs()[0]->outputType().get()};
+        node->inputAt(0)->outputType().get()};
     std::vector<LogicalContextSource> sources = {
-        {.planNode = node->inputs()[0].get()}};
+        {.planNode = node->inputAt(0).get()}};
     std::vector<Step> steps;
     markSubfields(
-        reinterpret_cast<const core::FilterNode*>(node)->filter().get(),
+        reinterpret_cast<const lp::FilterNode*>(node)->predicate().get(),
         steps,
         true,
         context,
         sources);
-  } else if (name == "Aggregation") {
-    auto* agg = dynamic_cast<const core::AggregationNode*>(node);
+  } else if (kind == lp::NodeKind::kAggregate) {
+    auto* agg = dynamic_cast<const lp::AggregateNode*>(node);
     markColumnSubfields(node, agg->groupingKeys(), 0);
-  } else if (name == "OrderBy") {
-    auto* order = dynamic_cast<const core::OrderByNode*>(node);
-    markColumnSubfields(node, order->sortingKeys(), 0);
+  } else if (kind == lp::NodeKind::kSort) {
+    auto* order = dynamic_cast<const lp::SortNode*>(node);
+    std::vector<lp::ExprPtr> keys;
+    for (auto& k : order->ordering()) {
+      keys.push_back(k.expression);
+    }
+    markColumnSubfields(node, keys, 0);
   }
   for (auto& source : node->inputs()) {
     markControl(source.get());
@@ -392,7 +383,7 @@ void Optimization::markControl(const lp::PlanNode* node) {
 
 void Optimization::markAllSubfields(
     const RowType* type,
-    const lp::PlanNode* node) {
+    const lp::LogicalPlanNode* node) {
   markControl(node);
   LogicalContextSource source = {.planNode = node};
   std::vector<const RowType*> context;
@@ -403,9 +394,10 @@ void Optimization::markAllSubfields(
   }
 }
 
-std::vector<int32_t> Optimization::usedChannels(const lp::PlanNode* node) {
-  auto& control = controlSubfields_.nodeFields[node];
-  auto& payload = payloadSubfields_.nodeFields[node];
+std::vector<int32_t> Optimization::usedChannels(
+    const lp::LogicalPlanNode* node) {
+  auto& control = logicalControlSubfields_.nodeFields[node];
+  auto& payload = logicalPayloadSubfields_.nodeFields[node];
   BitSet unique;
   std::vector<int32_t> result;
   for (auto& pair : control.resultPaths) {
@@ -497,7 +489,7 @@ std::string LogicalPlanSubfields::toString() const {
   if (!argFields.empty()) {
     out << "Functions:";
     for (auto& pair : argFields) {
-      out << "Func " << pair.first->toString() << " = {";
+      out << "Func " << lp::ExprPrinter::toText(*pair.first) << " = {";
       for (auto& s : pair.second.resultPaths) {
         out << s.first << " -> {";
         s.second.forEach(

@@ -47,12 +47,12 @@ void Optimization::setDerivedTableOutput(
 }
 
 DerivedTableP Optimization::makeQueryGraph() {
-  markAllSubfields(inputPlan_.outputType().get(), &inputPlan_);
+  markAllSubfields(inputPlan_->outputType().get(), inputPlan_);
   auto* root = make<DerivedTable>();
   root_ = root;
   currentSelect_ = root_;
   root->cname = toName(fmt::format("dt{}", ++nameCounter_));
-  makeQueryGraph(inputPlan_, kAllAllowedInDt);
+  makeQueryGraph(*inputPlan_, kAllAllowedInDt);
   return root_;
 }
 
@@ -97,17 +97,6 @@ const variant* toVariant(BaseVector& constantVector) {
         std::make_unique<variant>(typed->valueAt(0)));
   }
   VELOX_FAIL("Literal not of foldable type");
-}
-
-std::shared_ptr<const exec::ConstantExpr> Optimization::foldConstant(
-    const core::TypedExprPtr& typedExpr) {
-  auto exprSet = evaluator_.compile(typedExpr);
-  auto first = exprSet->exprs().front().get();
-  if (dynamic_cast<const exec::ConstantExpr*>(first)) {
-    return std::dynamic_pointer_cast<exec::ConstantExpr>(
-        exprSet->exprs().front());
-  }
-  return nullptr;
 }
 
 ExprCP Optimization::tryFoldConstant(
@@ -348,29 +337,6 @@ PathCP innerPath(const std::vector<Step>& steps, int32_t last) {
   return toPath(std::move(reverse));
 }
 
-variant* subscriptLiteral(TypeKind kind, const Step& step) {
-  auto* ctx = queryCtx();
-  switch (kind) {
-    case TypeKind::VARCHAR:
-      return ctx->registerVariant(
-          std::make_unique<variant>(std::string(step.field)));
-    case TypeKind::BIGINT:
-      return ctx->registerVariant(
-          std::make_unique<variant>(static_cast<int64_t>(step.id)));
-    case TypeKind::INTEGER:
-      return ctx->registerVariant(
-          std::make_unique<variant>(static_cast<int32_t>(step.id)));
-    case TypeKind::SMALLINT:
-      return ctx->registerVariant(
-          std::make_unique<variant>(static_cast<int16_t>(step.id)));
-    case TypeKind::TINYINT:
-      return ctx->registerVariant(
-          std::make_unique<variant>(static_cast<int8_t>(step.id)));
-    default:
-      VELOX_FAIL("Unsupported key type");
-  }
-}
-
 ExprCP Optimization::makeGettersOverSkyline(
     const std::vector<Step>& steps,
     const SubfieldProjections* skyline,
@@ -500,86 +466,6 @@ void Optimization::ensureFunctionSubfields(const core::TypedExprPtr& expr) {
       translateExpr(expr);
     }
   }
-}
-
-BuiltinNames::BuiltinNames()
-    : eq(toName("eq")),
-      lt(toName("lt")),
-      lte(toName("lte")),
-      gt(toName("gt")),
-      gte(toName("gte")),
-      plus(toName("plus")),
-      multiply(toName("multiply")),
-      _and(toName("and")),
-      _or(toName("or")) {
-  canonicalizable.insert(eq);
-  canonicalizable.insert(lt);
-  canonicalizable.insert(lte);
-  canonicalizable.insert(gt);
-  canonicalizable.insert(gte);
-  canonicalizable.insert(plus);
-  canonicalizable.insert(multiply);
-  canonicalizable.insert(_and);
-  canonicalizable.insert(_or);
-}
-
-Name BuiltinNames::reverse(Name name) const {
-  if (name == lt) {
-    return gt;
-  }
-  if (name == lte) {
-    return gte;
-  }
-  if (name == gt) {
-    return lt;
-  }
-  if (name == gte) {
-    return lte;
-  }
-  return name;
-}
-
-BuiltinNames& Optimization::builtinNames() {
-  if (!builtinNames_) {
-    builtinNames_ = std::make_unique<BuiltinNames>();
-  }
-  return *builtinNames_;
-}
-
-void Optimization::canonicalizeCall(Name& name, ExprVector& args) {
-  auto& names = builtinNames();
-  if (!names.isCanonicalizable(name)) {
-    return;
-  }
-  VELOX_CHECK_EQ(args.size(), 2, "Expecting binary op {}", name);
-  if ((args[0]->type() == PlanType::kLiteral &&
-       args[1]->type() != PlanType::kLiteral) ||
-      args[0]->id() > args[1]->id()) {
-    std::swap(args[0], args[1]);
-    name = names.reverse(name);
-  }
-}
-
-ExprCP Optimization::deduppedCall(
-    Name name,
-    Value value,
-    ExprVector args,
-    FunctionSet flags) {
-  if (args.size() == 2) {
-    canonicalizeCall(name, args);
-  }
-  ExprDedupKey key = {name, &args};
-  auto it = functionDedup_.find(key);
-  if (it != functionDedup_.end()) {
-    return it->second;
-  }
-  auto* call =
-      make<Call>(name, std::move(value), std::move(args), std::move(flags));
-  if (!call->containsFunction(FunctionSet::kNondeterministic)) {
-    key.args = &call->args();
-    functionDedup_[key] = call;
-  }
-  return call;
 }
 
 ExprCP Optimization::makeConstant(const core::ConstantTypedExprPtr& constant) {
@@ -1109,27 +995,7 @@ PlanObjectP Optimization::makeBaseTable(const core::TableScanNode* tableScan) {
   return baseTable;
 }
 
-const Type* pathType(const Type* type, PathCP path) {
-  for (auto& step : path->steps()) {
-    switch (step.kind) {
-      case StepKind::kField:
-        if (step.field) {
-          type =
-              type->childAt(type->as<TypeKind::ROW>().getChildIdx(step.field))
-                  .get();
-          break;
-        }
-        type = type->childAt(step.id).get();
-        break;
-      case StepKind::kSubscript:
-        type = type->childAt(type->kind() == TypeKind::ARRAY ? 0 : 1).get();
-        break;
-      default:
-        VELOX_NYI();
-    }
-  }
-  return type;
-}
+  const Type* pathType(const Type* type, PathCP path);
 
 void Optimization::addProjection(const core::ProjectNode* project) {
   exprSource_ = project->sources()[0].get();

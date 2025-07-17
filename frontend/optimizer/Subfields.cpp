@@ -148,20 +148,6 @@ void Optimization::markFieldAccessed(
       callSources);
 }
 
-std::optional<int32_t> Optimization::stepToArg(
-    const Step& step,
-    const FunctionMetadata* metadata) {
-  auto it = std::find(
-      metadata->fieldIndexForArg.begin(),
-      metadata->fieldIndexForArg.end(),
-      step.id);
-  if (it != metadata->fieldIndexForArg.end()) {
-    // The arg corresponding to the step is accessed.
-    return metadata->argOrdinal[it - metadata->fieldIndexForArg.begin()];
-  }
-  return std::nullopt;
-}
-
 void Optimization::markSubfields(
     const core::ITypedExpr* expr,
     std::vector<Step>& steps,

@@ -13,10 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#pragma once
 
 #include <folly/Random.h>
 #include "velox/core/Expressions.h"
 #include "velox/vector/ComplexVector.h"
+
+#pragma once
 
 namespace facebook::velox::optimizer::test {
 

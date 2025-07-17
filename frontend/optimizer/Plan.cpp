@@ -88,7 +88,7 @@ Optimization::Optimization(
 }
 
 Optimization::Optimization(
-			   const logical_plan::PlanNode& plan,
+			   const logical_plan::LogicalPlanNode& plan,
     const Schema& schema,
     History& history,
     std::shared_ptr<core::QueryCtx> _queryCtx,
@@ -119,9 +119,12 @@ Optimization::Optimization(
   for (auto& join : root_->joins) {
     join->guessFanout();
   }
-  setDerivedTableOutput(root_, inputPlan_);
+  if (inputPlan_) {
+    setDerivedTableOutput(root_, *inputPlan_);
+  } else {
+    setDerivedTableOutput(root_, *logicalPlan_);
+  }
 }
-
   
 void Optimization::trace(
     int32_t event,
