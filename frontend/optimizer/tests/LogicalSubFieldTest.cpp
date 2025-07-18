@@ -319,7 +319,7 @@ TEST_P(LogicalSubfieldTest, maps) {
                 lp::PlanBuilder(ctx)
                     .tableScan(kHiveConnectorId, "features", fields)
                     .filter(
-                        "uid % 2 = 1 and cast(float_features[10300::INTEGER] as integer) % 2 = 0")
+                        "uid % 2 = 1 and cast(float_features[10300::INTEGER] as integer) % 2::INTEGER = 0::INTEGER")
                     .project({"uid as opt_uid", "float_features as opt_ff"}),
                 "uid = opt_uid",
                 lp::JoinType::kLeft)
@@ -341,7 +341,7 @@ TEST_P(LogicalSubfieldTest, maps) {
             .project(
                 {"float_features[10100::INTEGER] as f1",
                  "float_features[10200::INTEGER] as f2",
-                 "id_score_list_features[200800::INTEGER][100000::INTEGER]"});
+                 "id_score_list_features[200800::INTEGER][100000::BIGINT]"});
     plan = veloxString(planVelox(builder.build()).plan);
     expectRegexp(plan, "float_features.*Subfields.*float_features.10100.");
     expectRegexp(plan, "float_features.*Subfields.*float_features.10200.");
@@ -357,7 +357,7 @@ TEST_P(LogicalSubfieldTest, maps) {
                            {"float_features[10000::INTEGER] as ff",
                             "id_score_list_features[200800::INTEGER] as sc1",
                             "id_list_features as idlf"})
-                       .project({"sc1[1::INTEGER] + 1::REAL as score"});
+                       .project({"sc1[1::BIGINT] + 1::REAL as score"});
     plan = veloxString(planVelox(builder.build()).plan);
     expectRegexp(
         plan,
@@ -374,7 +374,7 @@ TEST_P(LogicalSubfieldTest, maps) {
                             "id_list_features as idlf",
                             "uid"})
                        .project(
-                           {"sc1[1::INTEGER] + 1::REAL as score",
+                           {"sc1[1::BIGINT] + 1::REAL as score",
                             "idlf[cast(uid % 100 as INTEGER)] as any"});
     plan = veloxString(planVelox(builder.build()).plan);
     expectRegexp(

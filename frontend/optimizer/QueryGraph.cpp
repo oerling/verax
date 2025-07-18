@@ -348,6 +348,7 @@ Column::Column(
     Name name,
     PlanObjectP relation,
     const Value& value,
+    Name nameInTable,
     ColumnCP top,
     PathCP path)
     : Expr(PlanType::kColumn, value),
@@ -358,9 +359,14 @@ Column::Column(
   columns_.add(this);
   subexpressions_.add(this);
   if (relation_ && relation_->type() == PlanType::kTable) {
-    schemaColumn_ = relation->as<BaseTable>()->schemaTable->findColumn(
-        topColumn_ ? topColumn_->name() : name_);
+    if (topColumn_) {
+      schemaColumn_ = topColumn_->schemaColumn_;
+    } else {
+      schemaColumn_ = relation->as<BaseTable>()->schemaTable->findColumn(
+									 nameInTable ? nameInTable : name_);
     VELOX_CHECK(schemaColumn_);
+    }
+
   }
 }
 

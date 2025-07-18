@@ -74,10 +74,10 @@ PlanBuilder& PlanBuilder::tableScan(
 
   node_ = std::make_shared<TableScanNode>(
       nextId(),
-      ROW(columnNames, columnTypes),
+      ROW(outputNames, columnTypes),
       connectorId,
       tableName,
-      outputNames);
+      columnNames);
 
   return *this;
 }
@@ -605,14 +605,25 @@ LogicalPlanNodePtr PlanBuilder::build() {
   return node_;
 }
 
+namespace {
+bool isAllDigits(std::string_view str) {
+  for (auto c : str) {
+    if (!isdigit(c)) {
+      return false;
+    }
+  }
+  return true;
+}
+} // namespace
+
 std::string NameAllocator::newName(const std::string& hint) {
   VELOX_CHECK(!hint.empty(), "Hint cannot be empty");
 
-  // Strip suffix past '_'.
+  // Strip suffix past '_' if all digits.
   std::string prefix = hint;
 
   auto pos = prefix.rfind('_');
-  if (pos != std::string::npos) {
+  if (pos != std::string::npos && isAllDigits(std::string_view(prefix.data() + pos, prefix.size() - pos))) {
     prefix = prefix.substr(0, pos);
   }
 

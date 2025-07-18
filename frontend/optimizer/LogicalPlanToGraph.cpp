@@ -146,17 +146,18 @@ bool Optimization::isSubfield(
   if (isSpecialForm(expr, lp::SpecialForm::kDereference)) {
     step.kind = StepKind::kField;
     auto maybeIndex =
-        maybeIntegerLiteral(expr->inputAt(0)->asUnchecked<lp::ConstantExpr>());
+        maybeIntegerLiteral(expr->inputAt(1)->asUnchecked<lp::ConstantExpr>());
     Name name = nullptr;
     int64_t id = 0;
     if (maybeIndex.has_value()) {
       id = maybeIndex.value();
     } else {
-      auto& field = expr->inputAt(0)->asUnchecked<lp::ConstantExpr>()->value();
+      auto& field = expr->inputAt(1)->asUnchecked<lp::ConstantExpr>()->value();
       name = toName(field.value<TypeKind::VARCHAR>());
     }
     step.field = name;
     step.id = id;
+    input = expr->inputAt(0);
     return true;
   }
   if (auto* call = dynamic_cast<const lp::CallExpr*>(expr)) {
@@ -186,7 +187,7 @@ bool Optimization::isSubfield(
     }
     if (name == "cardinality") {
       step.kind = StepKind::kCardinality;
-      input = expr->inputs()[0];
+      input = expr->inputAt(0);
       return true;
     }
   }
@@ -217,20 +218,32 @@ void Optimization::getExprForField(
     auto& sources = context->inputs();
     if (sources.empty()) {
       auto leaf = findLeaf(context);
-      auto internedName = toName(name);
+      auto it = renames_.find(name);
+      VELOX_CHECK(it != renames_.end());
+      auto maybeColumn = it->second;
+      VELOX_CHECK(maybeColumn->type() == PlanType::kColumn);
+      resultColumn = maybeColumn->as<Column>();
       resultExpr = nullptr;
+      context = nullptr;
+#if 0
+      auto internedName = toName(name);
       if (auto* table = dynamic_cast<BaseTableCP>(leaf)) {
-        for (auto i = 0; i < table->columns.size(); ++i) {
+	for (auto i = 0; i < table->columns.size(); ++i) {
           if (table->columns[i]->name() == internedName) {
             resultColumn = table->columns[i];
             break;
           }
         }
-        context = nullptr;
-        return;
-      } else {
+    } else {
         VELOX_NYI("Leaf node is not a table");
       }
+#else
+      VELOX_CHECK_NOT_NULL(resultColumn->relation());
+      if (resultColumn->relation()->type() == PlanType::kTable) {
+	VELOX_CHECK(leaf == resultColumn->relation());
+      }
+#endif
+      return;
     }
     for (auto i = 0; i < sources.size(); ++i) {
       auto& row = sources[i]->outputType();
@@ -636,7 +649,7 @@ ExprCP Optimization::translateExpr(const lp::ExprPtr& expr) {
         : toName(specialFormCallName(expr->asUnchecked<lp::SpecialFormExpr>()));
     funcs = funcs | functionBits(name);
     auto* callExpr = deduppedCall(
-        name, Value(toType(call->type()), cardinality), std::move(args), funcs);
+        name, Value(toType(expr->type()), cardinality), std::move(args), funcs);
     return callExpr;
   }
   if (cast) {
@@ -851,14 +864,14 @@ void Optimization::translateJoin(const lp::JoinNode& join) {
   auto joinLeft = join.left();
   auto joinRight = join.right();
 
-  ExprVector conjuncts;
-  translateConjuncts(join.condition(), conjuncts);
   auto joinType = join.joinType();
   bool isInner = joinType == lp::JoinType::kInner;
   makeQueryGraph(*joinLeft, allow(PlanType::kJoin));
   // For an inner join a join tree on the right can be flattened, for all other
   // kinds it must be kept together in its own dt.
   makeQueryGraph(*joinRight, isInner ? allow(PlanType::kJoin) : 0);
+  ExprVector conjuncts;
+  translateConjuncts(join.condition(), conjuncts);
 
   if (isInner) {
     currentSelect_->conjuncts.insert(
@@ -952,7 +965,7 @@ PlanObjectP Optimization::makeBaseTable(const lp::TableScanNode* tableScan) {
     }
     auto schemaColumn = schemaTable->findColumn(names[i]);
     auto value = schemaColumn->value();
-    auto* column = make<Column>(toName(names[i]), baseTable, value);
+    auto* column = make<Column>(toName(names[i]), baseTable, value, schemaColumn->name());
     baseTable->columns.push_back(column);
     auto kind = column->value().type->kind();
     if (kind == TypeKind::ARRAY || kind == TypeKind::ROW ||
@@ -1029,7 +1042,7 @@ void Optimization::makeSubfieldColumns(
     Value value(type, card);
     auto name = fmt::format("{}.{}", column->name(), path->toString());
     auto* subcolumn =
-        make<Column>(toName(name), baseTable, value, column, path);
+      make<Column>(toName(name), baseTable, value, nullptr, column, path);
     baseTable->columns.push_back(subcolumn);
     projections.pathToExpr[path] = subcolumn;
   });
@@ -1169,4 +1182,14 @@ PlanObjectP Optimization::makeQueryGraph(
   return currentSelect_;
 }
 
+std::string leString(const lp::Expr* e) {
+  return lp::ExprPrinter::toText(*e);
+}
+
+  std::string pString(const lp::LogicalPlanNode* p) {
+  return lp::PlanPrinter::toText(*p);
+}
+
+
+  
 } // namespace facebook::velox::optimizer

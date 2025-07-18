@@ -151,12 +151,33 @@ std::optional<int32_t> Optimization::stepToArg(
   return std::nullopt;
 }
 
-const lp::ConstantExpr* maybeFoldConstant(const lp::Expr* expr) {
+bool looksConstant(const lp::ExprPtr& expr) {
   if (expr->isConstant()) {
-    return expr->asUnchecked<lp::ConstantExpr>();
+    return true;
+  }
+  if (expr->isInputReference()) {
+    return false;
+  }
+  for (auto& in : expr->inputs()) {
+    if (!looksConstant(in)) {
+      return false;
+    }
+  }
+  return true;
+}
+  
+  const lp::ConstantExprPtr Optimization::maybeFoldLogicalConstant(const lp::ExprPtr expr) {
+  if (expr->isConstant()) {
+    return std::static_pointer_cast<const lp::ConstantExpr>(expr);
+  }
+  if (looksConstant(expr)) {
+    auto literal = translateExpr(expr);
+    if (literal->type() == PlanType::kLiteral) {
+      return std::make_shared<lp::ConstantExpr>(toTypePtr(literal->value().type), literal->as<Literal>()->literal());
+    }
   }
   return nullptr;
-}
+  }
 
 void Optimization::markSubfields(
     const lp::Expr* expr,
@@ -208,7 +229,7 @@ void Optimization::markSubfields(
       return;
     }
     if (name == "subscript" || name == "element_at") {
-      auto* constant = maybeFoldConstant(expr->inputAt(1).get());
+      auto constant = maybeFoldLogicalConstant(expr->inputAt(1));
       if (!constant) {
         std::vector<Step> subSteps;
         markSubfields(

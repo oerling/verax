@@ -166,6 +166,7 @@ class Column : public Expr {
       Name _name,
       PlanObjectP _relation,
       const Value& value,
+      Name nameInTable = nullptr,
       ColumnCP topColumn = nullptr,
       PathCP path = nullptr);
 

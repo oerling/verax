@@ -828,6 +828,13 @@ class Optimization {
       const logical_plan::SpecialFormExpr* cast,
       const ExprVector& literals);
 
+  // Folds a logical expr to a constant if can. Should be called only if 'expr'
+  // only depends on constants. Identifier scope will may not be not set at time
+  // of call. This is before regular constant folding because subscript
+  // expressions must be folded for subfield resolution.
+  const logical_plan::ConstantExprPtr maybeFoldLogicalConstant(
+      const logical_plan::ExprPtr expr);
+
   // Returns a constant expression if 'typedExprcan be folded, nullptr
   // otherwise.
   std::shared_ptr<const exec::ConstantExpr> foldConstant(
