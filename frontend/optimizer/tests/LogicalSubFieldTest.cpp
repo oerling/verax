@@ -47,7 +47,7 @@ class LogicalSubfieldTest : public QueryTestBase,
 
   void SetUp() override {
     QueryTestBase::SetUp();
-    core::Expressions::setFieldAccessHook(fieldIndexHook);
+    lp::PlanBuilder::setFieldAccessHook(fieldIndexHook);
     switch (GetParam()) {
       case 1:
         optimizerOptions_ = OptimizerOptions();
@@ -68,14 +68,14 @@ class LogicalSubfieldTest : public QueryTestBase,
 
   void TearDown() override {
     QueryTestBase::TearDown();
-    core::Expressions::setFieldAccessHook(nullptr);
+    lp::PlanBuilder::setFieldAccessHook(nullptr);
   }
 
   // Converts names like __[nn to DereferenceTypedExpr with index nn. Other
   // cases are unchanged.
-  static core::TypedExprPtr fieldIndexHook(
-      std::shared_ptr<const core::FieldAccessExpr> fae,
-      std::vector<core::TypedExprPtr>& children) {
+  static lp::SpecialFormExprPtr fieldIndexHook(
+      const core::FieldAccessExpr* fae,
+      lp::ExprPtr input) {
     auto name = fae->name();
     if (name.size() < 3 || name[0] != '_' || name[1] != '_') {
       return nullptr;
@@ -84,13 +84,13 @@ class LogicalSubfieldTest : public QueryTestBase,
     if (1 != sscanf(name.c_str() + 2, "%d", &idx)) {
       return nullptr;
     }
-    VELOX_CHECK_EQ(children.size(), 1);
     VELOX_CHECK_GE(idx, 0);
-    VELOX_CHECK_LT(idx, children[0]->type()->size());
-    return std::make_shared<core::DereferenceTypedExpr>(
-        children[0]->type()->as<TypeKind::ROW>().childAt(idx),
-        children[0],
-        idx);
+    VELOX_CHECK_LT(idx, input->type()->size());
+    return std::make_shared<lp::SpecialFormExpr>(
+        input->type()->as<TypeKind::ROW>().childAt(idx),
+        lp::SpecialForm::kDereference,
+        std::vector<lp::ExprPtr>{
+            input, std::make_shared<lp::ConstantExpr>(INTEGER(), variant(idx))});
   }
 
   void declareGenies() {

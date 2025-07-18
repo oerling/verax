@@ -20,10 +20,11 @@
 #include "velox/exec/Aggregate.h"
 #include "velox/exec/AggregateFunctionRegistry.h"
 #include "velox/functions/FunctionRegistry.h"
-#include "velox/parse/Expressions.h"
 
 namespace facebook::velox::logical_plan {
 
+  PlanBuilder::FieldAccessHook PlanBuilder::fieldAccessHook_;
+  
 PlanBuilder& PlanBuilder::values(
     const RowTypePtr& rowType,
     std::vector<Variant> rows) {
@@ -377,6 +378,13 @@ ExprPtr resolveScalarTypesImpl(
     auto input =
         resolveScalarTypesImpl(fieldAccess->input(), inputNameResolver);
 
+    if (PlanBuilder::fieldAccessHook() != nullptr) {
+      auto result = PlanBuilder::fieldAccessHook()(fieldAccess, input);
+      if (result != nullptr) {
+	return result;
+      }
+    }
+    
     return std::make_shared<SpecialFormExpr>(
         input->type()->asRow().findChild(name),
         SpecialForm::kDereference,
@@ -737,5 +745,5 @@ size_t NameMappings::QualifiedNameHasher::operator()(
 
   return h1 ^ (h2 << 1);
 }
-
+  
 } // namespace facebook::velox::logical_plan
