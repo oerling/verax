@@ -150,26 +150,33 @@ using InputReferenceExprPtr = std::shared_ptr<const InputReferenceExpr>;
 /// Literal value.
 class ConstantExpr : public Expr {
  public:
-  ConstantExpr(const TypePtr& type, Variant value)
+  ConstantExpr(const TypePtr& type, std::shared_ptr<const Variant> value)
       : Expr(ExprKind::kConstant, type, {}), value_{std::move(value)} {
     if (!isNull()) {
-      VELOX_USER_CHECK(type->kindEquals(value_.inferType()));
+      VELOX_USER_CHECK(type->kindEquals(value_->inferType()));
     }
   }
 
+  ConstantExpr(const TypePtr& type, Variant value)
+      : ConstantExpr(type, std::make_shared<const Variant>(value)) {}
+
   const Variant& value() const {
+    return *value_;
+  }
+
+  const std::shared_ptr<const Variant>& valueShared() const {
     return value_;
   }
 
   bool isNull() const {
-    return value_.isNull();
+    return value_->isNull();
   }
 
   void accept(const ExprVisitor& visitor, ExprVisitorContext& context)
       const override;
 
  private:
-  const Variant value_;
+  std::shared_ptr<const Variant> value_;
 };
 
 using ConstantExprPtr = std::shared_ptr<const ConstantExpr>;
@@ -331,6 +338,8 @@ enum class SpecialForm {
   /// conditions are true, returns the result of evaluating the else clause or
   /// NULL if the else clause is not specified.
   kSwitch = 8,
+
+  kStar = 9,
 
   // TODO Add IN and EXISTS.
 };

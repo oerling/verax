@@ -560,13 +560,14 @@ ExprCP Optimization::deduppedCall(
 }
 
 ExprCP Optimization::makeConstant(const lp::ConstantExpr& constant) {
-  auto temp = std::make_unique<variant>(constant.value());
+  auto temp = constant.valueShared();
   auto it = constantDedup_.find(temp);
   if (it != constantDedup_.end()) {
     return it->second;
   }
   auto* literal = make<Literal>(Value(toType(constant.type()), 1), temp.get());
   // The variant will stay live for the optimization duration.
+  reverseConstantDedup_[literal] = temp;
   constantDedup_[std::move(temp)] = literal;
   return literal;
 }

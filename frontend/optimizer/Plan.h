@@ -101,15 +101,15 @@ using FunctionDedupMap =
     std::unordered_map<ExprDedupKey, ExprCP, ExprDedupHasher>;
 
 struct VariantPtrHasher {
-  size_t operator()(const std::unique_ptr<variant>& value) const {
+  size_t operator()(const std::shared_ptr<const variant>& value) const {
     return value->hash();
   }
 };
 
 struct VariantPtrComparer {
   bool operator()(
-      const std::unique_ptr<variant>& left,
-      const std::unique_ptr<variant>& right) const {
+      const std::shared_ptr<const variant>& left,
+      const std::shared_ptr<const variant>& right) const {
     return *left == *right;
   }
 };
@@ -1269,13 +1269,18 @@ class Optimization {
   ExprDedupMap exprDedup_;
 
   std::unordered_map<
-      std::unique_ptr<variant>,
+      std::shared_ptr<const variant>,
       ExprCP,
       VariantPtrHasher,
       VariantPtrComparer>
       constantDedup_;
 
-  // Dedup map from name+ExprVector to corresponding Call Expr.
+  // Reverse map from dedupped literal to the shared_ptr. We put the
+  // shared ptr back into the result plan so the variant never gets
+  // copied.
+  std::map<ExprCP, std::shared_ptr<const variant>> reverseConstantDedup_;
+
+  // Dedup map fr om name+ExprVector to corresponding Call Expr.
   FunctionDedupMap functionDedup_;
 
   // Counter for generating unique correlation names for BaseTables and
