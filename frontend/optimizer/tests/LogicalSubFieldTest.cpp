@@ -261,6 +261,7 @@ class LogicalSubfieldTest : public QueryTestBase,
         std::move(names),
         std::move(exprs));
 
+    optimizerOptions_.parallelProjectWidth = 8;
     auto fragmentedPlan = planVelox(logicalPlan);
     auto plan = veloxString(fragmentedPlan.plan);
 

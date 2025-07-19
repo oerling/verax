@@ -109,6 +109,7 @@ void QueryTestBase::SetUp() {
   } else {
     history_ = std::make_unique<facebook::velox::optimizer::VeloxHistory>();
   }
+  optimizerOptions_ = OptimizerOptions();
   optimizerOptions_.traceFlags = FLAGS_optimizer_trace;
 }
 
