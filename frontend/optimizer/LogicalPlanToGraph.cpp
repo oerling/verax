@@ -243,7 +243,7 @@ void Optimization::getExprForField(
 #else
       VELOX_CHECK_NOT_NULL(resultColumn->relation());
       if (resultColumn->relation()->type() == PlanType::kTable) {
-	VELOX_CHECK(leaf == resultColumn->relation());
+        VELOX_CHECK(leaf == resultColumn->relation());
       }
 #endif
       return;
@@ -968,7 +968,8 @@ PlanObjectP Optimization::makeBaseTable(const lp::TableScanNode* tableScan) {
     }
     auto schemaColumn = schemaTable->findColumn(names[i]);
     auto value = schemaColumn->value();
-    auto* column = make<Column>(toName(names[i]), baseTable, value, schemaColumn->name());
+    auto* column =
+        make<Column>(toName(names[i]), baseTable, value, schemaColumn->name());
     baseTable->columns.push_back(column);
     auto kind = column->value().type->kind();
     if (kind == TypeKind::ARRAY || kind == TypeKind::ROW ||
@@ -1045,7 +1046,7 @@ void Optimization::makeSubfieldColumns(
     Value value(type, card);
     auto name = fmt::format("{}.{}", column->name(), path->toString());
     auto* subcolumn =
-      make<Column>(toName(name), baseTable, value, nullptr, column, path);
+        make<Column>(toName(name), baseTable, value, nullptr, column, path);
     baseTable->columns.push_back(subcolumn);
     projections.pathToExpr[path] = subcolumn;
   });
@@ -1189,10 +1190,8 @@ std::string leString(const lp::Expr* e) {
   return lp::ExprPrinter::toText(*e);
 }
 
-  std::string pString(const lp::LogicalPlanNode* p) {
+std::string pString(const lp::LogicalPlanNode* p) {
   return lp::PlanPrinter::toText(*p);
 }
 
-
-  
 } // namespace facebook::velox::optimizer

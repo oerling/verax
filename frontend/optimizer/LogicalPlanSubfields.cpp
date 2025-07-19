@@ -165,19 +165,21 @@ bool looksConstant(const lp::ExprPtr& expr) {
   }
   return true;
 }
-  
-  const lp::ConstantExprPtr Optimization::maybeFoldLogicalConstant(const lp::ExprPtr expr) {
+
+const lp::ConstantExprPtr Optimization::maybeFoldLogicalConstant(
+    const lp::ExprPtr expr) {
   if (expr->isConstant()) {
     return std::static_pointer_cast<const lp::ConstantExpr>(expr);
   }
   if (looksConstant(expr)) {
     auto literal = translateExpr(expr);
     if (literal->type() == PlanType::kLiteral) {
-      return std::make_shared<lp::ConstantExpr>(toTypePtr(literal->value().type), literal->as<Literal>()->literal());
+      return std::make_shared<lp::ConstantExpr>(
+          toTypePtr(literal->value().type), literal->as<Literal>()->literal());
     }
   }
   return nullptr;
-  }
+}
 
 void Optimization::markSubfields(
     const lp::Expr* expr,
@@ -212,7 +214,8 @@ void Optimization::markSubfields(
           toName(input->type()->as<TypeKind::ROW>().nameOf(fieldIndex.value()));
     } else {
       name = toName(field->value().value<TypeKind::VARCHAR>());
-      fieldIndex = input->type()->as<TypeKind::ROW>().getChildIdx(field->value().value<TypeKind::VARCHAR>());
+      fieldIndex = input->type()->as<TypeKind::ROW>().getChildIdx(
+          field->value().value<TypeKind::VARCHAR>());
     }
     steps.push_back(Step{
         .kind = StepKind::kField,

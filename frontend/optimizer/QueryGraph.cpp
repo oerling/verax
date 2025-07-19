@@ -363,10 +363,9 @@ Column::Column(
       schemaColumn_ = topColumn_->schemaColumn_;
     } else {
       schemaColumn_ = relation->as<BaseTable>()->schemaTable->findColumn(
-									 nameInTable ? nameInTable : name_);
-    VELOX_CHECK(schemaColumn_);
+          nameInTable ? nameInTable : name_);
+      VELOX_CHECK(schemaColumn_);
     }
-
   }
 }
 

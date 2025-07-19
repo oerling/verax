@@ -586,7 +586,9 @@ class LambdaExpr : public Expr {
   LambdaExpr(const RowTypePtr& signature, const ExprPtr& body)
       : Expr(
             ExprKind::kLambda,
-            std::make_shared<FunctionType>(copyTypes(signature->children()), body->type()),
+            std::make_shared<FunctionType>(
+                copyTypes(signature->children()),
+                body->type()),
             {}),
         signature_(signature),
         body_(body) {

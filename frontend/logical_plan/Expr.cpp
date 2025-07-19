@@ -104,8 +104,8 @@ void validateDereferenceInputs(
       inputs.size(), 2, "DEREFERENCE must have exactly two inputs");
 
   VELOX_USER_CHECK(
-      inputs.at(1)->type()->kind() ==
-      TypeKind::VARCHAR || inputs.at(1)->type()->kind() == TypeKind::INTEGER,
+      inputs.at(1)->type()->kind() == TypeKind::VARCHAR ||
+          inputs.at(1)->type()->kind() == TypeKind::INTEGER,
       "Second input to DEREFERENCE must be a constant string or integer");
 
   VELOX_USER_CHECK(
@@ -119,37 +119,40 @@ void validateDereferenceInputs(
   if (fieldNameExpr->type()->kind() == TypeKind::VARCHAR) {
     const auto& fieldName = fieldNameExpr->value().value<TypeKind::VARCHAR>();
     VELOX_USER_CHECK(
-		     !fieldName.empty(),
-		     "Second input to DEREFERENCE must not be emtpy string");
+        !fieldName.empty(),
+        "Second input to DEREFERENCE must not be emtpy string");
 
     VELOX_USER_CHECK(
-		     inputs.at(0)->type()->isRow(),
-		     "First input to DEREFERENCE must be a struct");
+        inputs.at(0)->type()->isRow(),
+        "First input to DEREFERENCE must be a struct");
 
     const auto& rowType = inputs.at(0)->type()->asRow();
     const auto index = rowType.getChildIdxIfExists(fieldName);
     VELOX_USER_CHECK(
-		     index.has_value(),
-		     "Field name specified in DEREFERENCE is not found in the struct: {} not in {}",
-		     fieldName,
-      folly::join(", ", rowType.names()));
+        index.has_value(),
+        "Field name specified in DEREFERENCE is not found in the struct: {} not in {}",
+        fieldName,
+        folly::join(", ", rowType.names()));
 
-  VELOX_USER_CHECK(
-		   type->equivalent(*rowType.childAt(index.value())),
-		   "Result type of DEREFERENCE must be the same as the type of the field: {} vs {}",
-		   type->toString(),
-		   rowType.childAt(index.value())->toString());
+    VELOX_USER_CHECK(
+        type->equivalent(*rowType.childAt(index.value())),
+        "Result type of DEREFERENCE must be the same as the type of the field: {} vs {}",
+        type->toString(),
+        rowType.childAt(index.value())->toString());
   } else {
     auto index = fieldNameExpr->value().value<int32_t>();
 
-    VELOX_USER_CHECK_LT(index, inputs[0]->type()->size(), "Field index must be < size of the row type");
+    VELOX_USER_CHECK_LT(
+        index,
+        inputs[0]->type()->size(),
+        "Field index must be < size of the row type");
     const auto& rowType = inputs.at(0)->type()->asRow();
 
     VELOX_USER_CHECK(
-		   type->equivalent(*rowType.childAt(index)),
-		   "Result type of DEREFERENCE must be the same as the type of the field: {} vs {}",
-		   type->toString(),
-		   rowType.childAt(index)->toString());
+        type->equivalent(*rowType.childAt(index)),
+        "Result type of DEREFERENCE must be the same as the type of the field: {} vs {}",
+        type->toString(),
+        rowType.childAt(index)->toString());
   }
 }
 

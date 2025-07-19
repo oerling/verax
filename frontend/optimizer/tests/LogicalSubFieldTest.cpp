@@ -90,7 +90,8 @@ class LogicalSubfieldTest : public QueryTestBase,
         input->type()->as<TypeKind::ROW>().childAt(idx),
         lp::SpecialForm::kDereference,
         std::vector<lp::ExprPtr>{
-            input, std::make_shared<lp::ConstantExpr>(INTEGER(), variant(idx))});
+            input,
+            std::make_shared<lp::ConstantExpr>(INTEGER(), variant(idx))});
   }
 
   void declareGenies() {
