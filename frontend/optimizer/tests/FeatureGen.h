@@ -16,7 +16,7 @@
 #pragma once
 
 #include <folly/Random.h>
-#include "frontend/logical_plan/LogicalPlanNode.h" //@manual
+#include "logical_plan/LogicalPlanNode.h" //@manual
 #include "velox/core/Expressions.h"
 #include "velox/vector/ComplexVector.h"
 

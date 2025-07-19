@@ -16,7 +16,7 @@
 
 #include "optimizer/FunctionRegistry.h" //@manual
 #include "optimizer/tests/FeatureGen.h" //@manual
-#include "optimizer/tests/Genies.h"
+#include "optimizer/tests/Genies.h" //@manual
 #include "optimizer/tests/QueryTestBase.h" //@manual
 
 #include "velox/common/base/tests/GTestUtils.h"

@@ -800,7 +800,6 @@ AggregationP Optimization::translateAggregation(
     }
     auto i = channel - source.groupingKeys().size();
     auto aggregate = source.aggregates()[i];
-    Name aggregateFunc = toName(aggregate->name());
     ExprVector args = translateColumns(aggregate->inputs());
     FunctionSet funcs;
     std::vector<TypePtr> argTypes;
