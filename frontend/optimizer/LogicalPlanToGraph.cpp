@@ -149,11 +149,14 @@ bool Optimization::isSubfield(
         maybeIntegerLiteral(expr->inputAt(1)->asUnchecked<lp::ConstantExpr>());
     Name name = nullptr;
     int64_t id = 0;
+    auto& rowType = expr->inputAt(0)->type()->as<TypeKind::ROW>();
     if (maybeIndex.has_value()) {
       id = maybeIndex.value();
+      name = toName(rowType.nameOf(maybeIndex.value()));
     } else {
       auto& field = expr->inputAt(1)->asUnchecked<lp::ConstantExpr>()->value();
       name = toName(field.value<TypeKind::VARCHAR>());
+      id = rowType.getChildIdx(name);
     }
     step.field = name;
     step.id = id;

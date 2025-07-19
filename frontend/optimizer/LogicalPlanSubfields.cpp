@@ -206,11 +206,13 @@ void Optimization::markSubfields(
     auto* input = expr->inputAt(0).get();
     Name name = nullptr;
     auto fieldIndex = maybeIntegerLiteral(field);
+    // Always fill both index and name for a struct getter.
     if (fieldIndex.has_value()) {
       name =
           toName(input->type()->as<TypeKind::ROW>().nameOf(fieldIndex.value()));
     } else {
       name = toName(field->value().value<TypeKind::VARCHAR>());
+      fieldIndex = input->type()->as<TypeKind::ROW>().getChildIdx(field->value().value<TypeKind::VARCHAR>());
     }
     steps.push_back(Step{
         .kind = StepKind::kField,

@@ -586,10 +586,10 @@ class LambdaExpr : public Expr {
   LambdaExpr(const RowTypePtr& signature, const ExprPtr& body)
       : Expr(
             ExprKind::kLambda,
-            std::make_shared<FunctionType>(
-                std::vector<TypePtr>(signature->children()),
-                body->type()),
-            {}) {
+            std::make_shared<FunctionType>(copyTypes(signature->children()), body->type()),
+            {}),
+        signature_(signature),
+        body_(body) {
     VELOX_USER_CHECK_GT(signature->size(), 0);
   }
 
@@ -605,6 +605,10 @@ class LambdaExpr : public Expr {
       const override;
 
  private:
+  std::vector<TypePtr> copyTypes(std::vector<TypePtr> v) {
+    return v;
+  }
+
   const RowTypePtr signature_;
   const ExprPtr body_;
 };
