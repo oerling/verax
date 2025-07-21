@@ -17,14 +17,12 @@
 #pragma once
 
 #include <string>
+
 #include "optimizer/connectors/ConnectorMetadata.h" //@manual
 #include "velox/vector/ComplexVector.h"
 
 namespace facebook::velox::optimizer {
 
-/// Translates from table name to table. 'defaultConnector is used
-/// to look up the name if the name has no catalog. 'defaultSchema'
-/// is used to fill in the schema if the name has no schema.
 class SchemaResolver {
  public:
   SchemaResolver(
@@ -34,6 +32,13 @@ class SchemaResolver {
 
   virtual ~SchemaResolver() = default;
 
+  // Converts a table name to a resolved Table, or nullptr if the table doesn't
+  // exist. Input can be any of the following formats:
+  //   - "tablename"
+  //   - "schema.tablename"
+  //   - "catalog.schema.tablename"
+  // If catalog is omitted, defaultConnector will be used for the table lookup.
+  // If schema is omitted, defaultSchema will be prepended prior to lookup.
   virtual const connector::Table* findTable(const std::string& name);
 
  private:
