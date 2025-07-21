@@ -55,3 +55,6 @@ target_link_libraries(
   velox_parse_parser
   velox_parse_expression
   velox_parse_utils)
+
+add_subdirectory(utils)
+

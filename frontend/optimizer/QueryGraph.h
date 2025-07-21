@@ -341,6 +341,12 @@ struct FunctionMetadata {
   /// element of 'fieldIndexForArg_'.
   std::vector<int32_t> argOrdinal;
 
+  using ValuePathToArgPath = std::function<std::vector<Step>, int32_t>(const std::vector<Step>&, const Call* call)>;
+  
+  /// Translates a path over the function result to a path over an argument.
+  ValuePathToArgPath valuePathToArgPath;
+
+  
   /// bits of FunctionSet for the function.
   FunctionSet functionSet;
 
@@ -862,6 +868,12 @@ struct DerivedTable : public PlanObject {
   // considered.
   PlanObjectSet tableSet;
 
+  // Set if this is a set operation. If set, 'children' has the operands.
+  std::optional<logical_plan::SetOperation> setOp;
+  
+  /// Operands if 'this' is a set operation, e.g. union. 
+  std::vector<DerivedTable*, QGAllocator<DerivedTable*>> children;
+  
   // Single row tables from non-correlated scalar subqueries.
   PlanObjectSet singleRowDts;
 
