@@ -1181,16 +1181,16 @@ PlanObjectP Optimization::makeQueryGraph(
     currentSelect_->limit = limit->count();
     currentSelect_->offset = limit->offset();
   } else if (kind == lp::NodeKind::kSet) {
-    auto set = reinterpret_cast<lp::SetNode*>(&node);
+    auto set = reinterpret_cast<const lp::SetNode*>(&node);
     auto initialRenames = renames_;
     std::unordered_map<std::string, ExprCP> firstRenames_;
     bool isFirst = true;
     std::vector<DerivedTableP> children;
     for (auto& in : set->inputs()) {
       if (!isFirst) {
-	renames_ = initialRenames_;
+	renames_ = initialRenames;
       }
-      children.push_back(wrapInDt(in, kAllAllowedInDt));
+      children.push_back(dynamic_cast<DerivedTableP*>(wrapInDt(*in)));
       if (isFirst) {
 	firstRenames = renames_;
 	isFirst = false;
