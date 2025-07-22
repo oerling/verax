@@ -128,6 +128,30 @@ class PlanTest : public virtual ParquetTpchTest, public virtual QueryTestBase {
     }
   }
 
+  void checkSame(
+      const lp::LogicalPlanNodePtr& planNode,
+      core::PlanNodePtr referencePlan,
+      std::string* planString = nullptr,
+      std::string* veloxPlan = nullptr) {
+    auto fragmentedPlan = planVelox(planNode, planString);
+    if (veloxPlan) {
+      *veloxPlan = veloxString(fragmentedPlan.plan);
+    }
+    TestResult referenceResult;
+    assertSame(referencePlan, fragmentedPlan, &referenceResult);
+    auto numWorkers = FLAGS_num_workers;
+    if (numWorkers != 1) {
+      FLAGS_num_workers = 1;
+      auto singlePlan = planVelox(planNode, planString);
+      ASSERT_TRUE(singlePlan.plan != nullptr);
+      auto singleResult = runFragmentedPlan(singlePlan);
+      exec::test::assertEqualResults(
+          referenceResult.results, singleResult.results);
+      FLAGS_num_workers = numWorkers;
+    }
+  }
+
+  
   // Breaks str into tokens at whitespace and punctuation. Returns tokens as
   // string, character position pairs.
   std::vector<std::pair<std::string, int32_t>> tokenize(
@@ -471,6 +495,30 @@ TEST_F(PlanTest, filterBreakup) {
       veloxString,
       "lineitem,.*range.*l_shipinstruct,.*l_shipmode.*remaining.*l_quantity.*l_quantity.*l_quantity");
   expectRegexp(veloxString, "part.*p_size.*p_container");
+}
+
+TEST_F(PlanTest, unions) {
+  auto veloxPlan = PlanBuilder()
+    auto nationType({"n_nationkey", "n_regionkey"}, {BIGINT(), BIGINT()});
+    .tableScan("nation", nationType)
+      .project({"n_regionkey + 1 as rk"})
+      .filter("rk in (1, 2, 4, 5)")
+      .planNode();
+
+    lp::PlanBuilder::Context ctx;
+    auto t1 = lp::PlanBuilder(ctx
+			      .table("nation", {n_nationkey", "n_regionkey"}).filter("n_nationkey < 11").build();)
+    auto t1 = lp::PlanBuilder(ctx
+			      .table("nation", {n_nationkey", "n_regionkey"}).filter("n_nationkey f> 13").build();)
+			      unionPlan = lp::PlanBuilder(ctx)
+			      .set(lp::SetOperation::kUnionAll, {t1, t2})
+			      .project("n_regionkey + 1 as rk")
+			      .filter("rk in ((1, 2, 4, 5)")
+			      .build();
+			      std::string planString;
+			      checkSame(unionPlan, veloxPlan, &planString);
+
+    
 }
 int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);

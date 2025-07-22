@@ -102,6 +102,16 @@ void Optimization::markFieldAccessed(
       }
       return;
     }
+    if (kind == lp::NodeKind::kSet) {
+      auto set = reinterpret_cast<lp::SetNode*>(&node);
+      for (auto in : set->inputs()) {
+	std::vector<const RowType*> inputContext = {
+          in->outputType().get()};
+      std::vector<LogicalContextSource> inputSources = {
+          LogicalContextSource{.planNode = in.get()}};
+      markSubfields(in, ordinal, isControl, context, sources);
+      }
+    }
     auto& sourceInputs = source.planNode->inputs();
     if (sourceInputs.empty()) {
       return;
@@ -400,7 +410,12 @@ void Optimization::markControl(const lp::LogicalPlanNode* node) {
       keys.push_back(k.expression);
     }
     markColumnSubfields(node, keys, 0);
+  } else if (kind == lp::NodeKind::kSet) {
+    // If this is with a distinct every column is a control column.
+    auto* set = reinterpret_cast<const lp::SetNode*>(&node);
+    VELOX_CHECK(set->operation() == lp::SetOperation::kUnionAll, "Only union all supported yet");
   }
+  
   for (auto& source : node->inputs()) {
     markControl(source.get());
   }

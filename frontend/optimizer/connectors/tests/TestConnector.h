@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include "velox/frontend/optimizer/connectors/ConnectorMetadata.h"
+#include "optimizer/connectors/ConnectorMetadata.h" //@manual
 
 namespace facebook::velox::connector {
 

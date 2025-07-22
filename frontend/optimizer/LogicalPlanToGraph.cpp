@@ -1180,6 +1180,41 @@ PlanObjectP Optimization::makeQueryGraph(
     auto limit = reinterpret_cast<const lp::LimitNode*>(&node);
     currentSelect_->limit = limit->count();
     currentSelect_->offset = limit->offset();
+  } else if (kind == lp::NodeKind::kSet) {
+    auto set = reinterpret_cast<lp::SetNode*>(&node);
+    auto initialRenames = renames_;
+    std::unordered_map<std::string, ExprCP> firstRenames_;
+    bool isFirst = true;
+    std::vector<DerivedTableP> children;
+    for (auto& in : set->inputs()) {
+      if (!isFirst) {
+	renames_ = initialRenames_;
+      }
+      children.push_back(wrapInDt(in, kAllAllowedInDt));
+      if (isFirst) {
+	firstRenames = renames_;
+	isFirst = false;
+      }
+    }
+  auto* newDt = make<DerivedTable>();
+  auto cname = toName(fmt::format("dt{}", ++nameCounter_));
+  newDt->cname = cname;
+  currentSelect_ = newDt;
+
+
+  velox::RowTypePtr type = set->inputAt(0)->outputType();
+  for (auto i : usedChannels(&node)) {
+    ExprCP inner = translateColumn(type->nameOf(i));
+    newDt->exprs.push_back(inner);
+    auto* outer = make<Column>(toName(type->nameOf(i)), newDt, inner->value());
+    newDt->columns.push_back(outer);
+    renames_[type->nameOf(i)] = outer;
+  }
+  currentSelect_->tables.push_back(newDt);
+  currentSelect_->tableSet.add(newDt);
+  newDt->makeInitialPlan();
+  return newDt;
+
   } else {
     VELOX_NYI("Unsupported PlanNode {}", static_cast<int32_t>(kind));
   }

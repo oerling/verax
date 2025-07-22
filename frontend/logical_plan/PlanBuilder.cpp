@@ -669,6 +669,21 @@ std::string PlanBuilder::newName(const std::string& hint) {
   return nameAllocator_->newName(hint);
 }
 
+  PlanBuilder& PlanBuilder::setOperation(SetOperation op, const std::vector<LogicalPlanNodePtr>& inputs) {
+    VELOX_USER_CHECK(node_, "setOperation must be a leaf");
+    for (auto i = 1; i < inputs.size(); ++i) {
+      auto out1 = inputs[0]->outputType();
+      auto out2 = inputs[i]->outputType();
+      VELOX_USER_CHECK_EQ(out1->size(), out2->size(), "Operands of set operation must have the same number of columns");
+      for (auto j = 0; j <out1->size(); ++j) {
+	VELOX_USER_CHECK(out1->childAt(j) == out2->childAt(j));
+      }
+    }
+    node_ = std::make_shared<SetNode>(op, std::move(inputs));
+    return *this;
+  }
+
+  
 LogicalPlanNodePtr PlanBuilder::build() {
   VELOX_USER_CHECK_NOT_NULL(node_);
 

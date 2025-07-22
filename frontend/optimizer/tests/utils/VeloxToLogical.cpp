@@ -55,8 +55,13 @@ namespace facebook::velox::optimizer::test {
     uint64_t allowedInDt) {
   auto name = node.name();
   if (name == "TableScan") {
-    
-    return std::make_shared<lp::TableScan>();
+    auto* scan = reinterpret_cast<const core::TableScanNode*>(&node);
+    auto handle = scan->tableHandle();
+      auto assignments = scan->assignments();
+      std::vector<std::string> names;
+      std::vector<std::string> outputNames;
+      std::vector<TypePtr> outputTypes;
+      return std::make_shared<lp::TableScan>(scam->id(), rowType, handle->connector(), handle->name(), names);
     
   }
   if (name == "Project") {
