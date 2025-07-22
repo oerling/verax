@@ -341,7 +341,7 @@ struct FunctionMetadata {
   /// element of 'fieldIndexForArg_'.
   std::vector<int32_t> argOrdinal;
 
-  using ValuePathToArgPath = std::function<std::vector<Step>, int32_t>(const std::vector<Step>&, const Call* call)>;
+  using ValuePathToArgPath = std::function<std::pair<std::vector<Step>, int32_t>(const std::vector<Step>&, const Call* call)>;
   
   /// Translates a path over the function result to a path over an argument.
   ValuePathToArgPath valuePathToArgPath;

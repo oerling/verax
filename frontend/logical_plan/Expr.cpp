@@ -117,15 +117,15 @@ void validateDereferenceInputs(
   VELOX_USER_CHECK(
       !fieldNameExpr->isNull(), "Second input to DEREFERENCE must not be null");
 
+  VELOX_USER_CHECK(
+      inputs.at(0)->type()->isRow(),
+      "First input to DEREFERENCE must be a struct");
+
   if (fieldNameExpr->type()->kind() == TypeKind::VARCHAR) {
     const auto& fieldName = fieldNameExpr->value().value<TypeKind::VARCHAR>();
     VELOX_USER_CHECK(
         !fieldName.empty(),
         "Second input to DEREFERENCE must not be emtpy string");
-
-    VELOX_USER_CHECK(
-        inputs.at(0)->type()->isRow(),
-        "First input to DEREFERENCE must be a struct");
 
     const auto& rowType = inputs.at(0)->type()->asRow();
     const auto index = rowType.getChildIdxIfExists(fieldName);

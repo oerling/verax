@@ -60,12 +60,15 @@ namespace facebook::velox::optimizer::test {
       auto assignments = scan->assignments();
       std::vector<std::string> names;
       std::vector<std::string> outputNames;
+      for (auto& pair : assignments) {
+	outputNames.push_back(pair.first);
+	names.push_back(pair.second->name());
+      }
       std::vector<TypePtr> outputTypes;
-      return std::make_shared<lp::TableScan>(scam->id(), rowType, handle->connector(), handle->name(), names);
-    
+      return std::make_shared<lp::TableScan>(scan->id(), rowType, handle->connector(), handle->name(), names);
   }
   if (name == "Project") {
-    makeQueryGraph(*node.sources()[0], allowedInDt);
+    auto input = toLogicalPlan(*node.sources()[0], allowedInDt);
     addProjection(reinterpret_cast<const core::ProjectNode*>(&node));
     return currentSelect_;
   }
