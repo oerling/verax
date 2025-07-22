@@ -103,7 +103,7 @@ void Optimization::markFieldAccessed(
       return;
     }
     if (kind == lp::NodeKind::kSet) {
-      auto set = reinterpret_cast<lp::SetNode*>(&node);
+      auto* set = reinterpret_cast<const lp::SetNode*>(&source.planNode);
       for (auto in : set->inputs()) {
 	std::vector<const RowType*> inputContext = {
           in->outputType().get()};

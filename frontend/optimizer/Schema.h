@@ -258,7 +258,8 @@ enum class RelType {
   kJoin,
   kHashBuild,
   kAggregation,
-  kOrderBy
+  kOrderBy,
+  kSetOperation
 };
 
 /// Represents a relation (table) that is either physically stored or is the

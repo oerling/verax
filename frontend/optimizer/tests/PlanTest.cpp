@@ -151,7 +151,6 @@ class PlanTest : public virtual ParquetTpchTest, public virtual QueryTestBase {
     }
   }
 
-  
   // Breaks str into tokens at whitespace and punctuation. Returns tokens as
   // string, character position pairs.
   std::vector<std::pair<std::string, int32_t>> tokenize(
@@ -498,28 +497,32 @@ TEST_F(PlanTest, filterBreakup) {
 }
 
 TEST_F(PlanTest, unions) {
-  auto veloxPlan = PlanBuilder()
-    auto nationType({"n_nationkey", "n_regionkey"}, {BIGINT(), BIGINT()});
-    .tableScan("nation", nationType)
+  auto veloxPlan = PlanBuilder() auto nationType(
+      {"n_nationkey", "n_regionkey"}, {BIGINT(), BIGINT()});
+  .tableScan("nation", nationType)
       .project({"n_regionkey + 1 as rk"})
       .filter("rk in (1, 2, 4, 5)")
       .planNode();
 
-    lp::PlanBuilder::Context ctx;
-    auto t1 = lp::PlanBuilder(ctx
-			      .table("nation", {n_nationkey", "n_regionkey"}).filter("n_nationkey < 11").build();)
-    auto t1 = lp::PlanBuilder(ctx
-			      .table("nation", {n_nationkey", "n_regionkey"}).filter("n_nationkey f> 13").build();)
-			      unionPlan = lp::PlanBuilder(ctx)
-			      .set(lp::SetOperation::kUnionAll, {t1, t2})
-			      .project("n_regionkey + 1 as rk")
-			      .filter("rk in ((1, 2, 4, 5)")
-			      .build();
-			      std::string planString;
-			      checkSame(unionPlan, veloxPlan, &planString);
-
-    
+  lp::PlanBuilder::Context ctx;
+  auto t1 = lp::PlanBuilder(ctx)
+                .table("nation", {"n_nationkey", "n_regionkey"})
+                .filter("n_nationkey < 11")
+                .build();
+  auto t2 =
+      lp::PlanBuilder(ctx)
+          .tableScan(kHiveConnectorId, "nation", {"n_nationkey", "n_regionkey"})
+          .filter(" n_nationkey f > 13 ")
+          .build();
+  unionPlan = lp::PlanBuilder(ctx)
+                  .set(lp::SetOperation::kUnionAll, {t1, t2})
+                  .project("n_regionkey + 1 as rk")
+                  .filter("rk in ((1, 2, 4, 5)")
+                  .build();
+  std::string planString;
+  checkSame(unionPlan, veloxPlan, &planString);
 }
+
 int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   folly::Init init(&argc, &argv, false);
