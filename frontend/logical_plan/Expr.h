@@ -151,12 +151,12 @@ using InputReferenceExprPtr = std::shared_ptr<const InputReferenceExpr>;
 class ConstantExpr : public Expr {
  public:
   ConstantExpr(const TypePtr& type, std::shared_ptr<const Variant> value)
-      : Expr(ExprKind::kConstant, type, {}), value_{std::move(value)} {
+    : Expr(ExprKind::kConstant, type, {}), value_(std::move(value)) {
     VELOX_USER_CHECK(
-        value_.isTypeCompatible(type),
+        value_->.isTypeCompatible(type),
         "Constant value doesn't match its type: {} vs. {}",
         type->toString(),
-        value_.inferType()->toString());
+        value_->inferType()->toString());
   }
 
   ConstantExpr(const TypePtr& type, Variant value)
