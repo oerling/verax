@@ -21,11 +21,9 @@
 #include "velox/exec/AggregateFunctionRegistry.h"
 #include "velox/expression/SignatureBinder.h"
 #include "velox/functions/FunctionRegistry.h"
-#include "velox/parse/TypeResolver.h"
+#include "velox/parse/Expressions.h"
 
 namespace facebook::velox::logical_plan {
-
-PlanBuilder::FieldAccessHook PlanBuilder::fieldAccessHook_;
 
 PlanBuilder& PlanBuilder::values(
     const RowTypePtr& rowType,
@@ -381,105 +379,6 @@ using InputNameResolver = std::function<ExprPtr(
     const std::optional<std::string>& alias,
     const std::string& fieldName)>;
 
-<<<<<<< HEAD:frontend/logical_plan/PlanBuilder.cpp
-ExprPtr resolveScalarTypesImpl(
-    const core::ExprPtr& expr,
-    const InputNameResolver& inputNameResolver);
-
-ExprPtr resolveLambdaExpr(
-    const core::LambdaExpr* lambdaExpr,
-    const std::vector<TypePtr>& lambdaInputTypes,
-    const InputNameResolver& inputNameResolver) {
-  auto names = lambdaExpr->arguments();
-  auto body = lambdaExpr->body();
-
-  VELOX_CHECK_LE(names.size(), lambdaInputTypes.size());
-  std::vector<TypePtr> types;
-  types.reserve(names.size());
-  for (auto i = 0; i < names.size(); ++i) {
-    types.push_back(lambdaInputTypes[i]);
-  }
-
-  auto signature =
-      ROW(std::vector<std::string>(names), std::vector<TypePtr>(types));
-  auto lambdaResolver = [inputNameResolver, signature](
-                            const std::optional<std::string>& alias,
-                            const std::string& fieldName) -> ExprPtr {
-    if (!alias.has_value()) {
-      auto maybeIdx = signature->getChildIdxIfExists(fieldName);
-      if (maybeIdx.has_value()) {
-        return std::make_shared<InputReferenceExpr>(
-            signature->childAt(maybeIdx.value()), fieldName);
-      }
-    }
-    return inputNameResolver(alias, fieldName);
-  };
-
-  return std::make_shared<LambdaExpr>(
-      signature, resolveScalarTypesImpl(body, lambdaResolver));
-}
-
-bool isLambdaArgument(const exec::TypeSignature& typeSignature) {
-  return typeSignature.baseName() == "function";
-}
-
-ExprPtr tryResolveCallWithLambdas(
-    const std::shared_ptr<const core::CallExpr>& callExpr,
-    const InputNameResolver& inputNameResolver) {
-  if (callExpr == nullptr) {
-    return nullptr;
-  }
-  auto signature = core::findLambdaSignature(callExpr);
-
-  if (signature == nullptr) {
-    return nullptr;
-  }
-
-  // Resolve non-lambda arguments first.
-  auto numArgs = callExpr->inputs().size();
-  std::vector<ExprPtr> children(numArgs);
-  std::vector<TypePtr> childTypes(numArgs);
-  for (auto i = 0; i < numArgs; ++i) {
-    if (!isLambdaArgument(signature->argumentTypes()[i])) {
-      children[i] =
-          resolveScalarTypesImpl(callExpr->inputAt(i), inputNameResolver);
-      childTypes[i] = children[i]->type();
-    }
-  }
-
-  // Resolve lambda arguments.
-  exec::SignatureBinder binder(*signature, childTypes);
-  binder.tryBind();
-  for (auto i = 0; i < numArgs; ++i) {
-    auto argSignature = signature->argumentTypes()[i];
-    if (isLambdaArgument(argSignature)) {
-      std::vector<TypePtr> lambdaTypes;
-      for (auto j = 0; j < argSignature.parameters().size() - 1; ++j) {
-        auto type = binder.tryResolveType(argSignature.parameters()[j]);
-        if (type == nullptr) {
-          return nullptr;
-        }
-        lambdaTypes.push_back(type);
-      }
-
-      children[i] = resolveLambdaExpr(
-          dynamic_cast<const core::LambdaExpr*>(callExpr->inputs()[i].get()),
-          lambdaTypes,
-          inputNameResolver);
-    }
-  }
-  std::vector<TypePtr> types;
-  for (auto& e : children) {
-    types.push_back(e->type());
-  }
-  auto returnType = resolveScalarFunction(callExpr->name(), types);
-
-  return std::make_shared<CallExpr>(returnType, callExpr->name(), children);
-}
-
-ExprPtr resolveScalarTypesImpl(
-    const core::ExprPtr& expr,
-=======
 ExprPtr resolveScalarTypesImpl(
     const core::ExprPtr& expr,
     const InputNameResolver& inputNameResolver);
@@ -676,7 +575,6 @@ ExprPtr tryResolveCallWithLambdas(
 
 ExprPtr resolveScalarTypesImpl(
     const core::ExprPtr& expr,
->>>>>>> main:axiom/logical_plan/PlanBuilder.cpp
     const InputNameResolver& inputNameResolver) {
   if (const auto* fieldAccess =
           dynamic_cast<const core::FieldAccessExpr*>(expr.get())) {
@@ -695,13 +593,6 @@ ExprPtr resolveScalarTypesImpl(
     auto input =
         resolveScalarTypesImpl(fieldAccess->input(), inputNameResolver);
 
-    if (PlanBuilder::fieldAccessHook() != nullptr) {
-      auto result = PlanBuilder::fieldAccessHook()(fieldAccess, input);
-      if (result != nullptr) {
-        return result;
-      }
-    }
-
     return std::make_shared<SpecialFormExpr>(
         input->type()->asRow().findChild(name),
         SpecialForm::kDereference,
@@ -715,12 +606,6 @@ ExprPtr resolveScalarTypesImpl(
           dynamic_cast<const core::ConstantExpr*>(expr.get())) {
     return std::make_shared<ConstantExpr>(
         constant->type(), std::make_shared<Variant>(constant->value()));
-  }
-
-  if (auto lambdaCall = tryResolveCallWithLambdas(
-          std::dynamic_pointer_cast<const core::CallExpr>(expr),
-          inputNameResolver)) {
-    return lambdaCall;
   }
 
   if (auto lambdaCall = tryResolveCallWithLambdas(
@@ -758,9 +643,6 @@ ExprPtr resolveScalarTypesImpl(
         cast->type(),
         cast->isTryCast() ? SpecialForm::kTryCast : SpecialForm::kCast,
         inputs);
-  }
-
-  if (const auto* lambda = dynamic_cast<const core::LambdaExpr*>(expr.get())) {
   }
 
   VELOX_NYI("Can't resolve {}", expr->toString());
@@ -916,6 +798,7 @@ PlanBuilder& PlanBuilder::setOperation(
   return *this;
 }
 
+  
 LogicalPlanNodePtr PlanBuilder::build() {
   VELOX_USER_CHECK_NOT_NULL(node_);
 

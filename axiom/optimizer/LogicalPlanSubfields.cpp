@@ -418,7 +418,6 @@ void Optimization::markControl(const lp::LogicalPlanNode* node) {
     VELOX_CHECK(set->operation() == lp::SetOperation::kUnionAll, "Only union all supported yet");
   }
   
->>>>>>> main:axiom/optimizer/LogicalPlanSubfields.cpp
   for (auto& source : node->inputs()) {
     markControl(source.get());
   }

@@ -14,16 +14,9 @@
  * limitations under the License.
  */
 
-<<<<<<< HEAD:frontend/optimizer/tests/Genies.h
-#include "optimizer/FunctionRegistry.h" //@manual
-#include "optimizer/tests/FeatureGen.h" //@manual
-
-#include "optimizer/tests/QueryTestBase.h" //@manual
-=======
 #include "axiom/optimizer/FunctionRegistry.h"
 #include "axiom/optimizer/tests/FeatureGen.h"
 #include "axiom/optimizer/tests/QueryTestBase.h"
->>>>>>> main:axiom/optimizer/tests/Genies.h
 #include "velox/common/base/tests/GTestUtils.h"
 
 namespace facebook::velox::optimizer::test {

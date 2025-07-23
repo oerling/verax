@@ -89,7 +89,7 @@ class PlanBuilder {
 
   PlanBuilder& as(const std::string& alias);
 
-  PlanBuilder& SetOperation(SetOperation op, std::vector<LogicalPlanNodePtr> inputs);
+  PlanBuilder& setOperation(SetOperation op, const std::vector<LogicalPlanNodePtr>& inputs);
 
 
   

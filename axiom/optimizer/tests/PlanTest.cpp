@@ -28,6 +28,7 @@
 #include "velox/functions/prestosql/aggregates/RegisterAggregateFunctions.h"
 #include "velox/functions/prestosql/registration/RegistrationFunctions.h"
 #include "velox/parse/TypeResolver.h"
+#include "axiom/logical_plan/PlanBuilder.h"
 
 DEFINE_int32(num_repeats, 1, "Number of repeats for optimization timing");
 
@@ -40,6 +41,8 @@ DECLARE_string(history_save_path);
 using namespace facebook::velox;
 using namespace facebook::velox::optimizer;
 using namespace facebook::velox::optimizer::test;
+  namespace lp = facebook::velox::logical_plan;
+
 
 std::string nodeString(core::PlanNode* node) {
   return node->toString(true, true);
@@ -498,8 +501,11 @@ TEST_F(PlanTest, filterBreakup) {
 
 TEST_F(PlanTest, unions) {
   namespace lp = facebook::velox::logical_plan;
-  auto veloxPlan = PlanBuilder() auto nationType(
+
+  auto nationType = ROW(
       {"n_nationkey", "n_regionkey"}, {BIGINT(), BIGINT()});
+
+  auto veloxPlan = exec::test::PlanBuilder() 
   .tableScan("nation", nationType)
       .project({"n_regionkey + 1 as rk"})
       .filter("rk in (1, 2, 4, 5)")
@@ -507,17 +513,17 @@ TEST_F(PlanTest, unions) {
 
   lp::PlanBuilder::Context ctx;
   auto t1 = lp::PlanBuilder(ctx)
-                .table("nation", {"n_nationkey", "n_regionkey"})
+    .tableScan(exec::test::kHiveConnectorId, "nation", {"n_nationkey", "n_regionkey", "n_name", "n_comment"})
                 .filter("n_nationkey < 11")
                 .build();
   auto t2 =
       lp::PlanBuilder(ctx)
-          .tableScan(kHiveConnectorId, "nation", {"n_nationkey", "n_regionkey"})
+    .tableScan(exec::test::kHiveConnectorId, "nation", {"n_nationkey", "n_regionkey", "n_name", "n_comment"})
           .filter(" n_nationkey f > 13 ")
           .build();
-  unionPlan = lp::PlanBuilder(ctx)
-                  .set(lp::SetOperation::kUnionAll, {t1, t2})
-                  .project("n_regionkey + 1 as rk")
+  auto unionPlan = lp::PlanBuilder(ctx)
+                  .setOperation(lp::SetOperation::kUnionAll, {t1, t2})
+    .project({"n_regionkey + 1 as rk"})
                   .filter("rk in ((1, 2, 4, 5)")
                   .build();
   std::string planString;
