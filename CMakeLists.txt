@@ -129,7 +129,7 @@ include_directories(.)
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${CMAKE_BINARY_DIR}/velox)
 include_directories(SYSTEM velox)
-include_directories(SYSTEM velox/velox/external/xxhash frontend)
+include_directories(SYSTEM velox/velox/external/xxhash axiom)
 include_directories(SYSTEM ${CMAKE_BINARY_DIR}/_deps/xsimd-src/include/)
 
 add_subdirectory(velox)

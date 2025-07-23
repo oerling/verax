@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include "axiom/logical_plan/LogicalPlanNode.h"
 #include "axiom/optimizer/Cost.h"
 #include "axiom/optimizer/RelationOp.h"
 #include "velox/connectors/Connector.h"
@@ -159,16 +160,16 @@ struct LogicalPlanSubfields {
 /// Struct for resolving which PlanNode or Lambda defines which
 /// FieldAccessTypedExpr for column and subfield tracking.
 struct ContextSource {
-  const core::PlanNode* planNode;
-  const core::CallTypedExpr* call;
+  const core::PlanNode* planNode{nullptr};
+  const core::CallTypedExpr* call{nullptr};
   int32_t lambdaOrdinal{-1};
 };
 
 /// Struct for resolving which logical PlanNode or Lambda defines which
 /// field for column and subfield tracking.
 struct LogicalContextSource {
-  const logical_plan::LogicalPlanNode* planNode;
-  const logical_plan::CallExpr* call;
+  const logical_plan::LogicalPlanNode* planNode{nullptr};
+  const logical_plan::CallExpr* call{nullptr};
   int32_t lambdaOrdinal{-1};
 };
 
@@ -449,7 +450,7 @@ struct PlanStateSaver {
         numBuilds_(state.builds.size()),
         numPlaced_(state.dbgPlacedTables.size()) {}
 
-  explicit PlanStateSaver(PlanState& state, const JoinCandidate& candidate);
+  PlanStateSaver(PlanState& state, const JoinCandidate& candidate);
 
   ~PlanStateSaver() {
     state_.placed = std::move(placed_);
@@ -536,6 +537,7 @@ struct BuiltinNames {
   BuiltinNames();
 
   Name reverse(Name op) const;
+
   bool isCanonicalizable(Name name) const {
     return canonicalizable.find(name) != canonicalizable.end();
   }
@@ -599,8 +601,8 @@ class Optimization {
 
   void setLeafHandle(
       int32_t id,
-      connector::ConnectorTableHandlePtr handle,
-      std::vector<core::TypedExprPtr> extraFilters) {
+      const connector::ConnectorTableHandlePtr& handle,
+      const std::vector<core::TypedExprPtr>& extraFilters) {
     leafHandles_[id] = std::make_pair(handle, extraFilters);
   }
 
@@ -616,9 +618,9 @@ class Optimization {
 
   // Translates from Expr to Velox.
   velox::core::TypedExprPtr toTypedExpr(ExprCP expr);
-  auto& idGenerator() {
-    return idGenerator_;
-  }
+
+  // Returns a new PlanNodeId.
+  velox::core::PlanNodeId nextId();
 
   // Makes a getter path over a top level column and can convert the top map
   // getter into struct getter if maps extracted as structs.
@@ -629,7 +631,7 @@ class Optimization {
   // these in scanColumns. The scan->columns() is the leaf columns,
   // not the top level ones if subfield pushdown.
   RowTypePtr scanOutputType(
-      TableScan* scan,
+      TableScan& scan,
       ColumnVector& scanColumns,
       std::unordered_map<ColumnCP, TypePtr>& typeMap);
 
@@ -641,13 +643,13 @@ class Optimization {
 
   // Makes projections for subfields as top level columns.
   core::PlanNodePtr makeSubfieldProjections(
-      TableScan* scan,
+      TableScan& scan,
       const std::shared_ptr<const core::TableScanNode>& scanNode);
 
   /// Sets 'filterSelectivity' of 'baseTable' from history. Returns True if set.
   /// 'scanType' is the set of sampled columns with possible map to struct cast.
   bool setLeafSelectivity(BaseTable& baseTable, RowTypePtr scanType) {
-    return history_.setLeafSelectivity(baseTable, scanType);
+    return history_.setLeafSelectivity(baseTable, std::move(scanType));
   }
 
   auto& memo() {
@@ -1188,6 +1190,31 @@ class Optimization {
       velox::runner::ExecutableFragment& fragment,
       std::vector<velox::runner::ExecutableFragment>& stages);
 
+  velox::core::PlanNodePtr makeScan(
+      TableScan& scan,
+      velox::runner::ExecutableFragment& fragment,
+      std::vector<velox::runner::ExecutableFragment>& stages);
+
+  velox::core::PlanNodePtr makeFilter(
+      Filter& filter,
+      velox::runner::ExecutableFragment& fragment,
+      std::vector<velox::runner::ExecutableFragment>& stages);
+
+  velox::core::PlanNodePtr makeProject(
+      Project& project,
+      velox::runner::ExecutableFragment& fragment,
+      std::vector<velox::runner::ExecutableFragment>& stages);
+
+  velox::core::PlanNodePtr makeJoin(
+      Join& join,
+      velox::runner::ExecutableFragment& fragment,
+      std::vector<velox::runner::ExecutableFragment>& stages);
+
+  velox::core::PlanNodePtr makeRepartition(
+      Repartition& repartition,
+      velox::runner::ExecutableFragment& fragment,
+      std::vector<velox::runner::ExecutableFragment>& stages);
+
   // Makes a tree of PlanNode for a tree of
   // RelationOp. 'fragment' is the fragment that 'op'
   // belongs to. If op or children are repartitions then the
@@ -1204,9 +1231,6 @@ class Optimization {
   void makePredictionAndHistory(
       const core::PlanNodeId& id,
       const RelationOp* op);
-
-  // Returns a new PlanNodeId and associates the Cost of 'op' with it.
-  velox::core::PlanNodeId nextId(const RelationOp& op);
 
   // Returns a stack of parallel project nodes if parallelization makes sense.
   // nullptr means use regular ProjectNode in output.
