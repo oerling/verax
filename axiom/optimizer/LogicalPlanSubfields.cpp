@@ -106,11 +106,11 @@ void Optimization::markFieldAccessed(
     if (kind == lp::NodeKind::kSet) {
       auto* set = reinterpret_cast<const lp::SetNode*>(&source.planNode);
       for (auto in : set->inputs()) {
-	std::vector<const RowType*> inputContext = {
-          in->outputType().get()};
-      std::vector<LogicalContextSource> inputSources = {
-          LogicalContextSource{.planNode = in.get()}};
-      markFieldAccessed(sources[0], ordinal, steps, isControl, context, sources);
+        std::vector<const RowType*> inputContext = {in->outputType().get()};
+        std::vector<LogicalContextSource> inputSources = {
+            LogicalContextSource{.planNode = in.get()}};
+        markFieldAccessed(
+            sources[0], ordinal, steps, isControl, context, sources);
       }
     }
     auto& sourceInputs = source.planNode->inputs();
@@ -415,9 +415,11 @@ void Optimization::markControl(const lp::LogicalPlanNode* node) {
   } else if (kind == lp::NodeKind::kSet) {
     // If this is with a distinct every column is a control column.
     auto* set = reinterpret_cast<const lp::SetNode*>(&node);
-    VELOX_CHECK(set->operation() == lp::SetOperation::kUnionAll, "Only union all supported yet");
+    VELOX_CHECK(
+        set->operation() == lp::SetOperation::kUnionAll,
+        "Only union all supported yet");
   }
-  
+
   for (auto& source : node->inputs()) {
     markControl(source.get());
   }

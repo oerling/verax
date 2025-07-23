@@ -1187,33 +1187,33 @@ PlanObjectP Optimization::makeQueryGraph(
     std::vector<DerivedTableP> children;
     for (auto& in : set->inputs()) {
       if (!isFirst) {
-	renames_ = initialRenames;
+        renames_ = initialRenames;
       }
       children.push_back(dynamic_cast<DerivedTableP>(wrapInDt(*in)));
       if (isFirst) {
-	firstRenames = renames_;
-	isFirst = false;
+        firstRenames = renames_;
+        isFirst = false;
       }
     }
     renames_ = firstRenames;
     auto* newDt = make<DerivedTable>();
-  auto cname = toName(fmt::format("dt{}", ++nameCounter_));
-  newDt->cname = cname;
-  currentSelect_ = newDt;
+    auto cname = toName(fmt::format("dt{}", ++nameCounter_));
+    newDt->cname = cname;
+    currentSelect_ = newDt;
 
-
-  velox::RowTypePtr type = set->inputAt(0)->outputType();
-  for (auto i : usedChannels(&node)) {
-    ExprCP inner = translateColumn(type->nameOf(i));
-    newDt->exprs.push_back(inner);
-    auto* outer = make<Column>(toName(type->nameOf(i)), newDt, inner->value());
-    newDt->columns.push_back(outer);
-    renames_[type->nameOf(i)] = outer;
-  }
-  currentSelect_->tables.push_back(newDt);
-  currentSelect_->tableSet.add(newDt);
-  newDt->makeInitialPlan();
-  return newDt;
+    velox::RowTypePtr type = set->inputAt(0)->outputType();
+    for (auto i : usedChannels(&node)) {
+      ExprCP inner = translateColumn(type->nameOf(i));
+      newDt->exprs.push_back(inner);
+      auto* outer =
+          make<Column>(toName(type->nameOf(i)), newDt, inner->value());
+      newDt->columns.push_back(outer);
+      renames_[type->nameOf(i)] = outer;
+    }
+    currentSelect_->tables.push_back(newDt);
+    currentSelect_->tableSet.add(newDt);
+    newDt->makeInitialPlan();
+    return newDt;
 
   } else {
     VELOX_NYI("Unsupported PlanNode {}", static_cast<int32_t>(kind));

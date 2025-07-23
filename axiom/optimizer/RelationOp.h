@@ -438,18 +438,14 @@ struct OrderBy : public RelationOp {
 };
 
 struct SetOperation : public RelationOp {
-  SetOperation(
-	       logical_plan::SetOperation op,
-      std::vector<RelationOpPtr> inputs)
-    : RelationOp(
-            RelType::kSetOperation,
-            nullptr,
-	    inputs[0]->distribution()),
+  SetOperation(logical_plan::SetOperation op, std::vector<RelationOpPtr> inputs)
+      : RelationOp(RelType::kSetOperation, nullptr, inputs[0]->distribution()),
 
-      op(op), inputs(std::move(inputs)) {}
+        op(op),
+        inputs(std::move(inputs)) {}
 
   const logical_plan::SetOperation op;
   const std::vector<RelationOpPtr> inputs;
 };
-  
+
 } // namespace facebook::velox::optimizer

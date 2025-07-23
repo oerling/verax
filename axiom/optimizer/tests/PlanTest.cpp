@@ -17,6 +17,7 @@
 #include "axiom/optimizer/Plan.h"
 #include <folly/init/Init.h>
 #include <gtest/gtest.h>
+#include "axiom/logical_plan/PlanBuilder.h"
 #include "axiom/optimizer/VeloxHistory.h"
 #include "axiom/optimizer/tests/ParquetTpchTest.h"
 #include "axiom/optimizer/tests/QueryTestBase.h"
@@ -28,7 +29,6 @@
 #include "velox/functions/prestosql/aggregates/RegisterAggregateFunctions.h"
 #include "velox/functions/prestosql/registration/RegistrationFunctions.h"
 #include "velox/parse/TypeResolver.h"
-#include "axiom/logical_plan/PlanBuilder.h"
 
 DEFINE_int32(num_repeats, 1, "Number of repeats for optimization timing");
 
@@ -41,8 +41,7 @@ DECLARE_string(history_save_path);
 using namespace facebook::velox;
 using namespace facebook::velox::optimizer;
 using namespace facebook::velox::optimizer::test;
-  namespace lp = facebook::velox::logical_plan;
-
+namespace lp = facebook::velox::logical_plan;
 
 std::string nodeString(core::PlanNode* node) {
   return node->toString(true, true);
@@ -502,30 +501,34 @@ TEST_F(PlanTest, filterBreakup) {
 TEST_F(PlanTest, unions) {
   namespace lp = facebook::velox::logical_plan;
 
-  auto nationType = ROW(
-      {"n_nationkey", "n_regionkey"}, {BIGINT(), BIGINT()});
+  auto nationType = ROW({"n_nationkey", "n_regionkey"}, {BIGINT(), BIGINT()});
 
-  auto veloxPlan = exec::test::PlanBuilder() 
-  .tableScan("nation", nationType)
-      .project({"n_regionkey + 1 as rk"})
-      .filter("rk in (1, 2, 4, 5)")
-      .planNode();
+  auto veloxPlan = exec::test::PlanBuilder()
+                       .tableScan("nation", nationType)
+                       .project({"n_regionkey + 1 as rk"})
+                       .filter("rk in (1, 2, 4, 5)")
+                       .planNode();
 
   lp::PlanBuilder::Context ctx;
   auto t1 = lp::PlanBuilder(ctx)
-    .tableScan(exec::test::kHiveConnectorId, "nation", {"n_nationkey", "n_regionkey", "n_name", "n_comment"})
+                .tableScan(
+                    exec::test::kHiveConnectorId,
+                    "nation",
+                    {"n_nationkey", "n_regionkey", "n_name", "n_comment"})
                 .filter("n_nationkey < 11")
                 .build();
-  auto t2 =
-      lp::PlanBuilder(ctx)
-    .tableScan(exec::test::kHiveConnectorId, "nation", {"n_nationkey", "n_regionkey", "n_name", "n_comment"})
-          .filter(" n_nationkey f > 13 ")
-          .build();
+  auto t2 = lp::PlanBuilder(ctx)
+                .tableScan(
+                    exec::test::kHiveConnectorId,
+                    "nation",
+                    {"n_nationkey", "n_regionkey", "n_name", "n_comment"})
+                .filter(" n_nationkey f > 13 ")
+                .build();
   auto unionPlan = lp::PlanBuilder(ctx)
-                  .setOperation(lp::SetOperation::kUnionAll, {t1, t2})
-    .project({"n_regionkey + 1 as rk"})
-                  .filter("rk in ((1, 2, 4, 5)")
-                  .build();
+                       .setOperation(lp::SetOperation::kUnionAll, {t1, t2})
+                       .project({"n_regionkey + 1 as rk"})
+                       .filter("rk in ((1, 2, 4, 5)")
+                       .build();
   std::string planString;
   checkSame(unionPlan, veloxPlan, &planString);
 }

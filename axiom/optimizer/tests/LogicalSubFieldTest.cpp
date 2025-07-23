@@ -133,7 +133,9 @@ class LogicalSubfieldTest : public QueryTestBase,
             std::vector<lp::ExprPtr>{
                 stepToLogicalPlanGetter(steps[1], args[nth]),
                 std::make_shared<lp::ConstantExpr>(
-						   REAL(), std::make_shared<variant>(static_cast<float>(steps[1].id)))});
+                    REAL(),
+                    std::make_shared<variant>(
+                        static_cast<float>(steps[1].id)))});
         continue;
       }
 

@@ -798,7 +798,6 @@ PlanBuilder& PlanBuilder::setOperation(
   return *this;
 }
 
-  
 LogicalPlanNodePtr PlanBuilder::build() {
   VELOX_USER_CHECK_NOT_NULL(node_);
 

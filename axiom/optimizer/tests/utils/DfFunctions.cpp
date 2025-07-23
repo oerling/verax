@@ -14,31 +14,18 @@
  * limitations under the License.
  */
 
-
 #include "frontend/optimizer/tests/DfFumctions.h"
-
 
 namespace facebook::velox::optimizer::test {
 
-
-
-  
 TypePtr featureFuncVeloxHook(
-      const std::vector<TypedExprPtr>& inputs,
-      const std::shared_ptr<const core::CallExpr>& expr,
-      bool nullOnFailure) {
-}
-
+    const std::vector<TypedExprPtr>& inputs,
+    const std::shared_ptr<const core::CallExpr>& expr,
+    bool nullOnFailure) {}
 
 TypePtr featureFuncLogicalHook(
-			       const std::vector<lp::ExprPtr>& inputs,
-			       const std::shared_ptr<const core::CallExpr>& expr,
-      bool nullOnFailure) {
+    const std::vector<lp::ExprPtr>& inputs,
+    const std::shared_ptr<const core::CallExpr>& expr,
+    bool nullOnFailure) {}
 
-
-  
-}
-
-  
-}
-
+} // namespace facebook::velox::optimizer::test

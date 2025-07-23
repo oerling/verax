@@ -57,4 +57,3 @@ target_link_libraries(
   velox_parse_utils)
 
 add_subdirectory(utils)
-

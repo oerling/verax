@@ -13,7 +13,3 @@
 # limitations under the License.
 
 add_library(velox_optimizer_test_utils DfFunctions.cpp VeloxToLogical.cpp)
-
-
-
-
