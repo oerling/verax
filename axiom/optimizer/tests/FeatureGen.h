@@ -16,11 +16,7 @@
 #pragma once
 
 #include <folly/Random.h>
-<<<<<<< HEAD:frontend/optimizer/tests/FeatureGen.h
-#include "logical_plan/LogicalPlanNode.h" //@manual
-=======
 #include "axiom/logical_plan/LogicalPlanNode.h"
->>>>>>> main:axiom/optimizer/tests/FeatureGen.h
 #include "velox/core/Expressions.h"
 #include "velox/vector/ComplexVector.h"
 

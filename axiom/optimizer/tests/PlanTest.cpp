@@ -497,6 +497,7 @@ TEST_F(PlanTest, filterBreakup) {
 }
 
 TEST_F(PlanTest, unions) {
+  namespace lp = facebook::velox::logical_plan;
   auto veloxPlan = PlanBuilder() auto nationType(
       {"n_nationkey", "n_regionkey"}, {BIGINT(), BIGINT()});
   .tableScan("nation", nationType)

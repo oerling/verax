@@ -14,15 +14,9 @@
  * limitations under the License.
  */
 
-<<<<<<< HEAD:frontend/optimizer/tests/Genies.cpp
-#include "optimizer/FunctionRegistry.h" //@manual
-#include "optimizer/tests/FeatureGen.h" //@manual
-#include "optimizer/tests/QueryTestBase.h" //@manual
-=======
 #include "axiom/optimizer/FunctionRegistry.h"
 #include "axiom/optimizer/tests/FeatureGen.h"
 #include "axiom/optimizer/tests/QueryTestBase.h"
->>>>>>> main:axiom/optimizer/tests/Genies.cpp
 #include "velox/common/base/tests/GTestUtils.h"
 #include "velox/exec/tests/utils/PlanBuilder.h"
 #include "velox/parse/Expressions.h"

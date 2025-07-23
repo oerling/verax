@@ -1182,20 +1182,21 @@ PlanObjectP Optimization::makeQueryGraph(
   } else if (kind == lp::NodeKind::kSet) {
     auto set = reinterpret_cast<const lp::SetNode*>(&node);
     auto initialRenames = renames_;
-    std::unordered_map<std::string, ExprCP> firstRenames_;
+    std::unordered_map<std::string, ExprCP> firstRenames;
     bool isFirst = true;
     std::vector<DerivedTableP> children;
     for (auto& in : set->inputs()) {
       if (!isFirst) {
 	renames_ = initialRenames;
       }
-      children.push_back(dynamic_cast<DerivedTableP*>(wrapInDt(*in)));
+      children.push_back(dynamic_cast<DerivedTableP>(wrapInDt(*in)));
       if (isFirst) {
 	firstRenames = renames_;
 	isFirst = false;
       }
     }
-  auto* newDt = make<DerivedTable>();
+    renames_ = firstRenames;
+    auto* newDt = make<DerivedTable>();
   auto cname = toName(fmt::format("dt{}", ++nameCounter_));
   newDt->cname = cname;
   currentSelect_ = newDt;
