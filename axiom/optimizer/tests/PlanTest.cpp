@@ -508,15 +508,14 @@ TEST_F(PlanTest, unions) {
                     exec::test::kHiveConnectorId,
                     "nation",
                     {"n_nationkey", "n_regionkey", "n_name", "n_comment"})
-                .filter("n_nationkey < 11")
-                .build();
+    .filter("n_nationkey < 11");
   auto t2 = lp::PlanBuilder(ctx)
                 .tableScan(
                     exec::test::kHiveConnectorId,
                     "nation",
                     {"n_nationkey", "n_regionkey", "n_name", "n_comment"})
-                .filter(" n_nationkey f > 13 ")
-                .build();
+    .filter(" n_nationkey f > 13 ");
+
   auto unionPlan = lp::PlanBuilder(ctx)
                        .setOperation(lp::SetOperation::kUnionAll, {t1, t2})
                        .project({"n_regionkey + 1 as rk"})
@@ -530,19 +529,19 @@ TEST_F(PlanTest, unionJoin) {
   namespace lp = facebook::velox::logical_plan;
 
   auto partType =
-      ROW({"p_partkey", "np_retailprice"},
+      ROW({"p_partkey", "p_retailprice"},
           {BIGINT(), DOUBLE()});
     auto partSuppType =
-      ROW({"ps_partkey", "ps_availqty"}, {BIGINT(), DOUBLE()});
+      ROW({"ps_partkey", "ps_availqty"}, {BIGINT(), INTEGER()});
     auto idGenerator = std::make_shared<core::PlanNodeIdGenerator>();
   auto veloxPlan = exec::test::PlanBuilder(idGenerator)
                        .tableScan("partsupp", partSuppType)
-    .filter("ps_availqty < 1000::DOUBLE or ps_avvailqty > 2000::DOUBLE")
+    .filter("ps_availqty < 1000::INTEGER or ps_availqty > 2000::INTEGER")
     .hashJoin(	      {"ps_partkey"},
 		      {"p_partkey"},
 		      exec::test::PlanBuilder(idGenerator)
 		      .tableScan("part", partType)
-		      .filter("p_retailprice < 1100 or p_retailprice > 1200")
+		      .filter("p_retailprice < 1100::DOUBLE or p_retailprice > 1200::DOUBLE")
 		      .planNode(),
 		      "",
 		      {})
@@ -557,30 +556,28 @@ TEST_F(PlanTest, unionJoin) {
                     exec::test::kHiveConnectorId,
                     "partsupp",
                     {"ps_partkey", "ps_availqty"})
-                .filter("ps_availqty < 1000")
-                .build();
+    .filter("ps_availqty < 1000::INTEGER");
   auto ps2 = lp::PlanBuilder(ctx)
                 .tableScan(
                     exec::test::kHiveConnectorId,
                     "partsupp",
-                    {"ps_partkey", "ps_availqty", "n_name", "n_comment"})
-                .filter("ps_availqty  < 1100")
-                .build();
+                    {"ps_partkey", "ps_availqty"})
+    .filter("ps_availqty  > 2000::INTEGER");
 
   auto p1 = lp::PlanBuilder(ctx)
                 .tableScan(
                     exec::test::kHiveConnectorId,
                     "part",
                     {"p_partkey", "p_retailprice"})
-                .filter("p_retailprice < 1000::DOUBLE")
-                .build();
+    .filter("p_retailprice < 1000::DOUBLE");
+
   auto p2 = lp::PlanBuilder(ctx)
                 .tableScan(
                     exec::test::kHiveConnectorId,
                     "part",
                     {"p_partkey", "p_retailprice"})
-                .filter("p_retailprice  > 1100::DOUBLE")
-                .build();
+    .filter("p_retailprice  > 1100::DOUBLE");
+
 
   auto unionPlan = lp::PlanBuilder(ctx)
                        .setOperation(lp::SetOperation::kUnionAll, {ps1, ps2})

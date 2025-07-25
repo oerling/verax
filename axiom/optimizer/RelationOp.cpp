@@ -343,7 +343,8 @@ const std::string& Filter::historyKey() const {
   std::stringstream out;
   auto* opt = queryCtx()->optimization();
   ScopedVarSetter cname(&opt->cnamesInExpr(), false);
-  out << input_->historyKey() << " filter " << "(";
+  out << input_->historyKey() << " filter "
+      << "(";
   std::vector<std::string> strings;
   for (auto& e : exprs_) {
     strings.push_back(e->toString());
@@ -394,6 +395,25 @@ std::string Project::toString(bool recursive, bool detail) const {
   } else {
     out << "project " << exprs_.size() << " columns ";
   }
+  return out.str();
+}
+
+std::string SetOperation::toString(bool recursive, bool detail) const {
+  std::stringstream out;
+  out << "(";
+  for (auto i = 0; i < inputs.size(); ++i) {
+    out << inputs[i]->toString(recursive, detail);
+    if (i < inputs.size() - 1) {
+      if (detail) {
+        out << std::endl;
+      }
+      out << " " << logical_plan::SetOperationName::toName(op) << " ";
+      if (detail) {
+        out << std::endl;
+      }
+    }
+  }
+  out << ")";
   return out.str();
 }
 

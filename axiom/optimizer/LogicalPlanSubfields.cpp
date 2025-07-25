@@ -412,10 +412,10 @@ void Optimization::markControl(const lp::LogicalPlanNode* node) {
     markColumnSubfields(node, keys, 0);
   } else if (kind == lp::NodeKind::kSet) {
     // If this is with a distinct every column is a control column.
-    auto* set = reinterpret_cast<const lp::SetNode*>(&node);
+    auto* set = reinterpret_cast<const lp::SetNode*>(node);
     VELOX_CHECK(
         set->operation() == lp::SetOperation::kUnionAll,
-        "Only union all supported yet");
+        "Only union all supported");
   }
 
   for (auto& source : node->inputs()) {

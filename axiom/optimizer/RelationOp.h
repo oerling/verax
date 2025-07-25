@@ -444,6 +444,8 @@ struct SetOperation : public RelationOp {
         op(op),
         inputs(std::move(inputs)) {}
 
+  std::string toString(bool recursive, bool detail) const override;
+  
   const logical_plan::SetOperation op;
   const std::vector<RelationOpPtr> inputs;
 };

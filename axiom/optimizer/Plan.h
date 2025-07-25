@@ -1031,6 +1031,8 @@ class Optimization {
 
   void translateJoin(const logical_plan::JoinNode& join);
 
+  PlanObjectP translateSetOperation(const logical_plan::SetNode& set);
+  
   // Makes an extra column for existence flag.
   ColumnCP makeMark(const velox::core::AbstractJoinNode& join);
 

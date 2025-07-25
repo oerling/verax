@@ -91,7 +91,7 @@ class PlanBuilder {
 
   PlanBuilder& setOperation(
       SetOperation op,
-      const std::vector<LogicalPlanNodePtr>& inputs);
+      const std::vector<PlanBuilder>& inputs);
 
   LogicalPlanNodePtr build();
 
