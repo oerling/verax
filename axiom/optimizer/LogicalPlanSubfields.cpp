@@ -411,13 +411,20 @@ void Optimization::markControl(const lp::LogicalPlanNode* node) {
     }
     markColumnSubfields(node, keys, 0);
   } else if (kind == lp::NodeKind::kSet) {
-    // If this is with a distinct every column is a control column.
     auto* set = reinterpret_cast<const lp::SetNode*>(node);
-    VELOX_CHECK(
-        set->operation() == lp::SetOperation::kUnionAll,
-        "Only union all supported");
+    if (set->operation() != lp::SetOperation::kUnionAll) {
+      // If this is with a distinct every column is a control column.
+      for (auto i = 0; i < set->outputType()->size(); ++i) {
+	for (auto& in : set->inputs()) {
+	  std::vector<Step> empty;
+	  std::vector<const RowType*> inputContext = {in->outputType().get()};
+	  std::vector<LogicalContextSource> inputSources = {
+            LogicalContextSource{.planNode = in.get()}};
+	  markFieldAccessed(inputSources[0], i, empty, true, inputContext, inputSources);
+	}
+      }
+    }
   }
-
   for (auto& source : node->inputs()) {
     markControl(source.get());
   }

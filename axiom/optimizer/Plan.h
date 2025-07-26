@@ -1031,8 +1031,10 @@ class Optimization {
 
   void translateJoin(const logical_plan::JoinNode& join);
 
-  PlanObjectP translateSetOperation(const logical_plan::SetNode& set);
-  
+  DerivedTableP translateSetOperation(
+      const logical_plan::SetNode& set,
+      ColumnVector*& columns);
+
   // Makes an extra column for existence flag.
   ColumnCP makeMark(const velox::core::AbstractJoinNode& join);
 
@@ -1073,6 +1075,15 @@ class Optimization {
   /// table. 'needsShuffle' is set to true if a shuffle is needed to
   /// align the result of the made plan with 'distribution'.
   PlanPtr makePlan(
+      const MemoKey& key,
+      const Distribution& distribution,
+      const PlanObjectSet& boundColumns,
+      float existsFanout,
+      PlanState& state,
+      bool& needsShuffle);
+
+  // Non-union case of makePlan().
+  PlanPtr makeDtPlan(
       const MemoKey& key,
       const Distribution& distribution,
       const PlanObjectSet& boundColumns,
@@ -1214,6 +1225,14 @@ class Optimization {
 
   velox::core::PlanNodePtr makeRepartition(
       Repartition& repartition,
+      velox::runner::ExecutableFragment& fragment,
+      std::vector<velox::runner::ExecutableFragment>& stages,
+      std::shared_ptr<core::ExchangeNode>& exchange);
+
+  // Makes a union all with a mix of remote and local inputs. Combines all
+  // remote inputs into one ExchangeNode.
+  velox::core::PlanNodePtr makeUnionAll(
+      UnionAll& unionAll,
       velox::runner::ExecutableFragment& fragment,
       std::vector<velox::runner::ExecutableFragment>& stages);
 

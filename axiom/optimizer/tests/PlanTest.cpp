@@ -536,7 +536,7 @@ TEST_F(PlanTest, unionJoin) {
     auto idGenerator = std::make_shared<core::PlanNodeIdGenerator>();
   auto veloxPlan = exec::test::PlanBuilder(idGenerator)
                        .tableScan("partsupp", partSuppType)
-    .filter("ps_availqty < 1000::INTEGER or ps_availqty > 2000::INTEGER")
+    .filter("ps_availqty < 1000::INTEGER or ps_availqty > 2000::INTEGER or ps_availqty between 1200::INTEGER and 1400::INTEGER")
     .hashJoin(	      {"ps_partkey"},
 		      {"p_partkey"},
 		      exec::test::PlanBuilder(idGenerator)
@@ -564,6 +564,20 @@ TEST_F(PlanTest, unionJoin) {
                     {"ps_partkey", "ps_availqty"})
     .filter("ps_availqty  > 2000::INTEGER");
 
+  auto ps3 = lp::PlanBuilder(ctx)
+                .tableScan(
+                    exec::test::kHiveConnectorId,
+                    "partsupp",
+                    {"ps_partkey", "ps_availqty"})
+    .filter("ps_availqty  between  1200::INTEGER and 1400::INTEGER");
+
+  // The shape of the partsupp union is ps1 union all (ps2 union all
+  // ps3). We verify that a stack of multiple set ops works.
+  auto psu2 = lp::PlanBuilder(ctx)
+    .setOperation(lp::SetOperation::kUnion, {ps2, ps3});
+
+
+  
   auto p1 = lp::PlanBuilder(ctx)
                 .tableScan(
                     exec::test::kHiveConnectorId,
@@ -580,7 +594,7 @@ TEST_F(PlanTest, unionJoin) {
 
 
   auto unionPlan = lp::PlanBuilder(ctx)
-                       .setOperation(lp::SetOperation::kUnionAll, {ps1, ps2})
+                       .setOperation(lp::SetOperation::kUnionAll, {ps1, psu2})
     .join(
 	  lp::PlanBuilder(ctx)
 	  .setOperation(lp::SetOperation::kUnionAll, {p1, p2}),

@@ -133,8 +133,8 @@ void Optimization::trace(
     RelationOp& plan) {
   if (event & opts_.traceFlags) {
     std::cout << (event == kRetained ? "Retained: " : "Abandoned: ") << id
-              << ": " << cost.toString(true, true) << ": " << " "
-              << plan.toString(true, false) << std::endl;
+              << ": " << cost.toString(true, true) << ": "
+              << " " << plan.toString(true, false) << std::endl;
   }
 }
 
@@ -1691,7 +1691,153 @@ void Optimization::makeJoins(RelationOpPtr plan, PlanState& state) {
   }
 }
 
+namespace {
+RelationOpPtr makeDistinct(RelationOpPtr input) {
+  ExprVector exprs;
+  for (auto& c : input->columns()) {
+    exprs.push_back(c);
+  }
+  return make<Aggregation>(input, exprs);
+}
+
+Distribution somePartition(const std::vector<RelationOpPtr>& inputs) {
+  Distribution result;
+  ExprVector columns;
+  float card = 1;
+  auto inputColumns = inputs[0]->columns();
+
+  // A simple type and many values is a good partitioning key.
+  auto score = [&](ColumnCP column) {
+    auto card = column->value().cardinality;
+    return column->value().type->kind() >= TypeKind::ARRAY ? card / 10000
+                                                           : card;
+  };
+
+  std::sort(
+      inputColumns.begin(),
+      inputColumns.end(),
+      [&](ColumnCP left, ColumnCP right) {
+        return score(left) > score(right);
+      });
+  for (auto i = 0; i < inputs[0]->columns().size(); ++i) {
+    auto column = inputColumns[i];
+    card *= column->value().cardinality;
+    columns.push_back(column);
+    if (card > 100000) {
+      break;
+    }
+  }
+  result.partition = columns;
+  DistributionType distributionType;
+
+  distributionType.numPartitions =
+      queryCtx()->optimization()->options().numWorkers;
+  distributionType.locus = inputs[0]->distribution().distributionType.locus;
+  result.distributionType = distributionType;
+  return result;
+}
+
+// Adds the costs in the input states to the first state and if 'distinct' is
+// not null adds the cost of that to the first state.
+PlanPtr unionPlan(
+		  std::vector<PlanState>& states,
+    const std::vector<PlanPtr>& inputPlans,
+    RelationOpPtr result,
+    Aggregation* distinct) {
+  PlanObjectSet fullyImported = inputPlans[0]->fullyImported;
+  for (auto i = 1; i < states.size(); ++i) {
+    fullyImported.intersect(inputPlans[i]->fullyImported);
+    states[0].cost.add(states[i].cost);
+  }
+  if (distinct) {
+    states[0].addCost(*distinct);
+  }
+  auto plan = make<Plan>(result, states[0]);
+  plan->fullyImported = fullyImported;
+  return plan;
+}
+} // namespace
+
 PlanPtr Optimization::makePlan(
+    const MemoKey& key,
+    const Distribution& distribution,
+    const PlanObjectSet& boundColumns,
+    float existsFanout,
+    PlanState& state,
+    bool& needsShuffle) {
+  if (key.firstTable->type() == PlanType::kDerivedTable &&
+      key.firstTable->as<DerivedTable>()->setOp.has_value()) {
+    auto setDt = const_cast<DerivedTable*>(key.firstTable->as<DerivedTable>());
+    bool isDistinct =
+        setDt->setOp.value() == logical_plan::SetOperation::kUnion;
+    std::vector<RelationOpPtr> inputs;
+    std::vector<PlanPtr> inputPlans;
+    std::vector<PlanState> inputStates;
+    std::vector<bool> inputNeedsShuffle;
+
+    for (auto inputDt : setDt->children) {
+      MemoKey inputKey = key;
+      inputKey.firstTable = inputDt;
+      bool inputShuffle = false;
+
+      auto inputPlan = makePlan(
+          inputKey,
+          distribution,
+          boundColumns,
+          existsFanout,
+          state,
+          inputShuffle);
+      inputPlans.push_back(inputPlan);
+      inputStates.emplace_back(*this, setDt, inputPlans.back());
+      inputs.push_back(inputPlan->op);
+      inputNeedsShuffle.push_back(inputShuffle);
+    }
+    if (isSingle_) {
+      RelationOpPtr result = make<UnionAll>(inputs);
+      Aggregation* distinct = nullptr;
+      if (isDistinct) {
+        result = makeDistinct(result);
+        distinct = result->as<Aggregation>();
+      }
+      return unionPlan(inputStates, inputPlans, result, distinct);
+    }
+    if (distribution.partition.empty()) {
+      if (isDistinct) {
+        // Pick some partitioning key and shuffle on that and make distinct.
+        Distribution someDistribution = somePartition(inputs);
+        for (auto i = 0; i < inputs.size(); ++i) {
+          inputs[i] = make<Repartition>(
+              inputs[i], someDistribution, inputs[i]->columns());
+          inputStates[i].addCost(*inputs[i]);
+        }
+      }
+    } else {
+      // Some need a shuffle. Add the shuffles, add an optional distinct and
+      // return with no shuffle needed.
+      for (auto i = 0; i < inputs.size(); ++i) {
+        if (inputNeedsShuffle[i]) {
+          inputs[i] =
+              make<Repartition>(inputs[i], distribution, inputs[i]->columns());
+          inputStates[i].addCost(*inputs[i]);
+        }
+      }
+    }
+    needsShuffle = false;
+
+    RelationOpPtr result = make<UnionAll>(inputs);
+    Aggregation* distinct = nullptr;
+    if (isDistinct) {
+      result = makeDistinct(result);
+      distinct = result->as<Aggregation>();
+    }
+    return unionPlan(inputStates, inputPlans, result, distinct);
+  } else {
+    return makeDtPlan(
+        key, distribution, boundColumns, existsFanout, state, needsShuffle);
+  }
+}
+
+PlanPtr Optimization::makeDtPlan(
     const MemoKey& key,
     const Distribution& distribution,
     const PlanObjectSet& /*boundColumns*/,

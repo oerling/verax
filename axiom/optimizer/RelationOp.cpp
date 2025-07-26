@@ -22,6 +22,12 @@
 
 namespace facebook::velox::optimizer {
 
+  void Cost::add(const Cost& other) {
+    inputCardinality += other.inputCardinality;
+    fanout += other.fanout;
+    setupCost += other.setupCost;
+  }
+  
 const Value& RelationOp::value(ExprCP expr) const {
   // Compute new Value by applying restrictions from operators
   // between the place Expr is first defined and the output of
@@ -398,7 +404,7 @@ std::string Project::toString(bool recursive, bool detail) const {
   return out.str();
 }
 
-std::string SetOperation::toString(bool recursive, bool detail) const {
+std::string UnionAll::toString(bool recursive, bool detail) const {
   std::stringstream out;
   out << "(";
   for (auto i = 0; i < inputs.size(); ++i) {
@@ -407,7 +413,7 @@ std::string SetOperation::toString(bool recursive, bool detail) const {
       if (detail) {
         out << std::endl;
       }
-      out << " " << logical_plan::SetOperationName::toName(op) << " ";
+      out << " union all ";
       if (detail) {
         out << std::endl;
       }
