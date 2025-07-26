@@ -17,9 +17,9 @@
 #include "axiom/optimizer/Plan.h"
 #include "velox/core/PlanNode.h"
 #include "velox/exec/HashPartitionFunction.h"
+#include "velox/exec/RoundRobinPartitionFunction.h"
 #include "velox/expression/ExprToSubfieldFilter.h"
 #include "velox/expression/ScopedVarSetter.h"
-#include "velox/exec/RoundRobinPartitionFunction.h"
 
 namespace facebook::velox::optimizer {
 

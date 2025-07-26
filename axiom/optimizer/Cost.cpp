@@ -199,7 +199,7 @@ void UnionAll::setCost(const PlanState& input) {
     cost_.inputCardinality += in->cost().inputCardinality * in->cost().fanout;
   }
 }
-  
+
 float selfCost(ExprCP expr) {
   switch (expr->type()) {
     case PlanType::kColumn: {

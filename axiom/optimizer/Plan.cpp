@@ -1740,7 +1740,7 @@ Distribution somePartition(const std::vector<RelationOpPtr>& inputs) {
 // Adds the costs in the input states to the first state and if 'distinct' is
 // not null adds the cost of that to the first state.
 PlanPtr unionPlan(
-		  std::vector<PlanState>& states,
+    std::vector<PlanState>& states,
     const std::vector<PlanPtr>& inputPlans,
     RelationOpPtr result,
     Aggregation* distinct) {

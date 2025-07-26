@@ -70,7 +70,7 @@ struct Cost {
   float peakResidentBytes{0};
 
   void add(const Cost& other);
-  
+
   /// If 'isUnit' shows the cost/cardinality for one row, else for
   /// 'inputCardinality' rows.
   std::string toString(bool detail, bool isUnit = false) const;
@@ -446,9 +446,9 @@ struct UnionAll : public RelationOp {
         inputs(std::move(inputs)) {}
 
   void setCost(const PlanState& input) override;
-  
+
   std::string toString(bool recursive, bool detail) const override;
-  
+
   const std::vector<RelationOpPtr> inputs;
 };
 

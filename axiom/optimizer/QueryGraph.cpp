@@ -1114,21 +1114,23 @@ void DerivedTable::distributeConjuncts() {
         // Translate the column names and add the condition to the conjuncts in
         // the dt. If the inner is a set operation, add the filter to children.
         auto innerDt = tables[0]->as<DerivedTable>();
-	auto numChildren = innerDt->children.empty() ? 1 : innerDt->children.size();
-	for (auto childIdx = 0; childIdx < numChildren; ++ childIdx) {
-	  auto childDt = numChildren == 1 ? innerDt : innerDt->children[childIdx];
-	  auto imported =
-            importExpr(conjuncts[i], childDt->columns, childDt->exprs);
-        if (childDt->aggregation) {
-          childDt->having.push_back(imported);
-        } else {
-          childDt->conjuncts.push_back(imported);
+        auto numChildren =
+            innerDt->children.empty() ? 1 : innerDt->children.size();
+        for (auto childIdx = 0; childIdx < numChildren; ++childIdx) {
+          auto childDt =
+              numChildren == 1 ? innerDt : innerDt->children[childIdx];
+          auto imported =
+              importExpr(conjuncts[i], childDt->columns, childDt->exprs);
+          if (childDt->aggregation) {
+            childDt->having.push_back(imported);
+          } else {
+            childDt->conjuncts.push_back(imported);
+          }
+          if (std::find(changedDts.begin(), changedDts.end(), childDt) ==
+              changedDts.end()) {
+            changedDts.push_back(childDt);
+          }
         }
-        if (std::find(changedDts.begin(), changedDts.end(), childDt) ==
-            changedDts.end()) {
-          changedDts.push_back(childDt);
-        }
-	}
         conjuncts.erase(conjuncts.begin() + i);
         --numCanonicalConjuncts;
         --i;

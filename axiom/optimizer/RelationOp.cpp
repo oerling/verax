@@ -22,12 +22,12 @@
 
 namespace facebook::velox::optimizer {
 
-  void Cost::add(const Cost& other) {
-    inputCardinality += other.inputCardinality;
-    fanout += other.fanout;
-    setupCost += other.setupCost;
-  }
-  
+void Cost::add(const Cost& other) {
+  inputCardinality += other.inputCardinality;
+  fanout += other.fanout;
+  setupCost += other.setupCost;
+}
+
 const Value& RelationOp::value(ExprCP expr) const {
   // Compute new Value by applying restrictions from operators
   // between the place Expr is first defined and the output of

@@ -526,7 +526,7 @@ class SetNode : public LogicalPlanNode {
         inputs.size(), 2, "Set operation requires at least 2 inputs");
     for (const auto& input : inputs) {
       VELOX_USER_CHECK(
-		       input->outputType()->equivalent(*outputType()),
+          input->outputType()->equivalent(*outputType()),
           "Output schemas of all inputs to a Set operation must match");
     }
   }
