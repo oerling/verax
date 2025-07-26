@@ -496,7 +496,7 @@ TEST_F(PlanTest, unions) {
   auto nationType =
       ROW({"n_nationkey", "n_regionkey", "n_name", "n_comment"},
           {BIGINT(), BIGINT(), VARCHAR(), VARCHAR()});
-  auto veloxPlan = exec::test::PlanBuilder()
+  auto veloxPlan = exec::test::PlanBuilder(pool_.get())
                        .tableScan("nation", nationType)
                        .project({"n_regionkey + 1 as rk"})
                        .filter("rk in (1, 2, 4, 5)")
