@@ -514,6 +514,8 @@ struct OptimizerOptions {
   /// the whole map is accessed as a map.
   std::unordered_map<std::string, std::vector<std::string>> mapAsStruct;
 
+  bool sampleJoins{true};
+
   /// Produce trace of plan candidates.
   int32_t traceFlags{0};
 };
@@ -555,7 +557,7 @@ struct BuiltinNames {
   folly::F14FastSet<Name> canonicalizable;
 };
 
-/// Instance of query optimization. Comverts a plan and schema into an
+/// Instance of query optimization. Converts a plan and schema into an
 /// optimized plan. Depends on QueryGraphContext being set on the
 /// calling thread. There is one instance per query to plan. The
 /// instance must stay live as long as a returned plan is live.

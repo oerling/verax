@@ -514,11 +514,19 @@ VELOX_DECLARE_ENUM_NAME(SetOperation)
 
 /// Set-level operation that supports combining datasets, possibly excluding
 /// rows based on various types of row level matching.
+///
+/// All inputs must have compatible types. Number and types of columns must be
+/// the same. Columns names being unique will be different. The output schema of
+/// the Set node is the schema of the first input. Column names in the output of
+/// the Set match column names in the first input.
+///
+/// Set operation must specify at least 2 inputs.
 class SetNode : public LogicalPlanNode {
  public:
   SetNode(
       const std::string& id,
       const std::vector<LogicalPlanNodePtr>& inputs,
+<<<<<<< HEAD
       SetOperation operation)
       : LogicalPlanNode(NodeKind::kSet, id, inputs, inputs.at(0)->outputType()),
         operation_{operation} {
@@ -530,6 +538,9 @@ class SetNode : public LogicalPlanNode {
           "Output schemas of all inputs to a Set operation must match");
     }
   }
+=======
+      SetOperation operation);
+>>>>>>> main
 
   SetOperation operation() const {
     return operation_;

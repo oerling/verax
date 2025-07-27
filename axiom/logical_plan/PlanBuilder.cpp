@@ -15,6 +15,7 @@
  */
 
 #include "axiom/logical_plan/PlanBuilder.h"
+#include "axiom/logical_plan/NameMappings.h"
 #include "axiom/optimizer/connectors/ConnectorMetadata.h"
 #include "velox/connectors/Connector.h"
 #include "velox/exec/Aggregate.h"
@@ -717,6 +718,18 @@ PlanBuilder& PlanBuilder::join(
   return *this;
 }
 
+PlanBuilder& PlanBuilder::unionAll(const PlanBuilder& other) {
+  VELOX_USER_CHECK_NOT_NULL(node_, "UnionAll node cannot be a leaf node");
+  VELOX_USER_CHECK_NOT_NULL(other.node_);
+
+  node_ = std::make_shared<SetNode>(
+      nextId(),
+      std::vector<LogicalPlanNodePtr>{node_, other.node_},
+      SetOperation::kUnionAll);
+
+  return *this;
+}
+
 PlanBuilder& PlanBuilder::sort(const std::vector<std::string>& sortingKeys) {
   VELOX_USER_CHECK_NOT_NULL(node_, "Sort node cannot be a leaf node");
 
@@ -847,6 +860,7 @@ LogicalPlanNodePtr PlanBuilder::build() {
   return node_;
 }
 
+<<<<<<< HEAD
 namespace {
 bool isAllDigits(std::string_view str) {
   for (auto c : str) {
@@ -982,4 +996,6 @@ size_t NameMappings::QualifiedNameHasher::operator()(
   return h1 ^ (h2 << 1);
 }
 
+=======
+>>>>>>> main
 } // namespace facebook::velox::logical_plan
