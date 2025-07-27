@@ -560,12 +560,12 @@ TEST_F(PlanTest, unions) {
                     exec::test::kHiveConnectorId,
                     "nation",
                     {"n_nationkey", "n_regionkey", "n_name", "n_comment"})
-                .filter(" n_nationkey f > 13 ");
+                .filter(" n_nationkey > 13 ");
 
   auto unionPlan = lp::PlanBuilder(ctx)
                        .setOperation(lp::SetOperation::kUnionAll, {t1, t2})
                        .project({"n_regionkey + 1 as rk"})
-                       .filter("rk in ((1, 2, 4, 5)")
+                       .filter("cast(rk as integer) in (1, 2, 4, 5)")
                        .build();
   std::string planString;
   checkSame(unionPlan, veloxPlan, &planString);

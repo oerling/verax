@@ -1748,6 +1748,8 @@ PlanPtr unionPlan(
   for (auto i = 1; i < states.size(); ++i) {
     fullyImported.intersect(inputPlans[i]->fullyImported);
     states[0].cost.add(states[i].cost);
+    // The input cardinality is not additive, the fanout and other metrics are.
+    states[0].cost.inputCardinality -= states[i].cost.inputCardinality;
   }
   if (distinct) {
     states[0].addCost(*distinct);
@@ -1778,6 +1780,8 @@ PlanPtr Optimization::makePlan(
     for (auto inputDt : setDt->children) {
       MemoKey inputKey = key;
       inputKey.firstTable = inputDt;
+      inputKey.tables.erase(key.firstTable);
+      inputKey.tables.add(inputDt);
       bool inputShuffle = false;
 
       auto inputPlan = makePlan(

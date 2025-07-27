@@ -20,6 +20,7 @@
 #include "velox/exec/RoundRobinPartitionFunction.h"
 #include "velox/expression/ExprToSubfieldFilter.h"
 #include "velox/expression/ScopedVarSetter.h"
+#include "velox/vector/VariantToVector.h"
 
 namespace facebook::velox::optimizer {
 
@@ -351,6 +352,14 @@ core::TypedExprPtr Optimization::toTypedExpr(ExprCP expr) {
       if (literal->vector()) {
         return std::make_shared<core::ConstantTypedExpr>(
             queryCtx()->toVectorPtr(literal->vector()));
+      }
+      // Complex constants must be vectors for constant folding to work.
+      if (literal->value().type->kind() >= TypeKind::ARRAY) {
+        return std::make_shared<core::ConstantTypedExpr>(
+            variantToVector(
+                toTypePtr(literal->value().type),
+                literal->literal(),
+                evaluator_.pool()));
       }
       return std::make_shared<core::ConstantTypedExpr>(
           toTypePtr(literal->value().type), literal->literal());
