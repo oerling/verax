@@ -526,7 +526,6 @@ class SetNode : public LogicalPlanNode {
   SetNode(
       const std::string& id,
       const std::vector<LogicalPlanNodePtr>& inputs,
-<<<<<<< HEAD
       SetOperation operation)
       : LogicalPlanNode(NodeKind::kSet, id, inputs, inputs.at(0)->outputType()),
         operation_{operation} {
@@ -538,9 +537,6 @@ class SetNode : public LogicalPlanNode {
           "Output schemas of all inputs to a Set operation must match");
     }
   }
-=======
-      SetOperation operation);
->>>>>>> main
 
   SetOperation operation() const {
     return operation_;

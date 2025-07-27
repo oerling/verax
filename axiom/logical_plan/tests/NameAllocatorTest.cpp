@@ -28,14 +28,10 @@ TEST(NameAllocatorTest, basic) {
   EXPECT_EQ(allocator.newName("bar"), "bar");
   EXPECT_EQ(allocator.newName("bar"), "bar_1");
 
-<<<<<<< HEAD:frontend/logical_plan/tests/NameAllocatorTest.cpp
-  EXPECT_EQ(allocator.newName("f_oo_0"), "f_oo_2");
-=======
   EXPECT_EQ(allocator.newName("foo_0"), "foo_2");
 
   EXPECT_EQ(allocator.newName("foo_bar"), "foo_bar");
   EXPECT_EQ(allocator.newName("foo_bar"), "foo_bar_3");
->>>>>>> main:axiom/logical_plan/tests/NameAllocatorTest.cpp
 }
 
 } // namespace facebook::velox::logical_plan

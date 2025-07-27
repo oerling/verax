@@ -958,19 +958,12 @@ velox::core::PlanNodePtr Optimization::makeRepartition(
       VectorSerde::Kind::kPresto,
       partitioningInput);
 
-<<<<<<< HEAD
   if (exchange == nullptr) {
     exchange = std::make_shared<core::ExchangeNode>(
         idGenerator_.next(),
         sourcePlan->outputType(),
         VectorSerde::Kind::kPresto);
   }
-=======
-  auto exchange = std::make_shared<core::ExchangeNode>(
-      idGenerator_.next(),
-      sourcePlan->outputType(),
-      VectorSerde::Kind::kPresto);
->>>>>>> main
   fragment.inputStages.push_back(InputStage{exchange->id(), source.taskPrefix});
   stages.push_back(std::move(source));
   return exchange;

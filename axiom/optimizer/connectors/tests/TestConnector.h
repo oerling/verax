@@ -16,44 +16,10 @@
 
 #pragma once
 
-<<<<<<< HEAD:frontend/optimizer/connectors/tests/TestConnector.h
-#include "optimizer/connectors/ConnectorMetadata.h" //@manual
-=======
 #include "axiom/optimizer/connectors/ConnectorMetadata.h"
->>>>>>> main:axiom/optimizer/connectors/tests/TestConnector.h
 
-    namespace facebook::velox::connector {
-  class TestTable : public Table {
-   public:
-    TestTable(const std::string& name, const RowTypePtr& schema) : Table(name) {
-      type_ = schema;
-    }
+namespace facebook::velox::connector {
 
-<<<<<<< HEAD
-    const std::unordered_map<std::string, const Column*>& columnMap()
-        const override {
-      VELOX_NYI();
-    }
-
-    const std::vector<const TableLayout*>& layouts() const override {
-      VELOX_NYI();
-    }
-
-    uint64_t numRows() const override {
-      VELOX_NYI();
-    }
-  };
-
-  class TestConnectorMetadata : public ConnectorMetadata {
-   public:
-    void initialize() override {}
-
-    const Table* findTable(const std::string& name) override {
-      auto it = tables_.find(name);
-      VELOX_USER_CHECK(it != tables_.end(), "Test table not found: {}", name);
-      return it->second.get();
-    }
-=======
 class TestConnector;
 
 class TestTableLayout : public TableLayout {
@@ -162,30 +128,17 @@ class TestConnectorMetadata : public ConnectorMetadata {
       : connector_{connector} {}
 
   void initialize() override {}
->>>>>>> main
 
-    ConnectorSplitManager* splitManager() override {
-      VELOX_NYI();
-    }
+  const Table* findTable(const std::string& name) override {
+    auto it = tables_.find(name);
+    VELOX_USER_CHECK(it != tables_.end(), "Test table not found: {}", name);
+    return it->second.get();
+  }
 
-    void addTable(const std::string& name, const RowTypePtr& schema) {
-      tables_.emplace(name, std::make_unique<TestTable>(name, schema));
-    }
+  ConnectorSplitManager* splitManager() override {
+    VELOX_NYI();
+  }
 
-<<<<<<< HEAD
-   private:
-    std::unordered_map<std::string, std::unique_ptr<TestTable>> tables_;
-  };
-
-  class TestConnector : public Connector {
-   public:
-    explicit TestConnector(const std::string& id)
-        : Connector(id), metadata_{std::make_unique<TestConnectorMetadata>()} {}
-
-    ConnectorMetadata* metadata() const override {
-      return metadata_.get();
-    }
-=======
   void addTable(const std::string& name, const RowTypePtr& schema) {
     tables_.emplace(
         name, std::make_unique<TestTable>(name, schema, connector_));
@@ -219,34 +172,37 @@ class TestConnector : public Connector {
   explicit TestConnector(const std::string& id)
       : Connector(id),
         metadata_{std::make_unique<TestConnectorMetadata>(this)} {}
->>>>>>> main
 
-    std::unique_ptr<DataSource> createDataSource(
-        const RowTypePtr& /* outputType */,
-        const ConnectorTableHandlePtr& /* tableHandle */,
-        const ColumnHandleMap& /* columnHandles */,
-        ConnectorQueryCtx* /* connectorQueryCtx */) override {
-      VELOX_NYI();
-    }
+  ConnectorMetadata* metadata() const override {
+    return metadata_.get();
+  }
 
-    std::unique_ptr<DataSink> createDataSink(
-        RowTypePtr /* inputType */,
-        ConnectorInsertTableHandlePtr /* connectorInsertTableHandle */,
-        ConnectorQueryCtx* /* connectorQueryCtx */,
-        CommitStrategy /* commitStrategy */) override {
-      VELOX_NYI();
-    }
+  std::unique_ptr<DataSource> createDataSource(
+      const RowTypePtr& /* outputType */,
+      const ConnectorTableHandlePtr& /* tableHandle */,
+      const ColumnHandleMap& /* columnHandles */,
+      ConnectorQueryCtx* /* connectorQueryCtx */) override {
+    VELOX_NYI();
+  }
 
-    void addTable(const std::string& name, const RowTypePtr& schema) {
-      metadata_->addTable(name, schema);
-    }
+  std::unique_ptr<DataSink> createDataSink(
+      RowTypePtr /* inputType */,
+      ConnectorInsertTableHandlePtr /* connectorInsertTableHandle */,
+      ConnectorQueryCtx* /* connectorQueryCtx */,
+      CommitStrategy /* commitStrategy */) override {
+    VELOX_NYI();
+  }
 
-    void addTable(const std::string& name) {
-      metadata_->addTable(name, ROW({}, {}));
-    }
+  void addTable(const std::string& name, const RowTypePtr& schema) {
+    metadata_->addTable(name, schema);
+  }
 
-   private:
-    const std::unique_ptr<TestConnectorMetadata> metadata_;
-  };
+  void addTable(const std::string& name) {
+    metadata_->addTable(name, ROW({}, {}));
+  }
+
+ private:
+  const std::unique_ptr<TestConnectorMetadata> metadata_;
+};
 
 } // namespace facebook::velox::connector
