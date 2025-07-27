@@ -125,7 +125,7 @@ class PlanTest : public virtual test::ParquetTpchTest,
   }
 
   void checkSame(
-      const lp::LogicalPlanNodePtr& planNode,
+      const logical_plan::LogicalPlanNodePtr& planNode,
       core::PlanNodePtr referencePlan,
       std::string* planString = nullptr,
       std::string* veloxPlan = nullptr) {
@@ -133,7 +133,7 @@ class PlanTest : public virtual test::ParquetTpchTest,
     if (veloxPlan) {
       *veloxPlan = veloxString(fragmentedPlan.plan);
     }
-    TestResult referenceResult;
+    optimizer::test::TestResult referenceResult;
     assertSame(referencePlan, fragmentedPlan, &referenceResult);
     auto numWorkers = FLAGS_num_workers;
     if (numWorkers != 1) {
