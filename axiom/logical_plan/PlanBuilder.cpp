@@ -803,6 +803,21 @@ std::string PlanBuilder::newName(const std::string& hint) {
   return nameAllocator_->newName(hint);
 }
 
+PlanBuilder& PlanBuilder::setOperation(
+    SetOperation op,
+    const std::vector<PlanBuilder>& inputs) {
+  VELOX_USER_CHECK_NULL(node_, "setOperation must be a leaf");
+  outputMapping_ = inputs.front().outputMapping_;
+  std::vector<LogicalPlanNodePtr> nodes;
+  nodes.reserve(inputs.size());
+  for (auto& builder : inputs) {
+    VELOX_CHECK_NOT_NULL(builder.node_);
+    nodes.push_back(builder.node_);
+  }
+  node_ = std::make_shared<SetNode>(nextId(), std::move(nodes), op);
+  return *this;
+}
+
 LogicalPlanNodePtr PlanBuilder::build() {
   VELOX_USER_CHECK_NOT_NULL(node_);
 

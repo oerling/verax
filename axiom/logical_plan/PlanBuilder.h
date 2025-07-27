@@ -91,6 +91,10 @@ class PlanBuilder {
 
   PlanBuilder& as(const std::string& alias);
 
+  PlanBuilder& setOperation(
+      SetOperation op,
+      const std::vector<PlanBuilder>& inputs);
+
   LogicalPlanNodePtr build();
 
  private:

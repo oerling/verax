@@ -526,7 +526,17 @@ class SetNode : public LogicalPlanNode {
   SetNode(
       const std::string& id,
       const std::vector<LogicalPlanNodePtr>& inputs,
-      SetOperation operation);
+      SetOperation operation)
+      : LogicalPlanNode(NodeKind::kSet, id, inputs, inputs.at(0)->outputType()),
+        operation_{operation} {
+    VELOX_USER_CHECK_GE(
+        inputs.size(), 2, "Set operation requires at least 2 inputs");
+    for (const auto& input : inputs) {
+      VELOX_USER_CHECK(
+          input->outputType()->equivalent(*outputType()),
+          "Output schemas of all inputs to a Set operation must match");
+    }
+  }
 
   SetOperation operation() const {
     return operation_;

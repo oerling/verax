@@ -69,6 +69,8 @@ struct Cost {
   // amount of spill is 'totalBytes' - 'peakResidentBytes'.
   float peakResidentBytes{0};
 
+  void add(const Cost& other);
+
   /// If 'isUnit' shows the cost/cardinality for one row, else for
   /// 'inputCardinality' rows.
   std::string toString(bool detail, bool isUnit = false) const;
@@ -435,6 +437,19 @@ struct OrderBy : public RelationOp {
   // another key or keys. These can be late materialized or converted
   // to payload.
   PlanObjectSet dependentKeys;
+};
+
+/// Represents a union all.
+struct UnionAll : public RelationOp {
+  UnionAll(std::vector<RelationOpPtr> inputs)
+      : RelationOp(RelType::kUnionAll, nullptr, inputs[0]->distribution()),
+        inputs(std::move(inputs)) {}
+
+  void setCost(const PlanState& input) override;
+
+  std::string toString(bool recursive, bool detail) const override;
+
+  const std::vector<RelationOpPtr> inputs;
 };
 
 } // namespace facebook::velox::optimizer

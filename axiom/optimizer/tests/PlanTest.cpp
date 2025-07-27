@@ -124,6 +124,29 @@ class PlanTest : public virtual test::ParquetTpchTest,
     }
   }
 
+  void checkSame(
+      const lp::LogicalPlanNodePtr& planNode,
+      core::PlanNodePtr referencePlan,
+      std::string* planString = nullptr,
+      std::string* veloxPlan = nullptr) {
+    auto fragmentedPlan = planVelox(planNode, planString);
+    if (veloxPlan) {
+      *veloxPlan = veloxString(fragmentedPlan.plan);
+    }
+    TestResult referenceResult;
+    assertSame(referencePlan, fragmentedPlan, &referenceResult);
+    auto numWorkers = FLAGS_num_workers;
+    if (numWorkers != 1) {
+      FLAGS_num_workers = 1;
+      auto singlePlan = planVelox(planNode, planString);
+      ASSERT_TRUE(singlePlan.plan != nullptr);
+      auto singleResult = runFragmentedPlan(singlePlan);
+      exec::test::assertEqualResults(
+          referenceResult.results, singleResult.results);
+      FLAGS_num_workers = numWorkers;
+    }
+  }
+
   // Breaks str into tokens at whitespace and punctuation. Returns tokens as
   // string, character position pairs.
   std::vector<std::pair<std::string, int32_t>> tokenize(
@@ -513,8 +536,123 @@ TEST_F(PlanTest, filterBreakup) {
   expectRegexp(veloxString, "part.*p_size.*p_container");
 }
 
+TEST_F(PlanTest, unions) {
+  namespace lp = facebook::velox::logical_plan;
+
+  auto nationType =
+      ROW({"n_nationkey", "n_regionkey", "n_name", "n_comment"},
+          {BIGINT(), BIGINT(), VARCHAR(), VARCHAR()});
+  auto veloxPlan = exec::test::PlanBuilder(pool_.get())
+                       .tableScan("nation", nationType)
+                       .project({"n_regionkey + 1 as rk"})
+                       .filter("rk in (1, 2, 4, 5)")
+                       .planNode();
+
+  lp::PlanBuilder::Context ctx;
+  auto t1 = lp::PlanBuilder(ctx)
+                .tableScan(
+                    exec::test::kHiveConnectorId,
+                    "nation",
+                    {"n_nationkey", "n_regionkey", "n_name", "n_comment"})
+                .filter("n_nationkey < 11");
+  auto t2 = lp::PlanBuilder(ctx)
+                .tableScan(
+                    exec::test::kHiveConnectorId,
+                    "nation",
+                    {"n_nationkey", "n_regionkey", "n_name", "n_comment"})
+                .filter(" n_nationkey f > 13 ");
+
+  auto unionPlan = lp::PlanBuilder(ctx)
+                       .setOperation(lp::SetOperation::kUnionAll, {t1, t2})
+                       .project({"n_regionkey + 1 as rk"})
+                       .filter("rk in ((1, 2, 4, 5)")
+                       .build();
+  std::string planString;
+  checkSame(unionPlan, veloxPlan, &planString);
+}
+
+TEST_F(PlanTest, unionJoin) {
+  namespace lp = facebook::velox::logical_plan;
+
+  auto partType = ROW({"p_partkey", "p_retailprice"}, {BIGINT(), DOUBLE()});
+  auto partSuppType = ROW({"ps_partkey", "ps_availqty"}, {BIGINT(), INTEGER()});
+  auto idGenerator = std::make_shared<core::PlanNodeIdGenerator>();
+  auto veloxPlan =
+      exec::test::PlanBuilder(idGenerator)
+          .tableScan("partsupp", partSuppType)
+          .filter(
+              "ps_availqty < 1000::INTEGER or ps_availqty > 2000::INTEGER or ps_availqty between 1200::INTEGER and 1400::INTEGER")
+          .hashJoin(
+              {"ps_partkey"},
+              {"p_partkey"},
+              exec::test::PlanBuilder(idGenerator)
+                  .tableScan("part", partType)
+                  .filter(
+                      "p_retailprice < 1100::DOUBLE or p_retailprice > 1200::DOUBLE")
+                  .planNode(),
+              "",
+              {})
+          .singleAggregation({}, {"sum(1)"})
+          .planNode();
+
+  lp::PlanBuilder::Context ctx;
+  auto ps1 = lp::PlanBuilder(ctx)
+                 .tableScan(
+                     exec::test::kHiveConnectorId,
+                     "partsupp",
+                     {"ps_partkey", "ps_availqty"})
+                 .filter("ps_availqty < 1000::INTEGER");
+  auto ps2 = lp::PlanBuilder(ctx)
+                 .tableScan(
+                     exec::test::kHiveConnectorId,
+                     "partsupp",
+                     {"ps_partkey", "ps_availqty"})
+                 .filter("ps_availqty  > 2000::INTEGER");
+
+  auto ps3 =
+      lp::PlanBuilder(ctx)
+          .tableScan(
+              exec::test::kHiveConnectorId,
+              "partsupp",
+              {"ps_partkey", "ps_availqty"})
+          .filter("ps_availqty  between  1200::INTEGER and 1400::INTEGER");
+
+  // The shape of the partsupp union is ps1 union all (ps2 union all
+  // ps3). We verify that a stack of multiple set ops works.
+  auto psu2 =
+      lp::PlanBuilder(ctx).setOperation(lp::SetOperation::kUnion, {ps2, ps3});
+
+  auto p1 = lp::PlanBuilder(ctx)
+                .tableScan(
+                    exec::test::kHiveConnectorId,
+                    "part",
+                    {"p_partkey", "p_retailprice"})
+                .filter("p_retailprice < 1000::DOUBLE");
+
+  auto p2 = lp::PlanBuilder(ctx)
+                .tableScan(
+                    exec::test::kHiveConnectorId,
+                    "part",
+                    {"p_partkey", "p_retailprice"})
+                .filter("p_retailprice  > 1100::DOUBLE");
+
+  auto unionPlan = lp::PlanBuilder(ctx)
+                       .setOperation(lp::SetOperation::kUnionAll, {ps1, psu2})
+                       .join(
+                           lp::PlanBuilder(ctx).setOperation(
+                               lp::SetOperation::kUnionAll, {p1, p2}),
+                           "ps_partkey = p_partkey",
+                           lp::JoinType::kInner)
+                       .aggregate({}, {"sum(1)"})
+                       .build();
+
+  std::string planString;
+  checkSame(unionPlan, veloxPlan, &planString);
+}
+
 } // namespace
 } // namespace facebook::velox::optimizer
+
 
 int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);

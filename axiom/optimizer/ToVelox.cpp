@@ -17,6 +17,7 @@
 #include "axiom/optimizer/Plan.h"
 #include "velox/core/PlanNode.h"
 #include "velox/exec/HashPartitionFunction.h"
+#include "velox/exec/RoundRobinPartitionFunction.h"
 #include "velox/expression/ExprToSubfieldFilter.h"
 #include "velox/expression/ScopedVarSetter.h"
 
@@ -924,7 +925,8 @@ core::PlanNodePtr Optimization::makeAggregation(
 velox::core::PlanNodePtr Optimization::makeRepartition(
     Repartition& repartition,
     velox::runner::ExecutableFragment& fragment,
-    std::vector<velox::runner::ExecutableFragment>& stages) {
+    std::vector<velox::runner::ExecutableFragment>& stages,
+    std::shared_ptr<core::ExchangeNode>& exchange) {
   ExecutableFragment source;
   source.width = options_.numWorkers;
   source.taskPrefix = fmt::format("stage{}", ++stageCounter_);
@@ -956,12 +958,46 @@ velox::core::PlanNodePtr Optimization::makeRepartition(
       VectorSerde::Kind::kPresto,
       partitioningInput);
 
-  auto exchange = std::make_shared<core::ExchangeNode>(
-      idGenerator_.next(),
-      sourcePlan->outputType(),
-      VectorSerde::Kind::kPresto);
+  if (exchange == nullptr) {
+    exchange = std::make_shared<core::ExchangeNode>(
+        idGenerator_.next(),
+        sourcePlan->outputType(),
+        VectorSerde::Kind::kPresto);
+  }
   fragment.inputStages.push_back(InputStage{exchange->id(), source.taskPrefix});
   stages.push_back(std::move(source));
+  return exchange;
+}
+
+velox::core::PlanNodePtr Optimization::makeUnionAll(
+    UnionAll& unionAll,
+    velox::runner::ExecutableFragment& fragment,
+    std::vector<velox::runner::ExecutableFragment>& stages) {
+  // If no inputs have a repartition, this is a local exchange. If
+  // some have repartition and more than one have no reparrtition,
+  // this is a local exchange with a remote exchaneg as input. All the
+  // inputs with repartition go to one remote exchange.
+  std::vector<core::PlanNodePtr> localSources;
+  std::shared_ptr<core::ExchangeNode> exchange;
+  for (auto i = 0; i < unionAll.inputs.size(); ++i) {
+    const auto& input = unionAll.inputs[i];
+    if (input->relType() == RelType::kRepartition) {
+      makeRepartition(*input->as<Repartition>(), fragment, stages, exchange);
+    } else {
+      localSources.push_back(makeFragment(input, fragment, stages));
+    }
+  }
+  if (!localSources.empty()) {
+    if (exchange) {
+      localSources.push_back(exchange);
+    }
+    return std::make_shared<core::LocalPartitionNode>(
+        nextId(),
+        core::LocalPartitionNode::Type::kRepartition,
+        false,
+        std::make_shared<exec::RoundRobinPartitionFunctionSpec>(),
+        localSources);
+  }
   return exchange;
 }
 
@@ -991,7 +1027,8 @@ core::PlanNodePtr Optimization::makeFragment(
       return makeOrderBy(*op->as<OrderBy>(), fragment, stages);
     }
     case RelType::kRepartition: {
-      return makeRepartition(*op->as<Repartition>(), fragment, stages);
+      std::shared_ptr<core::ExchangeNode> ignore;
+      return makeRepartition(*op->as<Repartition>(), fragment, stages, ignore);
     }
     case RelType::kTableScan: {
       return makeScan(*op->as<TableScan>(), fragment, stages);
@@ -1001,6 +1038,8 @@ core::PlanNodePtr Optimization::makeFragment(
     }
     case RelType::kHashBuild:
       return makeFragment(op->input(), fragment, stages);
+    case RelType::kUnionAll:
+      return makeUnionAll(*op->as<UnionAll>(), fragment, stages);
     default:
       VELOX_FAIL(
           "Unsupported RelationOp {}", static_cast<int32_t>(op->relType()));
