@@ -1033,10 +1033,17 @@ class Optimization {
 
   void translateJoin(const logical_plan::JoinNode& join);
 
-  DerivedTableP translateSetOperation(
+  DerivedTableP translateSetJoin(
       const logical_plan::SetNode& set,
-      ColumnVector*& columns);
+      DerivedTableP setDt);
 
+  DerivedTableP translateUnion(
+      const logical_plan::SetNode& set,
+      DerivedTableP setDt,
+      bool isTopLevel,
+			       bool& isLeftLeaf);
+
+  
   // Makes an extra column for existence flag.
   ColumnCP makeMark(const velox::core::AbstractJoinNode& join);
 

@@ -544,7 +544,8 @@ TEST_F(PlanTest, unions) {
           {BIGINT(), BIGINT(), VARCHAR(), VARCHAR()});
   auto veloxPlan = exec::test::PlanBuilder(pool_.get())
                        .tableScan("nation", nationType)
-                       .project({"n_regionkey + 1 as rk"})
+    .filter("n_nationkey < 11 or n_nationkey > 13")
+    .project({"n_regionkey + 1 as rk"})
                        .filter("rk in (1, 2, 4, 5)")
                        .planNode();
 
@@ -568,7 +569,8 @@ TEST_F(PlanTest, unions) {
                        .filter("cast(rk as integer) in (1, 2, 4, 5)")
                        .build();
   std::string planString;
-  checkSame(unionPlan, veloxPlan, &planString);
+  std::string veloxString;
+  checkSame(unionPlan, veloxPlan, &planString, &veloxString);
 }
 
 TEST_F(PlanTest, unionJoin) {

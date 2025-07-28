@@ -1122,77 +1122,114 @@ bool hasNondeterministic(const lp::ExprPtr& expr) {
 }
 } // namespace
 
-// A stack of set operations, e.g. (s1 union s2) union all (s3
-// except s4), has output names from the leftmost leaf. Each set
-// operation is its own dt with its own cname. The columns are
-// however the same in all, with the cname of the left child, in
-// this case s1.
-
-DerivedTableP Optimization::translateSetOperation(
+  DerivedTableP Optimization::translateSetJoin(    const lp::SetNode& set,
+    DerivedTableP setDt) {
+    auto previous = currentSelect_;
+    currentSelect_ = setDt;
+    for (auto& in : set.inputs()) {
+      wrapInDt(*in);
+    }
+    auto left = setDt->tables[0]->as<DerivedTable>();
+    
+    bool exists = set.operation() == lp::SetOperation::kIntersect;
+    bool anti = set.operation() == lp::SetOperation::kExcept;
+    for (auto i = 1; i < setDt->tables.size(); ++i) {
+      auto right = setDt->tables[i]->as<DerivedTable>();
+      setDt->joins.push_back(QGC_MAKE_IN_ARENA(JoinEdge)(left, right, {}, false, false, exists, anti));
+      for (auto i = 0; i < left->columns.size(); ++i) {
+	setDt->joins.back()->addEquality(left->columns[i], right->columns[i]);
+      }
+    }
+    auto& type = set.outputType();
+    for (auto i = 0; i < type->size(); ++i) {
+      setDt->exprs.push_back(left->exprs[i]);
+      setDt->columns.push_back(make<Column>(toName(type->nameOf(i)), setDt, setDt->exprs.back()->value()));
+      renames_[type->nameOf(i)] = setDt->columns.back();
+    }
+    auto agg = make<Aggregation>(nullptr, setDt->exprs);
+    setDt->aggregation = make<AggregationPlan>(agg);
+    setDt->makeInitialPlan();
+    currentSelect_ = previous;
+    return setDt;
+  }
+  
+DerivedTableP Optimization::translateUnion(
     const lp::SetNode& set,
-    ColumnVector*& columns) {
+    DerivedTableP setDt,
+    bool isTopLevel,
+    bool& isLeftLeaf) {
   auto* previous = currentSelect_;
   auto initialRenames = renames_;
-  std::unordered_map<std::string, ExprCP> firstRenames;
-  bool isFirst = true;
   std::vector<DerivedTableP, QGAllocator<DerivedTable*>> children;
+  bool isFirst = true;
   for (auto& in : set.inputs()) {
     if (!isFirst) {
       renames_ = initialRenames;
+    } else {
+      isFirst = false;
     }
     DerivedTableP previousDt = currentSelect_;
     auto* newDt = make<DerivedTable>();
-    auto cname = toName(fmt::format("dt{}", ++nameCounter_));
-    newDt->cname = cname;
+    
+    newDt->cname = toName(fmt::format("dt{}", ++nameCounter_));
     currentSelect_ = newDt;
-    if (in->kind() == lp::NodeKind::kSet) {
-      auto inner = translateSetOperation(
-          *reinterpret_cast<const lp::SetNode*>(&in), columns);
-      children.push_back(inner);
-    } else {
-      makeQueryGraph(*in, kAllAllowedInDt);
+    
+    auto isUnionLike = [](const lp::LogicalPlanNode& node) {
+      if (node.kind() == lp::NodeKind::kSet) {
+	auto* set = reinterpret_cast<const lp::SetNode*>(&node);
+	return set->operation() == lp::SetOperation::kUnion || set->operation() == lp::SetOperation::kUnionAll;
+      }
+      return false;
+    };
 
+      if (isUnionLike(*in)) {
+	auto inner = translateUnion(
+				    *reinterpret_cast<const lp::SetNode*>(in.get()), setDt, false, isLeftLeaf);
+	      children.push_back(inner);
+      } else {
+      makeQueryGraph(*in, kAllAllowedInDt);
       currentSelect_ = previousDt;
 
-      if (columns == nullptr) {
-        // This is the left non set op child of a set op tree.
+      if (isLeftLeaf) {
+        // This is the left  leaf of a union tree.
         velox::RowTypePtr type = in->outputType();
         for (auto i : usedChannels(in.get())) {
           ExprCP inner = translateColumn(type->nameOf(i));
           newDt->exprs.push_back(inner);
           auto* outer =
-              make<Column>(toName(type->nameOf(i)), newDt, inner->value());
+              make<Column>(toName(type->nameOf(i)), setDt, inner->value());
+	  // The top dt has the same columns as all the unioned dts.
+	  setDt->columns.push_back(outer);
           newDt->columns.push_back(outer);
-          renames_[type->nameOf(i)] = outer;
         }
-        columns = &newDt->columns;
+	isLeftLeaf = false;
       } else {
         velox::RowTypePtr type = in->outputType();
         for (auto i : usedChannels(in.get())) {
           ExprCP inner = translateColumn(type->nameOf(i));
           newDt->exprs.push_back(inner);
         }
-        // Same outward facing columns as the left child.
-        newDt->columns = *columns;
+        // Same outward facing columns as the top dt of union.
+        newDt->columns = setDt->columns;
       }
 
       newDt->makeInitialPlan();
 
       children.push_back(newDt);
     }
-    if (isFirst) {
-      firstRenames = renames_;
-      isFirst = false;
-    }
   }
-  renames_ = firstRenames;
-  auto* setDt = make<DerivedTable>();
-  auto cname = toName(fmt::format("dt{}", ++nameCounter_));
-  setDt->cname = cname;
-  setDt->columns = *columns;
+
+  if (isTopLevel) {
+    renames_ =initialRenames;
+    for (auto i = 0; i < setDt->columns.size(); ++i) {
+      renames_[setDt->columns[i]->name()] = setDt->columns[i];
+    }
+  } else {
+    setDt = make<DerivedTable>();
+    setDt->cname = toName(fmt::format("dt{}", ++nameCounter_));
+  }
   setDt->children = std::move(children);
   setDt->setOp = set.operation();
-  velox::RowTypePtr type = set.inputAt(0)->outputType();
   return setDt;
 }
 
@@ -1258,9 +1295,17 @@ PlanObjectP Optimization::makeQueryGraph(
     currentSelect_->limit = limit->count();
     currentSelect_->offset = limit->offset();
   } else if (kind == lp::NodeKind::kSet) {
-    ColumnVector* columns = nullptr;
-    auto* setDt = translateSetOperation(
-        *reinterpret_cast<const lp::SetNode*>(&node), columns);
+    auto* set = reinterpret_cast<const lp::SetNode*>(&node);
+
+      auto* setDt = make<DerivedTable>();
+      setDt->cname =  toName(fmt::format("dt{}", ++nameCounter_));
+          if (set->operation() == lp::SetOperation::kUnion || set->operation() == lp::SetOperation::kUnionAll) {
+
+	    bool isLeftLeaf = true;
+	    translateUnion(*set, setDt, true, isLeftLeaf);
+	  } else {
+	    translateSetJoin(*set, setDt);
+	  }
     currentSelect_->tables.push_back(setDt);
     currentSelect_->tableSet.add(setDt);
     return currentSelect_;
