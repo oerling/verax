@@ -413,7 +413,17 @@ class TempProjections {
           toTypePtr(expr->value().type), names_.back()));
       return fieldRefs_.back();
     }
-    return fieldRefs_[it->second];
+    auto fieldRef = fieldRefs_[it->second];
+    if (optName && *optName != fieldRef->name()) {
+      auto aliasFieldRef = std::make_shared<core::FieldAccessTypedExpr>(
+									toTypePtr(expr->value().type), *optName);
+      names_.push_back(*optName);
+      exprs_.push_back(fieldRef);
+      fieldRefs_.push_back(aliasFieldRef);
+      exprChannel_[expr] = nextChannel_++;
+      return aliasFieldRef;
+    }
+    return fieldRef;
   }
 
   template <typename Result = core::FieldAccessTypedExprPtr>
@@ -983,7 +993,7 @@ velox::core::PlanNodePtr Optimization::makeUnionAll(
     velox::runner::ExecutableFragment& fragment,
     std::vector<velox::runner::ExecutableFragment>& stages) {
   // If no inputs have a repartition, this is a local exchange. If
-  // some have repartition and more than one have no reparrtition,
+  // some have repartition and more than one have no repartition,
   // this is a local exchange with a remote exchaneg as input. All the
   // inputs with repartition go to one remote exchange.
   std::vector<core::PlanNodePtr> localSources;
@@ -1056,6 +1066,13 @@ core::PlanNodePtr Optimization::makeFragment(
   return nullptr;
 }
 
+
+  /// Debugging helper functions. Must be in a namespace to be
+  /// callable from debugger.
+std::string veloxToString(const core::PlanNode* plan) {
+  return plan->toString(true, true);
+}
+  
 std::string planString(MultiFragmentPlan* plan) {
   return plan->toString(true);
 }

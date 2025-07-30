@@ -1122,37 +1122,91 @@ bool hasNondeterministic(const lp::ExprPtr& expr) {
 }
 } // namespace
 
-  DerivedTableP Optimization::translateSetJoin(    const lp::SetNode& set,
+DerivedTableP Optimization::translateSetJoin(
+    const lp::SetNode& set,
     DerivedTableP setDt) {
-    auto previous = currentSelect_;
-    currentSelect_ = setDt;
-    for (auto& in : set.inputs()) {
-      wrapInDt(*in);
-    }
-    auto left = setDt->tables[0]->as<DerivedTable>();
-    
-    bool exists = set.operation() == lp::SetOperation::kIntersect;
-    bool anti = set.operation() == lp::SetOperation::kExcept;
-    for (auto i = 1; i < setDt->tables.size(); ++i) {
-      auto right = setDt->tables[i]->as<DerivedTable>();
-      setDt->joins.push_back(QGC_MAKE_IN_ARENA(JoinEdge)(left, right, {}, false, false, exists, anti));
-      for (auto i = 0; i < left->columns.size(); ++i) {
-	setDt->joins.back()->addEquality(left->columns[i], right->columns[i]);
-      }
-    }
-    auto& type = set.outputType();
-    for (auto i = 0; i < type->size(); ++i) {
-      setDt->exprs.push_back(left->exprs[i]);
-      setDt->columns.push_back(make<Column>(toName(type->nameOf(i)), setDt, setDt->exprs.back()->value()));
-      renames_[type->nameOf(i)] = setDt->columns.back();
-    }
-    auto agg = make<Aggregation>(nullptr, setDt->exprs);
-    setDt->aggregation = make<AggregationPlan>(agg);
-    setDt->makeInitialPlan();
-    currentSelect_ = previous;
-    return setDt;
+  auto previousDt = currentSelect_;
+  currentSelect_ = setDt;
+  for (auto& in : set.inputs()) {
+    wrapInDt(*in);
   }
-  
+  auto left = setDt->tables[0]->as<DerivedTable>();
+
+  bool exists = set.operation() == lp::SetOperation::kIntersect;
+  bool anti = set.operation() == lp::SetOperation::kExcept;
+  for (auto i = 1; i < setDt->tables.size(); ++i) {
+    auto right = setDt->tables[i]->as<DerivedTable>();
+    setDt->joins.push_back(QGC_MAKE_IN_ARENA(JoinEdge)(
+        left, right, {}, false, false, exists, anti));
+    for (auto i = 0; i < left->columns.size(); ++i) {
+      setDt->joins.back()->addEquality(left->columns[i], right->columns[i]);
+    }
+  }
+  auto& type = set.outputType();
+  ExprVector exprs;
+  ColumnVector columns;
+  for (auto i = 0; i < type->size(); ++i) {
+    exprs.push_back(left->columns[i]);
+    columns.push_back(make<Column>(
+        toName(type->nameOf(i)), setDt, exprs.back()->value()));
+    renames_[type->nameOf(i)] = columns.back();
+  }
+
+  auto agg = make<Aggregation>(nullptr, exprs);
+  agg->mutableColumns() = columns;
+  agg->intermediateColumns = columns;
+  setDt->aggregation = make<AggregationPlan>(agg);
+  for (auto& c : columns) {
+    setDt->exprs.push_back(c);
+  }
+  setDt->columns = columns;
+  setDt->makeInitialPlan();
+  currentSelect_ = previousDt;
+  return setDt;
+}
+
+void Optimization::makeUnionDistributionAndStats(
+    DerivedTableP setDt,
+    DerivedTableP innerDt) {
+  if (setDt->distribution == nullptr) {
+    DistributionType empty;
+    setDt->distribution = QGC_MAKE_IN_ARENA(Distribution)(empty, 0, {});
+  }
+  if (innerDt == nullptr) {
+    innerDt = setDt;
+  }
+  if (innerDt->children.empty()) {
+    VELOX_CHECK_EQ(
+		   innerDt->columns.size(),
+		   setDt->columns.size(),
+		   "Union inputs must have same arity also after pruning");
+
+    MemoKey key;
+    key.firstTable = innerDt;
+    key.tables.add(innerDt);
+    for (auto& column : innerDt->columns) {
+      key.columns.add(column);
+    }
+    auto it = memo_.find(key);
+    VELOX_CHECK(it != memo_.end(), "Expecting to find a plan for union branch");
+    bool ignore;
+    Distribution emptyDistribution;
+    auto plan = it->second.best(emptyDistribution, ignore)->op;
+    setDt->distribution->cardinality += plan->distribution().cardinality;
+    for (auto i = 0; i < setDt->columns.size(); ++i) {
+      // The Column is created in setDt before all branches are planned so the
+      // value is mutated here.
+      auto mutableValue =
+          const_cast<float*>(&setDt->columns[i]->value().cardinality);
+      *mutableValue += plan->columns()[i]->value().cardinality;
+    }
+  } else {
+    for (auto& child : innerDt->children) {
+      makeUnionDistributionAndStats(setDt, child);
+    }
+  }
+}
+
 DerivedTableP Optimization::translateUnion(
     const lp::SetNode& set,
     DerivedTableP setDt,
@@ -1162,33 +1216,36 @@ DerivedTableP Optimization::translateUnion(
   auto initialRenames = renames_;
   std::vector<DerivedTableP, QGAllocator<DerivedTable*>> children;
   bool isFirst = true;
+  DerivedTableP previousDt = currentSelect_;
   for (auto& in : set.inputs()) {
     if (!isFirst) {
       renames_ = initialRenames;
     } else {
       isFirst = false;
     }
-    DerivedTableP previousDt = currentSelect_;
     auto* newDt = make<DerivedTable>();
-    
+
     newDt->cname = toName(fmt::format("dt{}", ++nameCounter_));
     currentSelect_ = newDt;
-    
+
     auto isUnionLike = [](const lp::LogicalPlanNode& node) {
       if (node.kind() == lp::NodeKind::kSet) {
-	auto* set = reinterpret_cast<const lp::SetNode*>(&node);
-	return set->operation() == lp::SetOperation::kUnion || set->operation() == lp::SetOperation::kUnionAll;
+        auto* set = reinterpret_cast<const lp::SetNode*>(&node);
+        return set->operation() == lp::SetOperation::kUnion ||
+            set->operation() == lp::SetOperation::kUnionAll;
       }
       return false;
     };
 
-      if (isUnionLike(*in)) {
-	auto inner = translateUnion(
-				    *reinterpret_cast<const lp::SetNode*>(in.get()), setDt, false, isLeftLeaf);
-	      children.push_back(inner);
-      } else {
+    if (isUnionLike(*in)) {
+      auto inner = translateUnion(
+          *reinterpret_cast<const lp::SetNode*>(in.get()),
+          setDt,
+          false,
+          isLeftLeaf);
+      children.push_back(inner);
+    } else {
       makeQueryGraph(*in, kAllAllowedInDt);
-      currentSelect_ = previousDt;
 
       if (isLeftLeaf) {
         // This is the left  leaf of a union tree.
@@ -1198,11 +1255,11 @@ DerivedTableP Optimization::translateUnion(
           newDt->exprs.push_back(inner);
           auto* outer =
               make<Column>(toName(type->nameOf(i)), setDt, inner->value());
-	  // The top dt has the same columns as all the unioned dts.
-	  setDt->columns.push_back(outer);
+          // The top dt has the same columns as all the unioned dts.
+          setDt->columns.push_back(outer);
           newDt->columns.push_back(outer);
         }
-	isLeftLeaf = false;
+        isLeftLeaf = false;
       } else {
         velox::RowTypePtr type = in->outputType();
         for (auto i : usedChannels(in.get())) {
@@ -1218,18 +1275,21 @@ DerivedTableP Optimization::translateUnion(
       children.push_back(newDt);
     }
   }
-
+  currentSelect_ = previousDt;
   if (isTopLevel) {
-    renames_ =initialRenames;
+    setDt->children = std::move(children);
+    setDt->setOp = set.operation();
+    makeUnionDistributionAndStats(setDt);
+    renames_ = initialRenames;
     for (auto i = 0; i < setDt->columns.size(); ++i) {
       renames_[setDt->columns[i]->name()] = setDt->columns[i];
     }
   } else {
     setDt = make<DerivedTable>();
     setDt->cname = toName(fmt::format("dt{}", ++nameCounter_));
+    setDt->children = std::move(children);
+    setDt->setOp = set.operation();
   }
-  setDt->children = std::move(children);
-  setDt->setOp = set.operation();
   return setDt;
 }
 
@@ -1297,15 +1357,15 @@ PlanObjectP Optimization::makeQueryGraph(
   } else if (kind == lp::NodeKind::kSet) {
     auto* set = reinterpret_cast<const lp::SetNode*>(&node);
 
-      auto* setDt = make<DerivedTable>();
-      setDt->cname =  toName(fmt::format("dt{}", ++nameCounter_));
-          if (set->operation() == lp::SetOperation::kUnion || set->operation() == lp::SetOperation::kUnionAll) {
-
-	    bool isLeftLeaf = true;
-	    translateUnion(*set, setDt, true, isLeftLeaf);
-	  } else {
-	    translateSetJoin(*set, setDt);
-	  }
+    auto* setDt = make<DerivedTable>();
+    setDt->cname = toName(fmt::format("dt{}", ++nameCounter_));
+    if (set->operation() == lp::SetOperation::kUnion ||
+        set->operation() == lp::SetOperation::kUnionAll) {
+      bool isLeftLeaf = true;
+      translateUnion(*set, setDt, true, isLeftLeaf);
+    } else {
+      translateSetJoin(*set, setDt);
+    }
     currentSelect_->tables.push_back(setDt);
     currentSelect_->tableSet.add(setDt);
     return currentSelect_;

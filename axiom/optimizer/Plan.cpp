@@ -1697,7 +1697,10 @@ RelationOpPtr makeDistinct(RelationOpPtr input) {
   for (auto& c : input->columns()) {
     exprs.push_back(c);
   }
-  return make<Aggregation>(input, exprs);
+  auto agg = make<Aggregation>(input, exprs);
+  agg->mutableColumns() = input->columns();
+  agg->intermediateColumns = input->columns();
+  return agg;
 }
 
 Distribution somePartition(const std::vector<RelationOpPtr>& inputs) {

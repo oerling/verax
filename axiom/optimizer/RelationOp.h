@@ -293,7 +293,12 @@ class Project : public RelationOp {
             input->distribution().rename(exprs, columns),
             columns),
         exprs_(std::move(exprs)),
-        columns_(std::move(columns)) {}
+        columns_(std::move(columns)) {
+    VELOX_CHECK_EQ(
+        exprs_.size(),
+        columns_.size(),
+        "Projection names and exprs must match");
+  }
 
   const ExprVector& exprs() const {
     return exprs_;
@@ -442,7 +447,7 @@ struct OrderBy : public RelationOp {
 /// Represents a union all.
 struct UnionAll : public RelationOp {
   UnionAll(std::vector<RelationOpPtr> inputs)
-      : RelationOp(RelType::kUnionAll, nullptr, inputs[0]->distribution()),
+    : RelationOp(RelType::kUnionAll, nullptr, inputs[0]->distribution(), inputs[0]->columns()),
         inputs(std::move(inputs)) {}
 
   void setCost(const PlanState& input) override;

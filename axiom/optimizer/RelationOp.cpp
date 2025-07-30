@@ -35,6 +35,21 @@ const Value& RelationOp::value(ExprCP expr) const {
   return expr->value();
 }
 
+  namespace {
+    template <typename T>
+    std::string itemsToString(const T* items, int32_t n) {
+      std::stringstream out;
+      for (auto i = 0; i < n; ++i) {
+	out << items[i]->toString();
+	if (i < n - 1) {
+	  out << ", ";
+	}
+      }
+      return out.str();
+    }
+  }
+
+  
 std::string RelationOp::toString(bool recursive, bool detail) const {
   if (input_ && recursive) {
     return input_->toString(true, detail);
@@ -250,6 +265,9 @@ std::string Join::toString(bool recursive, bool detail) const {
   out << "*" << (method == JoinMethod::kHash ? "H" : "M") << " "
       << joinTypeLabel(joinType);
   printCost(detail, out);
+  if (detail) {
+    out << "columns: " << itemsToString(columns().data(), columns().size()) << std::endl;
+  }
   if (detail && buildCost.unitCost > 0) {
     out << "{ build=" << buildCost.toString(detail, true) << "}";
   }
@@ -329,6 +347,14 @@ std::string Aggregation::toString(bool recursive, bool detail) const {
   }
   out << velox::core::AggregationNode::toName(step) << " agg";
   printCost(detail, out);
+  if (detail) {
+    if (grouping.empty()) {
+      out << "global";
+    } else {
+      out << itemsToString(grouping.data(), grouping.size());
+    }
+    out << aggregates.size() << " aggregates" << std::endl;
+  }
   return out.str();
 }
 
