@@ -34,6 +34,8 @@ enum class NodeKind {
   kUnnest = 9,
 };
 
+VELOX_DECLARE_ENUM_NAME(NodeKind)
+
 class LogicalPlanNode;
 using LogicalPlanNodePtr = std::shared_ptr<const LogicalPlanNode>;
 
@@ -63,6 +65,11 @@ class LogicalPlanNode {
 
   NodeKind kind() const {
     return kind_;
+  }
+
+  template <typename T>
+  const T* asUnchecked() const {
+    return dynamic_cast<const T*>(this);
   }
 
   const std::string& id() const {
