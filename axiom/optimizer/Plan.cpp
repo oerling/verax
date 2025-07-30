@@ -1703,7 +1703,7 @@ RelationOpPtr makeDistinct(RelationOpPtr input) {
   return agg;
 }
 
-Distribution somePartition(const std::vector<RelationOpPtr>& inputs) {
+Distribution somePartition(const RelationOpPtrVector& inputs) {
   Distribution result;
   ExprVector columns;
   float card = 1;
@@ -1775,7 +1775,7 @@ PlanPtr Optimization::makePlan(
     auto setDt = const_cast<DerivedTable*>(key.firstTable->as<DerivedTable>());
     bool isDistinct =
         setDt->setOp.value() == logical_plan::SetOperation::kUnion;
-    std::vector<RelationOpPtr> inputs;
+    RelationOpPtrVector inputs;
     std::vector<PlanPtr> inputPlans;
     std::vector<PlanState> inputStates;
     std::vector<bool> inputNeedsShuffle;

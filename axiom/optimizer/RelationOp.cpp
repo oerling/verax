@@ -160,17 +160,17 @@ const char* joinTypeLabel(velox::core::JoinType type) {
   }
 }
 
-std::string sanitizeHistoryKey(std::string in) {
+QGstring sanitizeHistoryKey(std::string in) {
   for (auto i = 0; i < in.size(); ++i) {
     unsigned char c = in[i];
     if (c < 32 || c > 127 || c == '{' || c == '}' || c == '"') {
       in[i] = '?';
     }
   }
-  return in;
+  return QGstring(in);
 }
 
-const std::string& TableScan::historyKey() const {
+const QGstring& TableScan::historyKey() const {
   if (!key_.empty()) {
     return key_;
   }
@@ -236,7 +236,7 @@ std::pair<std::string, std::string> joinKeysString(
   return std::make_pair(leftStream.str(), rightStream.str());
 }
 
-const std::string& Join::historyKey() const {
+const QGstring& Join::historyKey() const {
   if (!key_.empty()) {
     return key_;
   }
@@ -314,7 +314,7 @@ Aggregation::Aggregation(
   }
 }
 
-const std::string& Aggregation::historyKey() const {
+const QGstring& Aggregation::historyKey() const {
   using velox::core::AggregationNode;
   if (step == AggregationNode::Step::kPartial ||
       step == AggregationNode::Step::kIntermediate) {
@@ -368,7 +368,7 @@ std::string HashBuild::toString(bool recursive, bool detail) const {
   return out.str();
 }
 
-const std::string& Filter::historyKey() const {
+const QGstring& Filter::historyKey() const {
   if (!key_.empty()) {
     return key_;
   }
