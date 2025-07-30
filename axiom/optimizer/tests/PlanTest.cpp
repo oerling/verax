@@ -596,7 +596,7 @@ TEST_F(PlanTest, unionJoin) {
               {"p_partkey"})
           .project({"p_partkey"})
           .localPartition({})
-          //    .singleAggregation({}, {"sum(1)"})
+    .singleAggregation({}, {"sum(1)"})
           .planNode();
 
   lp::PlanBuilder::Context ctx;
@@ -651,12 +651,12 @@ TEST_F(PlanTest, unionJoin) {
                                lp::SetOperation::kUnionAll, {p1, p2}),
                            "ps_partkey = p_partkey",
                            lp::JoinType::kInner)
-                       .project({"p_partkey"})
-                       //.aggregate({}, {"sum(1)"})
+    .aggregate({}, {"sum(1)"})
                        .build();
 
-  std::string planString;
-  checkSame(unionPlan, veloxPlan, &planString);
+  gflags::FlagSaver saver;
+  FLAGS_num_workers = 1;
+  checkSame(unionPlan, veloxPlan);
 }
 
 TEST_F(PlanTest, intersect) {
