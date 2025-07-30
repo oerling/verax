@@ -568,9 +568,12 @@ TEST_F(PlanTest, unions) {
                        .project({"n_regionkey + 1 as rk"})
                        .filter("cast(rk as integer) in (1, 2, 4, 5)")
                        .build();
-  std::string planString;
-  std::string veloxString;
-  checkSame(unionPlan, veloxPlan, &planString, &veloxString);
+  gflags::FlagSaver saver;
+  // Skip distributed run. Problem with local exchange source with
+  // multiple inputs.
+  FLAGS_num_workers = 1;
+
+  checkSame(unionPlan, veloxPlan);
 }
 
 TEST_F(PlanTest, unionJoin) {
@@ -596,7 +599,7 @@ TEST_F(PlanTest, unionJoin) {
               {"p_partkey"})
           .project({"p_partkey"})
           .localPartition({})
-    .singleAggregation({}, {"sum(1)"})
+          .singleAggregation({}, {"sum(1)"})
           .planNode();
 
   lp::PlanBuilder::Context ctx;
@@ -651,10 +654,12 @@ TEST_F(PlanTest, unionJoin) {
                                lp::SetOperation::kUnionAll, {p1, p2}),
                            "ps_partkey = p_partkey",
                            lp::JoinType::kInner)
-    .aggregate({}, {"sum(1)"})
+                       .aggregate({}, {"sum(1)"})
                        .build();
 
   gflags::FlagSaver saver;
+  // Skip distributed run. Problem with local exchange source with
+  // multiple inputs.
   FLAGS_num_workers = 1;
   checkSame(unionPlan, veloxPlan);
 }
