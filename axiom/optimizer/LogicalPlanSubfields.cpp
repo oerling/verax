@@ -108,7 +108,12 @@ void Optimization::markFieldAccessed(
         std::vector<LogicalContextSource> inputSources = {
             LogicalContextSource{.planNode = in.get()}};
         markFieldAccessed(
-            inputSources[0], ordinal, steps, isControl, inputContext, inputSources);
+            inputSources[0],
+            ordinal,
+            steps,
+            isControl,
+            inputContext,
+            inputSources);
       }
     }
     auto& sourceInputs = source.planNode->inputs();

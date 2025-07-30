@@ -23,8 +23,8 @@
 namespace facebook::velox::optimizer {
 
 using namespace facebook::velox;
-  
-  namespace {
+
+namespace {
 const std::string* columnName(const core::TypedExprPtr& expr) {
   if (auto column =
           dynamic_cast<const core::FieldAccessTypedExpr*>(expr.get())) {

@@ -22,7 +22,7 @@ add_executable(
   LogicalSubfieldTest.cpp
   FeatureGen.cpp
   Genies.cpp
-    SchemaResolverTest.cpp)
+  SchemaResolverTest.cpp)
 
 add_test(velox_plan_test velox_plan_test)
 
@@ -40,7 +40,6 @@ target_link_libraries(
   velox_dwio_parquet_reader
   velox_dwio_native_parquet_reader
   GTest::gmock
-
   gtest
   gtest_main)
 
@@ -61,4 +60,3 @@ target_link_libraries(
   velox_parse_parser
   velox_parse_expression
   velox_parse_utils)
-

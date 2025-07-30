@@ -355,11 +355,10 @@ core::TypedExprPtr Optimization::toTypedExpr(ExprCP expr) {
       }
       // Complex constants must be vectors for constant folding to work.
       if (literal->value().type->kind() >= TypeKind::ARRAY) {
-        return std::make_shared<core::ConstantTypedExpr>(
-            variantToVector(
-                toTypePtr(literal->value().type),
-                literal->literal(),
-                evaluator_.pool()));
+        return std::make_shared<core::ConstantTypedExpr>(variantToVector(
+            toTypePtr(literal->value().type),
+            literal->literal(),
+            evaluator_.pool()));
       }
       return std::make_shared<core::ConstantTypedExpr>(
           toTypePtr(literal->value().type), literal->literal());
@@ -416,7 +415,7 @@ class TempProjections {
     auto fieldRef = fieldRefs_[it->second];
     if (optName && *optName != fieldRef->name()) {
       auto aliasFieldRef = std::make_shared<core::FieldAccessTypedExpr>(
-									toTypePtr(expr->value().type), *optName);
+          toTypePtr(expr->value().type), *optName);
       names_.push_back(*optName);
       exprs_.push_back(fieldRef);
       fieldRefs_.push_back(aliasFieldRef);
@@ -1066,13 +1065,12 @@ core::PlanNodePtr Optimization::makeFragment(
   return nullptr;
 }
 
-
-  /// Debugging helper functions. Must be in a namespace to be
-  /// callable from debugger.
+/// Debugging helper functions. Must be in a namespace to be
+/// callable from debugger.
 std::string veloxToString(const core::PlanNode* plan) {
   return plan->toString(true, true);
 }
-  
+
 std::string planString(MultiFragmentPlan* plan) {
   return plan->toString(true);
 }

@@ -544,8 +544,8 @@ TEST_F(PlanTest, unions) {
           {BIGINT(), BIGINT(), VARCHAR(), VARCHAR()});
   auto veloxPlan = exec::test::PlanBuilder(pool_.get())
                        .tableScan("nation", nationType)
-    .filter("n_nationkey < 11 or n_nationkey > 13")
-    .project({"n_regionkey + 1 as rk"})
+                       .filter("n_nationkey < 11 or n_nationkey > 13")
+                       .project({"n_regionkey + 1 as rk"})
                        .filter("rk in (1, 2, 4, 5)")
                        .planNode();
 
@@ -594,9 +594,9 @@ TEST_F(PlanTest, unionJoin) {
                   .planNode(),
               "",
               {"p_partkey"})
-    .project({"p_partkey"})
-    .localPartition({})
-    //    .singleAggregation({}, {"sum(1)"})
+          .project({"p_partkey"})
+          .localPartition({})
+          //    .singleAggregation({}, {"sum(1)"})
           .planNode();
 
   lp::PlanBuilder::Context ctx;
@@ -606,7 +606,7 @@ TEST_F(PlanTest, unionJoin) {
                      "partsupp",
                      {"ps_partkey", "ps_availqty"})
                  .filter("ps_availqty < 1000::INTEGER")
-    .project({"ps_partkey"});
+                 .project({"ps_partkey"});
 
   auto ps2 = lp::PlanBuilder(ctx)
                  .tableScan(
@@ -614,7 +614,7 @@ TEST_F(PlanTest, unionJoin) {
                      "partsupp",
                      {"ps_partkey", "ps_availqty"})
                  .filter("ps_availqty  > 2000::INTEGER")
-    .project({"ps_partkey"});
+                 .project({"ps_partkey"});
 
   auto ps3 =
       lp::PlanBuilder(ctx)
@@ -623,12 +623,12 @@ TEST_F(PlanTest, unionJoin) {
               "partsupp",
               {"ps_partkey", "ps_availqty"})
           .filter("ps_availqty  between  1200::INTEGER and 1400::INTEGER")
-    .project({"ps_partkey"});
+          .project({"ps_partkey"});
 
   // The shape of the partsupp union is ps1 union all (ps2 union all
   // ps3). We verify that a stack of multiple set ops works.
-  auto psu2 =
-      lp::PlanBuilder(ctx).setOperation(lp::SetOperation::kUnionAll, {ps2, ps3});
+  auto psu2 = lp::PlanBuilder(ctx).setOperation(
+      lp::SetOperation::kUnionAll, {ps2, ps3});
 
   auto p1 = lp::PlanBuilder(ctx)
                 .tableScan(
@@ -651,8 +651,8 @@ TEST_F(PlanTest, unionJoin) {
                                lp::SetOperation::kUnionAll, {p1, p2}),
                            "ps_partkey = p_partkey",
                            lp::JoinType::kInner)
-    .project({"p_partkey"})
-  //.aggregate({}, {"sum(1)"})
+                       .project({"p_partkey"})
+                       //.aggregate({}, {"sum(1)"})
                        .build();
 
   std::string planString;
@@ -667,8 +667,8 @@ TEST_F(PlanTest, intersect) {
           {BIGINT(), BIGINT(), VARCHAR(), VARCHAR()});
   auto veloxPlan = exec::test::PlanBuilder(pool_.get())
                        .tableScan("nation", nationType)
-    .filter("n_nationkey > 11 and n_nationkey < 21")
-    .project({"n_regionkey + 1 as rk"})
+                       .filter("n_nationkey > 11 and n_nationkey < 21")
+                       .project({"n_regionkey + 1 as rk"})
                        .filter("rk in (1, 2, 4, 5)")
                        .planNode();
 
@@ -679,29 +679,27 @@ TEST_F(PlanTest, intersect) {
                     "nation",
                     {"n_nationkey", "n_regionkey", "n_name", "n_comment"})
                 .filter("n_nationkey < 21")
-    .project({"n_nationkey", "n_regionkey"});
+                .project({"n_nationkey", "n_regionkey"});
   auto t2 = lp::PlanBuilder(ctx)
                 .tableScan(
                     exec::test::kHiveConnectorId,
                     "nation",
                     {"n_nationkey", "n_regionkey", "n_name", "n_comment"})
                 .filter(" n_nationkey > 11 ")
-    .project({"n_nationkey", "n_regionkey"});
+                .project({"n_nationkey", "n_regionkey"});
 
   auto intersectPlan = lp::PlanBuilder(ctx)
-                       .setOperation(lp::SetOperation::kIntersect, {t1, t2})
-                       .project({"n_regionkey + 1 as rk"})
-                       .filter("cast(rk as integer) in (1, 2, 4, 5)")
-                       .build();
+                           .setOperation(lp::SetOperation::kIntersect, {t1, t2})
+                           .project({"n_regionkey + 1 as rk"})
+                           .filter("cast(rk as integer) in (1, 2, 4, 5)")
+                           .build();
   std::string planString;
   std::string veloxString;
   checkSame(intersectPlan, veloxPlan, &planString, &veloxString);
 }
 
-  
 } // namespace
 } // namespace facebook::velox::optimizer
-
 
 int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);

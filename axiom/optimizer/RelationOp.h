@@ -447,7 +447,11 @@ struct OrderBy : public RelationOp {
 /// Represents a union all.
 struct UnionAll : public RelationOp {
   UnionAll(std::vector<RelationOpPtr> inputs)
-    : RelationOp(RelType::kUnionAll, nullptr, inputs[0]->distribution(), inputs[0]->columns()),
+      : RelationOp(
+            RelType::kUnionAll,
+            nullptr,
+            inputs[0]->distribution(),
+            inputs[0]->columns()),
         inputs(std::move(inputs)) {}
 
   void setCost(const PlanState& input) override;

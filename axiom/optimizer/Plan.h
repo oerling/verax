@@ -1040,15 +1040,16 @@ class Optimization {
   // Updates the distribution and column stats of 'setDt', which must
   // be a union. 'innerDt' should be null on top level call. Adds up
   // the cardinality of union branches and their columns.
-  void makeUnionDistributionAndStats(DerivedTableP setDt, DerivedTableP innerDt = nullptr);
-  
+  void makeUnionDistributionAndStats(
+      DerivedTableP setDt,
+      DerivedTableP innerDt = nullptr);
+
   DerivedTableP translateUnion(
       const logical_plan::SetNode& set,
       DerivedTableP setDt,
       bool isTopLevel,
-			       bool& isLeftLeaf);
+      bool& isLeftLeaf);
 
-  
   // Makes an extra column for existence flag.
   ColumnCP makeMark(const velox::core::AbstractJoinNode& join);
 

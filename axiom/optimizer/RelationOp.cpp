@@ -35,21 +35,20 @@ const Value& RelationOp::value(ExprCP expr) const {
   return expr->value();
 }
 
-  namespace {
-    template <typename T>
-    std::string itemsToString(const T* items, int32_t n) {
-      std::stringstream out;
-      for (auto i = 0; i < n; ++i) {
-	out << items[i]->toString();
-	if (i < n - 1) {
-	  out << ", ";
-	}
-      }
-      return out.str();
+namespace {
+template <typename T>
+std::string itemsToString(const T* items, int32_t n) {
+  std::stringstream out;
+  for (auto i = 0; i < n; ++i) {
+    out << items[i]->toString();
+    if (i < n - 1) {
+      out << ", ";
     }
   }
+  return out.str();
+}
+} // namespace
 
-  
 std::string RelationOp::toString(bool recursive, bool detail) const {
   if (input_ && recursive) {
     return input_->toString(true, detail);
@@ -266,7 +265,8 @@ std::string Join::toString(bool recursive, bool detail) const {
       << joinTypeLabel(joinType);
   printCost(detail, out);
   if (detail) {
-    out << "columns: " << itemsToString(columns().data(), columns().size()) << std::endl;
+    out << "columns: " << itemsToString(columns().data(), columns().size())
+        << std::endl;
   }
   if (detail && buildCost.unitCost > 0) {
     out << "{ build=" << buildCost.toString(detail, true) << "}";

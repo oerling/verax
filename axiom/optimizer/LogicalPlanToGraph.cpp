@@ -1147,8 +1147,8 @@ DerivedTableP Optimization::translateSetJoin(
   ColumnVector columns;
   for (auto i = 0; i < type->size(); ++i) {
     exprs.push_back(left->columns[i]);
-    columns.push_back(make<Column>(
-        toName(type->nameOf(i)), setDt, exprs.back()->value()));
+    columns.push_back(
+        make<Column>(toName(type->nameOf(i)), setDt, exprs.back()->value()));
     renames_[type->nameOf(i)] = columns.back();
   }
 
@@ -1177,9 +1177,9 @@ void Optimization::makeUnionDistributionAndStats(
   }
   if (innerDt->children.empty()) {
     VELOX_CHECK_EQ(
-		   innerDt->columns.size(),
-		   setDt->columns.size(),
-		   "Union inputs must have same arity also after pruning");
+        innerDt->columns.size(),
+        setDt->columns.size(),
+        "Union inputs must have same arity also after pruning");
 
     MemoKey key;
     key.firstTable = innerDt;
