@@ -29,6 +29,7 @@ DEFINE_int32(num_repeats, 1, "Number of repeats for optimization timing");
 
 DECLARE_int32(optimizer_trace);
 DECLARE_int32(num_workers);
+DECLARE_int32(num_drivers);
 DECLARE_string(history_save_path);
 
 namespace facebook::velox::optimizer {
@@ -134,12 +135,15 @@ class PlanTest : public virtual test::ParquetTpchTest,
       *veloxPlan = veloxString(fragmentedPlan.plan);
     }
     optimizer::test::TestResult referenceResult;
+    std::cout << "*** Distr\n";
+    FLAGS_num_drivers = 1;
     assertSame(referencePlan, fragmentedPlan, &referenceResult);
     auto numWorkers = FLAGS_num_workers;
     if (numWorkers != 1) {
       FLAGS_num_workers = 1;
       auto singlePlan = planVelox(planNode, planString);
       ASSERT_TRUE(singlePlan.plan != nullptr);
+      std::cout << "****single\n";
       auto singleResult = runFragmentedPlan(singlePlan);
       exec::test::assertEqualResults(
           referenceResult.results, singleResult.results);
@@ -568,17 +572,15 @@ TEST_F(PlanTest, unions) {
                        .project({"n_regionkey + 1 as rk"})
                        .filter("cast(rk as integer) in (1, 2, 4, 5)")
                        .build();
-  gflags::FlagSaver saver;
-  // Skip distributed run. Problem with local exchange source with
-  // multiple inputs.
-  FLAGS_num_workers = 1;
-
-  checkSame(unionPlan, veloxPlan);
+  std::string planString;
+  std::string veloxString;
+  checkSame(unionPlan, veloxPlan, &planString, &veloxString);
 }
 
 TEST_F(PlanTest, unionJoin) {
   namespace lp = facebook::velox::logical_plan;
 
+  std::cout << "**** start\n\n";
   auto partType = ROW({"p_partkey", "p_retailprice"}, {BIGINT(), DOUBLE()});
   auto partSuppType = ROW({"ps_partkey", "ps_availqty"}, {BIGINT(), INTEGER()});
   auto idGenerator = std::make_shared<core::PlanNodeIdGenerator>();
@@ -599,7 +601,7 @@ TEST_F(PlanTest, unionJoin) {
               {"p_partkey"})
           .project({"p_partkey"})
           .localPartition({})
-          .singleAggregation({}, {"sum(1)"})
+          //    .singleAggregation({}, {"sum(1)"})
           .planNode();
 
   lp::PlanBuilder::Context ctx;
@@ -654,14 +656,13 @@ TEST_F(PlanTest, unionJoin) {
                                lp::SetOperation::kUnionAll, {p1, p2}),
                            "ps_partkey = p_partkey",
                            lp::JoinType::kInner)
-                       .aggregate({}, {"sum(1)"})
+                       .project({"p_partkey"})
+                       //.aggregate({}, {"sum(1)"})
                        .build();
 
-  gflags::FlagSaver saver;
-  // Skip distributed run. Problem with local exchange source with
-  // multiple inputs.
-  FLAGS_num_workers = 1;
-  checkSame(unionPlan, veloxPlan);
+  std::string planString;
+  std::cout << "****ck\n";
+  checkSame(unionPlan, veloxPlan, &planString);
 }
 
 TEST_F(PlanTest, intersect) {

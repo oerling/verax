@@ -76,11 +76,12 @@ struct Cost {
   std::string toString(bool detail, bool isUnit = false) const;
 };
 
-  /// A std::string with lifetime of the optimization. These are
-  /// freeable unlike Names but can be held in objects that are
-  /// dropped without destruction with the optimization arena.
-  using QGstring = std::basic_string<char, std::char_traits<char>, QGAllocator<char>>;
-  
+/// A std::string with lifetime of the optimization. These are
+/// freeable unlike Names but can be held in objects that are
+/// dropped without destruction with the optimization arena.
+using QGstring =
+    std::basic_string<char, std::char_traits<char>, QGAllocator<char>>;
+
 /// Physical relational operator. This is the common base class of all elements
 /// of plan candidates. The immutable Exprs, Columns and BaseTables in the query
 /// graph are referenced from these. RelationOp instances are also arena
@@ -175,8 +176,9 @@ inline void intrusive_ptr_release(RelationOp* op) {
   }
 }
 
-  using RelationOpPtrVector = std::vector<RelationOpPtr, QGAllocator<RelationOpPtr>>;
-  
+using RelationOpPtrVector =
+    std::vector<RelationOpPtr, QGAllocator<RelationOpPtr>>;
+
 /// Represents a full table scan or an index lookup.
 struct TableScan : public RelationOp {
   TableScan(

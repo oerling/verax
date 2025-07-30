@@ -133,8 +133,8 @@ void Optimization::trace(
     RelationOp& plan) {
   if (event & opts_.traceFlags) {
     std::cout << (event == kRetained ? "Retained: " : "Abandoned: ") << id
-              << ": " << cost.toString(true, true) << ": "
-              << " " << plan.toString(true, false) << std::endl;
+              << ": " << cost.toString(true, true) << ": " << " "
+              << plan.toString(true, false) << std::endl;
   }
 }
 
