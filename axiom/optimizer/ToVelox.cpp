@@ -20,6 +20,7 @@
 #include "velox/exec/RoundRobinPartitionFunction.h"
 #include "velox/expression/ExprToSubfieldFilter.h"
 #include "velox/expression/ScopedVarSetter.h"
+#include "velox/vector/VariantToVector.h"
 
 namespace facebook::velox::optimizer {
 
@@ -352,6 +353,13 @@ core::TypedExprPtr Optimization::toTypedExpr(ExprCP expr) {
         return std::make_shared<core::ConstantTypedExpr>(
             queryCtx()->toVectorPtr(literal->vector()));
       }
+      // Complex constants must be vectors for constant folding to work.
+      if (literal->value().type->kind() >= TypeKind::ARRAY) {
+        return std::make_shared<core::ConstantTypedExpr>(variantToVector(
+            toTypePtr(literal->value().type),
+            literal->literal(),
+            evaluator_.pool()));
+      }
       return std::make_shared<core::ConstantTypedExpr>(
           toTypePtr(literal->value().type), literal->literal());
     }
@@ -404,7 +412,17 @@ class TempProjections {
           toTypePtr(expr->value().type), names_.back()));
       return fieldRefs_.back();
     }
-    return fieldRefs_[it->second];
+    auto fieldRef = fieldRefs_[it->second];
+    if (optName && *optName != fieldRef->name()) {
+      auto aliasFieldRef = std::make_shared<core::FieldAccessTypedExpr>(
+          toTypePtr(expr->value().type), *optName);
+      names_.push_back(*optName);
+      exprs_.push_back(fieldRef);
+      fieldRefs_.push_back(aliasFieldRef);
+      exprChannel_[expr] = nextChannel_++;
+      return aliasFieldRef;
+    }
+    return fieldRef;
   }
 
   template <typename Result = core::FieldAccessTypedExprPtr>
@@ -974,7 +992,7 @@ velox::core::PlanNodePtr Optimization::makeUnionAll(
     velox::runner::ExecutableFragment& fragment,
     std::vector<velox::runner::ExecutableFragment>& stages) {
   // If no inputs have a repartition, this is a local exchange. If
-  // some have repartition and more than one have no reparrtition,
+  // some have repartition and more than one have no repartition,
   // this is a local exchange with a remote exchaneg as input. All the
   // inputs with repartition go to one remote exchange.
   std::vector<core::PlanNodePtr> localSources;
@@ -1045,6 +1063,12 @@ core::PlanNodePtr Optimization::makeFragment(
           "Unsupported RelationOp {}", static_cast<int32_t>(op->relType()));
   }
   return nullptr;
+}
+
+/// Debugging helper functions. Must be in a namespace to be
+/// callable from debugger.
+std::string veloxToString(const core::PlanNode* plan) {
+  return plan->toString(true, true);
 }
 
 std::string planString(MultiFragmentPlan* plan) {

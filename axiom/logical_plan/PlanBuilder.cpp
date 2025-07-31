@@ -26,6 +26,8 @@
 
 namespace facebook::velox::logical_plan {
 
+  FunctionRewriteHook PlanBuilder::functionRewriteHook_;
+
 PlanBuilder& PlanBuilder::values(
     const RowTypePtr& rowType,
     std::vector<Variant> rows) {
@@ -373,6 +375,13 @@ ExprPtr tryResolveSpecialForm(
         rowType.childAt(zeroBasedIndex), SpecialForm::kDereference, newInputs);
   }
 
+  if (functionRewriteHook_ != nullptr) {
+      FunctionRewrite rewrite;
+      if (functionRewriteHook_(name, resolvedInputs, rewrite)) {
+	return std::make_shared<CallExpr>(std::move(rewrite.type), std::move(rewrite.name), std::move(rewrite.args));
+      }
+  }
+  
   return nullptr;
 }
 

@@ -16,6 +16,6 @@
 
 namespace facebook::velox::optimizer::test {
 
-void rtegisterDfHooks();
+void registerDfFunctions();
 
 }

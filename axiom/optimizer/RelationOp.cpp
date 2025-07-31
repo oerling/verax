@@ -35,6 +35,20 @@ const Value& RelationOp::value(ExprCP expr) const {
   return expr->value();
 }
 
+namespace {
+template <typename T>
+std::string itemsToString(const T* items, int32_t n) {
+  std::stringstream out;
+  for (auto i = 0; i < n; ++i) {
+    out << items[i]->toString();
+    if (i < n - 1) {
+      out << ", ";
+    }
+  }
+  return out.str();
+}
+} // namespace
+
 std::string RelationOp::toString(bool recursive, bool detail) const {
   if (input_ && recursive) {
     return input_->toString(true, detail);
@@ -146,17 +160,17 @@ const char* joinTypeLabel(velox::core::JoinType type) {
   }
 }
 
-std::string sanitizeHistoryKey(std::string in) {
+QGstring sanitizeHistoryKey(std::string in) {
   for (auto i = 0; i < in.size(); ++i) {
     unsigned char c = in[i];
     if (c < 32 || c > 127 || c == '{' || c == '}' || c == '"') {
       in[i] = '?';
     }
   }
-  return in;
+  return QGstring(in);
 }
 
-const std::string& TableScan::historyKey() const {
+const QGstring& TableScan::historyKey() const {
   if (!key_.empty()) {
     return key_;
   }
@@ -222,7 +236,7 @@ std::pair<std::string, std::string> joinKeysString(
   return std::make_pair(leftStream.str(), rightStream.str());
 }
 
-const std::string& Join::historyKey() const {
+const QGstring& Join::historyKey() const {
   if (!key_.empty()) {
     return key_;
   }
@@ -250,6 +264,10 @@ std::string Join::toString(bool recursive, bool detail) const {
   out << "*" << (method == JoinMethod::kHash ? "H" : "M") << " "
       << joinTypeLabel(joinType);
   printCost(detail, out);
+  if (detail) {
+    out << "columns: " << itemsToString(columns().data(), columns().size())
+        << std::endl;
+  }
   if (detail && buildCost.unitCost > 0) {
     out << "{ build=" << buildCost.toString(detail, true) << "}";
   }
@@ -296,7 +314,7 @@ Aggregation::Aggregation(
   }
 }
 
-const std::string& Aggregation::historyKey() const {
+const QGstring& Aggregation::historyKey() const {
   using velox::core::AggregationNode;
   if (step == AggregationNode::Step::kPartial ||
       step == AggregationNode::Step::kIntermediate) {
@@ -329,6 +347,14 @@ std::string Aggregation::toString(bool recursive, bool detail) const {
   }
   out << velox::core::AggregationNode::toName(step) << " agg";
   printCost(detail, out);
+  if (detail) {
+    if (grouping.empty()) {
+      out << "global";
+    } else {
+      out << itemsToString(grouping.data(), grouping.size());
+    }
+    out << aggregates.size() << " aggregates" << std::endl;
+  }
   return out.str();
 }
 
@@ -342,7 +368,7 @@ std::string HashBuild::toString(bool recursive, bool detail) const {
   return out.str();
 }
 
-const std::string& Filter::historyKey() const {
+const QGstring& Filter::historyKey() const {
   if (!key_.empty()) {
     return key_;
   }

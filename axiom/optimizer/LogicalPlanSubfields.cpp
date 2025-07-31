@@ -102,13 +102,18 @@ void Optimization::markFieldAccessed(
       return;
     }
     if (kind == lp::NodeKind::kSet) {
-      auto* set = reinterpret_cast<const lp::SetNode*>(&source.planNode);
+      auto* set = reinterpret_cast<const lp::SetNode*>(source.planNode);
       for (auto in : set->inputs()) {
         std::vector<const RowType*> inputContext = {in->outputType().get()};
         std::vector<LogicalContextSource> inputSources = {
             LogicalContextSource{.planNode = in.get()}};
         markFieldAccessed(
-            sources[0], ordinal, steps, isControl, context, sources);
+            inputSources[0],
+            ordinal,
+            steps,
+            isControl,
+            inputContext,
+            inputSources);
       }
     }
     auto& sourceInputs = source.planNode->inputs();
@@ -195,7 +200,7 @@ void Optimization::markSubfields(
     const lp::Expr* expr,
     std::vector<Step>& steps,
     bool isControl,
-    const std::vector<const RowType*> context,
+    const std::vector<const RowType*>& context,
     const std::vector<LogicalContextSource>& sources) {
   if (expr->isInputReference()) {
     auto& name = expr->asUnchecked<lp::InputReferenceExpr>()->name();

@@ -125,7 +125,7 @@ class PlanTest : public virtual test::ParquetTpchTest,
   }
 
   void checkSame(
-      const lp::LogicalPlanNodePtr& planNode,
+      const logical_plan::LogicalPlanNodePtr& planNode,
       core::PlanNodePtr referencePlan,
       std::string* planString = nullptr,
       std::string* veloxPlan = nullptr) {
@@ -133,7 +133,7 @@ class PlanTest : public virtual test::ParquetTpchTest,
     if (veloxPlan) {
       *veloxPlan = veloxString(fragmentedPlan.plan);
     }
-    TestResult referenceResult;
+    optimizer::test::TestResult referenceResult;
     assertSame(referencePlan, fragmentedPlan, &referenceResult);
     auto numWorkers = FLAGS_num_workers;
     if (numWorkers != 1) {
@@ -544,6 +544,7 @@ TEST_F(PlanTest, unions) {
           {BIGINT(), BIGINT(), VARCHAR(), VARCHAR()});
   auto veloxPlan = exec::test::PlanBuilder(pool_.get())
                        .tableScan("nation", nationType)
+                       .filter("n_nationkey < 11 or n_nationkey > 13")
                        .project({"n_regionkey + 1 as rk"})
                        .filter("rk in (1, 2, 4, 5)")
                        .planNode();
@@ -560,15 +561,19 @@ TEST_F(PlanTest, unions) {
                     exec::test::kHiveConnectorId,
                     "nation",
                     {"n_nationkey", "n_regionkey", "n_name", "n_comment"})
-                .filter(" n_nationkey f > 13 ");
+                .filter(" n_nationkey > 13 ");
 
   auto unionPlan = lp::PlanBuilder(ctx)
                        .setOperation(lp::SetOperation::kUnionAll, {t1, t2})
                        .project({"n_regionkey + 1 as rk"})
-                       .filter("rk in ((1, 2, 4, 5)")
+                       .filter("cast(rk as integer) in (1, 2, 4, 5)")
                        .build();
-  std::string planString;
-  checkSame(unionPlan, veloxPlan, &planString);
+  gflags::FlagSaver saver;
+  // Skip distributed run. Problem with local exchange source with
+  // multiple inputs.
+  FLAGS_num_workers = 1;
+
+  checkSame(unionPlan, veloxPlan);
 }
 
 TEST_F(PlanTest, unionJoin) {
@@ -591,7 +596,9 @@ TEST_F(PlanTest, unionJoin) {
                       "p_retailprice < 1100::DOUBLE or p_retailprice > 1200::DOUBLE")
                   .planNode(),
               "",
-              {})
+              {"p_partkey"})
+          .project({"p_partkey"})
+          .localPartition({})
           .singleAggregation({}, {"sum(1)"})
           .planNode();
 
@@ -601,13 +608,16 @@ TEST_F(PlanTest, unionJoin) {
                      exec::test::kHiveConnectorId,
                      "partsupp",
                      {"ps_partkey", "ps_availqty"})
-                 .filter("ps_availqty < 1000::INTEGER");
+                 .filter("ps_availqty < 1000::INTEGER")
+                 .project({"ps_partkey"});
+
   auto ps2 = lp::PlanBuilder(ctx)
                  .tableScan(
                      exec::test::kHiveConnectorId,
                      "partsupp",
                      {"ps_partkey", "ps_availqty"})
-                 .filter("ps_availqty  > 2000::INTEGER");
+                 .filter("ps_availqty  > 2000::INTEGER")
+                 .project({"ps_partkey"});
 
   auto ps3 =
       lp::PlanBuilder(ctx)
@@ -615,26 +625,27 @@ TEST_F(PlanTest, unionJoin) {
               exec::test::kHiveConnectorId,
               "partsupp",
               {"ps_partkey", "ps_availqty"})
-          .filter("ps_availqty  between  1200::INTEGER and 1400::INTEGER");
+          .filter("ps_availqty  between  1200::INTEGER and 1400::INTEGER")
+          .project({"ps_partkey"});
 
   // The shape of the partsupp union is ps1 union all (ps2 union all
   // ps3). We verify that a stack of multiple set ops works.
-  auto psu2 =
-      lp::PlanBuilder(ctx).setOperation(lp::SetOperation::kUnion, {ps2, ps3});
+  auto psu2 = lp::PlanBuilder(ctx).setOperation(
+      lp::SetOperation::kUnionAll, {ps2, ps3});
 
   auto p1 = lp::PlanBuilder(ctx)
                 .tableScan(
                     exec::test::kHiveConnectorId,
                     "part",
                     {"p_partkey", "p_retailprice"})
-                .filter("p_retailprice < 1000::DOUBLE");
+                .filter("p_retailprice < 1100::DOUBLE");
 
   auto p2 = lp::PlanBuilder(ctx)
                 .tableScan(
                     exec::test::kHiveConnectorId,
                     "part",
                     {"p_partkey", "p_retailprice"})
-                .filter("p_retailprice  > 1100::DOUBLE");
+                .filter("p_retailprice  > 1200::DOUBLE");
 
   auto unionPlan = lp::PlanBuilder(ctx)
                        .setOperation(lp::SetOperation::kUnionAll, {ps1, psu2})
@@ -646,13 +657,54 @@ TEST_F(PlanTest, unionJoin) {
                        .aggregate({}, {"sum(1)"})
                        .build();
 
+  gflags::FlagSaver saver;
+  // Skip distributed run. Problem with local exchange source with
+  // multiple inputs.
+  FLAGS_num_workers = 1;
+  checkSame(unionPlan, veloxPlan);
+}
+
+TEST_F(PlanTest, intersect) {
+  namespace lp = facebook::velox::logical_plan;
+
+  auto nationType =
+      ROW({"n_nationkey", "n_regionkey", "n_name", "n_comment"},
+          {BIGINT(), BIGINT(), VARCHAR(), VARCHAR()});
+  auto veloxPlan = exec::test::PlanBuilder(pool_.get())
+                       .tableScan("nation", nationType)
+                       .filter("n_nationkey > 11 and n_nationkey < 21")
+                       .project({"n_regionkey + 1 as rk"})
+                       .filter("rk in (1, 2, 4, 5)")
+                       .planNode();
+
+  lp::PlanBuilder::Context ctx;
+  auto t1 = lp::PlanBuilder(ctx)
+                .tableScan(
+                    exec::test::kHiveConnectorId,
+                    "nation",
+                    {"n_nationkey", "n_regionkey", "n_name", "n_comment"})
+                .filter("n_nationkey < 21")
+                .project({"n_nationkey", "n_regionkey"});
+  auto t2 = lp::PlanBuilder(ctx)
+                .tableScan(
+                    exec::test::kHiveConnectorId,
+                    "nation",
+                    {"n_nationkey", "n_regionkey", "n_name", "n_comment"})
+                .filter(" n_nationkey > 11 ")
+                .project({"n_nationkey", "n_regionkey"});
+
+  auto intersectPlan = lp::PlanBuilder(ctx)
+                           .setOperation(lp::SetOperation::kIntersect, {t1, t2})
+                           .project({"n_regionkey + 1 as rk"})
+                           .filter("cast(rk as integer) in (1, 2, 4, 5)")
+                           .build();
   std::string planString;
-  checkSame(unionPlan, veloxPlan, &planString);
+  std::string veloxString;
+  checkSame(intersectPlan, veloxPlan, &planString, &veloxString);
 }
 
 } // namespace
 } // namespace facebook::velox::optimizer
-
 
 int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);

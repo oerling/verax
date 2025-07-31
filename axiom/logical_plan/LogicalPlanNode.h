@@ -34,6 +34,8 @@ enum class NodeKind {
   kUnnest = 9,
 };
 
+VELOX_DECLARE_ENUM_NAME(NodeKind)
+
 class LogicalPlanNode;
 using LogicalPlanNodePtr = std::shared_ptr<const LogicalPlanNode>;
 
@@ -63,6 +65,11 @@ class LogicalPlanNode {
 
   NodeKind kind() const {
     return kind_;
+  }
+
+  template <typename T>
+  const T* asUnchecked() const {
+    return dynamic_cast<const T*>(this);
   }
 
   const std::string& id() const {
@@ -526,17 +533,7 @@ class SetNode : public LogicalPlanNode {
   SetNode(
       const std::string& id,
       const std::vector<LogicalPlanNodePtr>& inputs,
-      SetOperation operation)
-      : LogicalPlanNode(NodeKind::kSet, id, inputs, inputs.at(0)->outputType()),
-        operation_{operation} {
-    VELOX_USER_CHECK_GE(
-        inputs.size(), 2, "Set operation requires at least 2 inputs");
-    for (const auto& input : inputs) {
-      VELOX_USER_CHECK(
-          input->outputType()->equivalent(*outputType()),
-          "Output schemas of all inputs to a Set operation must match");
-    }
-  }
+      SetOperation operation);
 
   SetOperation operation() const {
     return operation_;

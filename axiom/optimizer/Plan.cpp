@@ -133,8 +133,8 @@ void Optimization::trace(
     RelationOp& plan) {
   if (event & opts_.traceFlags) {
     std::cout << (event == kRetained ? "Retained: " : "Abandoned: ") << id
-              << ": " << cost.toString(true, true) << ": "
-              << " " << plan.toString(true, false) << std::endl;
+              << ": " << cost.toString(true, true) << ": " << " "
+              << plan.toString(true, false) << std::endl;
   }
 }
 
@@ -1697,10 +1697,13 @@ RelationOpPtr makeDistinct(RelationOpPtr input) {
   for (auto& c : input->columns()) {
     exprs.push_back(c);
   }
-  return make<Aggregation>(input, exprs);
+  auto agg = make<Aggregation>(input, exprs);
+  agg->mutableColumns() = input->columns();
+  agg->intermediateColumns = input->columns();
+  return agg;
 }
 
-Distribution somePartition(const std::vector<RelationOpPtr>& inputs) {
+Distribution somePartition(const RelationOpPtrVector& inputs) {
   Distribution result;
   ExprVector columns;
   float card = 1;
@@ -1748,6 +1751,8 @@ PlanPtr unionPlan(
   for (auto i = 1; i < states.size(); ++i) {
     fullyImported.intersect(inputPlans[i]->fullyImported);
     states[0].cost.add(states[i].cost);
+    // The input cardinality is not additive, the fanout and other metrics are.
+    states[0].cost.inputCardinality -= states[i].cost.inputCardinality;
   }
   if (distinct) {
     states[0].addCost(*distinct);
@@ -1770,7 +1775,7 @@ PlanPtr Optimization::makePlan(
     auto setDt = const_cast<DerivedTable*>(key.firstTable->as<DerivedTable>());
     bool isDistinct =
         setDt->setOp.value() == logical_plan::SetOperation::kUnion;
-    std::vector<RelationOpPtr> inputs;
+    RelationOpPtrVector inputs;
     std::vector<PlanPtr> inputPlans;
     std::vector<PlanState> inputStates;
     std::vector<bool> inputNeedsShuffle;
@@ -1778,6 +1783,8 @@ PlanPtr Optimization::makePlan(
     for (auto inputDt : setDt->children) {
       MemoKey inputKey = key;
       inputKey.firstTable = inputDt;
+      inputKey.tables.erase(key.firstTable);
+      inputKey.tables.add(inputDt);
       bool inputShuffle = false;
 
       auto inputPlan = makePlan(

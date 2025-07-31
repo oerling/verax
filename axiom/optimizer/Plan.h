@@ -874,14 +874,14 @@ class Optimization {
       const core::ITypedExpr* expr,
       std::vector<Step>& steps,
       bool isControl,
-      const std::vector<const RowType*> context,
+      const std::vector<const RowType*>& context,
       const std::vector<ContextSource>& sources);
 
   void markSubfields(
       const logical_plan::Expr* expr,
       std::vector<Step>& steps,
       bool isControl,
-      const std::vector<const RowType*> context,
+      const std::vector<const RowType*>& context,
       const std::vector<LogicalContextSource>& sources);
 
   void markAllSubfields(const RowType* type, const core::PlanNode* node);
@@ -1033,9 +1033,22 @@ class Optimization {
 
   void translateJoin(const logical_plan::JoinNode& join);
 
-  DerivedTableP translateSetOperation(
+  DerivedTableP translateSetJoin(
       const logical_plan::SetNode& set,
-      ColumnVector*& columns);
+      DerivedTableP setDt);
+
+  // Updates the distribution and column stats of 'setDt', which must
+  // be a union. 'innerDt' should be null on top level call. Adds up
+  // the cardinality of union branches and their columns.
+  void makeUnionDistributionAndStats(
+      DerivedTableP setDt,
+      DerivedTableP innerDt = nullptr);
+
+  DerivedTableP translateUnion(
+      const logical_plan::SetNode& set,
+      DerivedTableP setDt,
+      bool isTopLevel,
+      bool& isLeftLeaf);
 
   // Makes an extra column for existence flag.
   ColumnCP makeMark(const velox::core::AbstractJoinNode& join);

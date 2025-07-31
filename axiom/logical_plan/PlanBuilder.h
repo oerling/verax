@@ -35,6 +35,16 @@ class PlanBuilder {
           nameAllocator{std::make_shared<NameAllocator>()} {}
   };
 
+  /// Represents a function substitution for a function with type or subfield behavior that  depends on argument values.
+  struct FunctionRewrite {
+    TypePtr type;
+    std::strin name;
+    std::vector<Expr> args;
+  };
+
+  /// Maps from an untyped call and  resolved arguments to a FunctionRewrite. Returns true if 'rewrite' should replace the original. If false, 'rewrite' is not filled in and the caller should proceed as usual.
+  using FunctionRewriteHook = std::function<bool(const std::string& name, const std::vector<ExprPtr>& args, FunctionRewrite& rewrite)>;
+  
   PlanBuilder()
       : planNodeIdGenerator_(std::make_shared<core::PlanNodeIdGenerator>()),
         nameAllocator_(std::make_shared<NameAllocator>()) {}
@@ -97,6 +107,14 @@ class PlanBuilder {
 
   LogicalPlanNodePtr build();
 
+  static FunctionRewriteHook functionRewriteHook() {
+    return functionRewriteHook_;
+  }
+
+  static void setFunctionRewriteHook(FunctionRewriteHook hook) {
+    functionRewriteHook_ = hook;
+  }
+  
  private:
   std::string nextId() {
     return planNodeIdGenerator_->next();
@@ -126,6 +144,8 @@ class PlanBuilder {
 
   // Mapping from user-provided to auto-generated output column names.
   std::shared_ptr<NameMappings> outputMapping_;
+
+  static FunctionRewriteHook functionRewriteHook_;
 };
 
 } // namespace facebook::velox::logical_plan
