@@ -17,6 +17,7 @@
 
 #include "axiom/logical_plan/LogicalPlanNode.h"
 #include "axiom/optimizer/Cost.h"
+#include "axiom/optimizer/DerivedTable.h"
 #include "axiom/optimizer/RelationOp.h"
 #include "velox/connectors/Connector.h"
 #include "velox/core/PlanNode.h"
@@ -176,7 +177,9 @@ struct LogicalContextSource {
 /// Utility for making a getter from a Step.
 core::TypedExprPtr stepToGetter(Step, core::TypedExprPtr arg);
 
-logical_plan::ExprPtr stepToLogicalPlanGetter(Step, logical_plan::ExprPtr arg);
+logical_plan::ExprPtr stepToLogicalPlanGetter(
+    Step,
+    const logical_plan::ExprPtr& arg);
 
 /// Lists the subfield paths physically produced by a source. The
 /// source can be a column or a complex type function. This is empty
@@ -399,8 +402,8 @@ struct PlanState {
       downstreamPrecomputed;
 
   // Ordered set of tables placed so far. Used for setting a
-  // breakpoint before a specific join order gets costted.
-  std::vector<int32_t> dbgPlacedTables;
+  // breakpoint before a specific join order gets costed.
+  std::vector<int32_t> debugPlacedTables;
 
   /// Updates 'cost_' to reflect 'op' being placed on top of the partial plan.
   void addCost(RelationOp& op);
@@ -449,7 +452,7 @@ struct PlanStateSaver {
         columns_(state.columns),
         cost_(state.cost),
         numBuilds_(state.builds.size()),
-        numPlaced_(state.dbgPlacedTables.size()) {}
+        numPlaced_(state.debugPlacedTables.size()) {}
 
   PlanStateSaver(PlanState& state, const JoinCandidate& candidate);
 
@@ -458,7 +461,7 @@ struct PlanStateSaver {
     state_.columns = std::move(columns_);
     state_.cost = cost_;
     state_.builds.resize(numBuilds_);
-    state_.dbgPlacedTables.resize(numPlaced_);
+    state_.debugPlacedTables.resize(numPlaced_);
   }
 
  private:
@@ -846,7 +849,7 @@ class Optimization {
   // only depends on constants. Identifier scope will may not be not set at time
   // of call. This is before regular constant folding because subscript
   // expressions must be folded for subfield resolution.
-  const logical_plan::ConstantExprPtr maybeFoldLogicalConstant(
+  logical_plan::ConstantExprPtr maybeFoldLogicalConstant(
       const logical_plan::ExprPtr expr);
 
   // Returns a constant expression if 'typedExprcan be folded, nullptr
@@ -895,6 +898,15 @@ class Optimization {
       const std::vector<const RowType*>& context,
       const std::vector<LogicalContextSource>& sources);
 
+  void markSubfields(
+      const logical_plan::ExprPtr& expr,
+      std::vector<Step>& steps,
+      bool isControl,
+      const std::vector<const RowType*>& context,
+      const std::vector<LogicalContextSource>& sources) {
+    markSubfields(expr.get(), steps, isControl, context, sources);
+  }
+
   void markAllSubfields(const RowType* type, const core::PlanNode* node);
   void markAllSubfields(
       const RowType* type,
@@ -910,9 +922,8 @@ class Optimization {
       int32_t source);
 
   void markColumnSubfields(
-      const logical_plan::LogicalPlanNode* node,
-      const std::vector<logical_plan::ExprPtr>& columns,
-      int32_t source);
+      const logical_plan::LogicalPlanNodePtr& source,
+      const std::vector<logical_plan::ExprPtr>& columns);
 
   bool isSubfield(
       const core::ITypedExpr* expr,
@@ -1499,9 +1510,6 @@ class Optimization {
 
   std::unique_ptr<BuiltinNames> builtinNames_;
 };
-
-/// True if single worker, i.e. do not plan remote exchanges
-bool isSingleWorker();
 
 /// Returns possible indices for driving table scan of 'table'.
 std::vector<ColumnGroupP> chooseLeafIndex(const BaseTable* table);
