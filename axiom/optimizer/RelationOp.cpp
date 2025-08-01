@@ -375,8 +375,7 @@ const QGstring& Filter::historyKey() const {
   std::stringstream out;
   auto* opt = queryCtx()->optimization();
   ScopedVarSetter cname(&opt->cnamesInExpr(), false);
-  out << input_->historyKey() << " filter "
-      << "(";
+  out << input_->historyKey() << " filter " << "(";
   std::vector<std::string> strings;
   for (auto& e : exprs_) {
     strings.push_back(e->toString());
@@ -428,6 +427,25 @@ std::string Project::toString(bool recursive, bool detail) const {
     out << "project " << exprs_.size() << " columns ";
   }
   return out.str();
+}
+
+const QGstring& UnionAll::historyKey() const {
+  if (!key_.empty()) {
+    return key_;
+  }
+  std::vector<QGstring> keys;
+  for (auto in : inputs) {
+    keys.push_back(in->historyKey());
+  }
+  std::sort(keys.begin(), keys.end());
+  std::stringstream out;
+  out << "unionall(";
+  for (const auto& key : keys) {
+    out << key << ", ";
+  }
+  out << ")";
+  key_ = sanitizeHistoryKey(out.str());
+  return key_;
 }
 
 std::string UnionAll::toString(bool recursive, bool detail) const {

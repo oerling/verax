@@ -353,15 +353,16 @@ class Optimization;
 /// Tracks the set of tables / columns that have been placed or are still needed
 /// when constructing a partial plan.
 struct PlanState {
-  PlanState(Optimization& optimization, DerivedTableP dt)
+  PlanState(Optimization& optimization, DerivedTableCP dt)
       : optimization(optimization), dt(dt) {}
 
-  PlanState(Optimization& optimization, DerivedTableP dt, PlanPtr plan)
+  PlanState(Optimization& optimization, DerivedTableCP dt, PlanPtr plan)
       : optimization(optimization), dt(dt), cost(plan->cost) {}
 
   Optimization& optimization;
+
   // The derived table from which the tables are drawn.
-  DerivedTableP dt{nullptr};
+  DerivedTableCP dt{nullptr};
 
   // The tables that have been placed so far.
   PlanObjectSet placed;
@@ -469,12 +470,20 @@ struct PlanStateSaver {
   const int32_t numPlaced_;
 };
 
-/// Key for collection of memoized partial plans. These are all made for hash
-/// join builds with different cardinality reducing joins pushed down. The first
-/// table is the table for which the key represents the build side. The 'tables'
-/// set is the set of reducing joins applied to 'firstTable', including the
-/// table itself. 'existences' is another set of reducing joins that are
-/// semijoined to the join of 'tables' in order to restrict the build side.
+/// Key for collection of memoized partial plans. Any table or derived
+/// table with a particular set of projected out columns and an
+/// optional set of reducing joins and semijoins (existences) is
+/// planned once. The plan is then kept in a memo for future use. The
+/// memo may hold multiple plans with different distribution
+/// properties for one MemoKey. The first table is the table or
+/// derived table to be planned. The 'tables' set is the set of
+/// reducing joins applied to 'firstTable', including the table
+/// itself. 'existences' is another set of reducing joins that are
+/// semijoined to the join of 'tables' in order to restrict the
+/// result. For example, if a reducing join is moved below a group by,
+/// unless it is known never to have duplicates, it must become a
+/// semijoin and the original join must still stay in place in case
+/// there were duplicates.
 struct MemoKey {
   bool operator==(const MemoKey& other) const;
   size_t hash() const;
@@ -633,7 +642,7 @@ class Optimization {
   // these in scanColumns. The scan->columns() is the leaf columns,
   // not the top level ones if subfield pushdown.
   RowTypePtr scanOutputType(
-      TableScan& scan,
+      const TableScan& scan,
       ColumnVector& scanColumns,
       std::unordered_map<ColumnCP, TypePtr>& typeMap);
 
@@ -645,8 +654,8 @@ class Optimization {
 
   // Makes projections for subfields as top level columns.
   core::PlanNodePtr makeSubfieldProjections(
-      TableScan& scan,
-      const std::shared_ptr<const core::TableScanNode>& scanNode);
+      const TableScan& scan,
+      const core::TableScanNodePtr& scanNode);
 
   /// Sets 'filterSelectivity' of 'baseTable' from history. Returns True if set.
   /// 'scanType' is the set of sampled columns with possible map to struct cast.
@@ -791,13 +800,13 @@ class Optimization {
   // being assembled.
   void addProjection(const core::ProjectNode* project);
 
-  void addProjection(const logical_plan::ProjectNode* project);
+  PlanObjectP addProjection(const logical_plan::ProjectNode* project);
 
   // Interprets a Filter node and adds its information into the DerivedTable
   // being assembled.
   void addFilter(const core::FilterNode* Filter);
 
-  void addFilter(const logical_plan::FilterNode* Filter);
+  PlanObjectP addFilter(const logical_plan::FilterNode* Filter);
 
   // Interprets an AggregationNode and adds its information to the DerivedTable
   // being assembled.
@@ -805,9 +814,11 @@ class Optimization {
       const core::AggregationNode& aggNode,
       uint64_t allowedInDt);
 
-  PlanObjectP addAggregation(
-      const logical_plan::AggregateNode& aggNode,
-      uint64_t allowedInDt);
+  PlanObjectP addAggregation(const logical_plan::AggregateNode& aggNode);
+
+  PlanObjectP addLimit(const logical_plan::LimitNode& limitNode);
+
+  PlanObjectP addOrderBy(const logical_plan::SortNode& order);
 
   // Sets the columns to project out from the root DerivedTable  based on
   // 'plan'.
@@ -1059,8 +1070,6 @@ class Optimization {
   // Adds order by information to the enclosing DerivedTable.
   OrderByP translateOrderBy(const velox::core::OrderByNode& order);
 
-  OrderByP translateOrderBy(const logical_plan::SortNode& order);
-
   // Adds aggregation information to the enclosing DerivedTable.
   AggregationP translateAggregation(
       const velox::core::AggregationNode& aggregation);
@@ -1075,6 +1084,8 @@ class Optimization {
   PlanObjectP wrapInDt(const velox::core::PlanNode& node);
 
   PlanObjectP wrapInDt(const logical_plan::LogicalPlanNode& node);
+
+  DerivedTableP newDt();
 
   /// Retrieves or makes a plan from 'key'. 'key' specifies a set of
   /// top level joined tables or a hash join build side table or
@@ -1120,11 +1131,11 @@ class Optimization {
 
   // Adds group by, order by, top k to 'plan'. Updates 'plan' if
   // relation ops added.  Sets cost in 'state'.
-  void addPostprocess(DerivedTableP dt, RelationOpPtr& plan, PlanState& state);
+  void addPostprocess(DerivedTableCP dt, RelationOpPtr& plan, PlanState& state);
 
   // Places a derived table as first table in a plan. Imports possibly reducing
   // joins into the plan if can.
-  void placeDerivedTable(const DerivedTable* from, PlanState& state);
+  void placeDerivedTable(DerivedTableCP from, PlanState& state);
 
   // Adds the items from 'dt.conjuncts' that are not placed in 'state'
   // and whose prerequisite columns are placed. If conjuncts can be
@@ -1148,7 +1159,7 @@ class Optimization {
   // Adds a cross join to access a single row from a non-correlated subquery.
   RelationOpPtr placeSingleRowDt(
       RelationOpPtr plan,
-      const DerivedTable* subq,
+      DerivedTableCP subq,
       ExprCP filter,
       PlanState& state);
 
@@ -1214,32 +1225,32 @@ class Optimization {
   // Makes partial + final order by fragments for order by with and without
   // limit.
   velox::core::PlanNodePtr makeOrderBy(
-      OrderBy& op,
+      const OrderBy& op,
       velox::runner::ExecutableFragment& fragment,
       std::vector<velox::runner::ExecutableFragment>& stages);
 
   velox::core::PlanNodePtr makeScan(
-      TableScan& scan,
+      const TableScan& scan,
       velox::runner::ExecutableFragment& fragment,
       std::vector<velox::runner::ExecutableFragment>& stages);
 
   velox::core::PlanNodePtr makeFilter(
-      Filter& filter,
+      const Filter& filter,
       velox::runner::ExecutableFragment& fragment,
       std::vector<velox::runner::ExecutableFragment>& stages);
 
   velox::core::PlanNodePtr makeProject(
-      Project& project,
+      const Project& project,
       velox::runner::ExecutableFragment& fragment,
       std::vector<velox::runner::ExecutableFragment>& stages);
 
   velox::core::PlanNodePtr makeJoin(
-      Join& join,
+      const Join& join,
       velox::runner::ExecutableFragment& fragment,
       std::vector<velox::runner::ExecutableFragment>& stages);
 
   velox::core::PlanNodePtr makeRepartition(
-      Repartition& repartition,
+      const Repartition& repartition,
       velox::runner::ExecutableFragment& fragment,
       std::vector<velox::runner::ExecutableFragment>& stages,
       std::shared_ptr<core::ExchangeNode>& exchange);
@@ -1247,7 +1258,7 @@ class Optimization {
   // Makes a union all with a mix of remote and local inputs. Combines all
   // remote inputs into one ExchangeNode.
   velox::core::PlanNodePtr makeUnionAll(
-      UnionAll& unionAll,
+      const UnionAll& unionAll,
       velox::runner::ExecutableFragment& fragment,
       std::vector<velox::runner::ExecutableFragment>& stages);
 
@@ -1258,7 +1269,7 @@ class Optimization {
   // fragments are referenced from 'fragment' via
   // 'inputStages' and are returned in 'stages'.
   velox::core::PlanNodePtr makeFragment(
-      RelationOpPtr op,
+      const RelationOpPtr& op,
       velox::runner::ExecutableFragment& fragment,
       std::vector<velox::runner::ExecutableFragment>& stages);
 
@@ -1271,11 +1282,11 @@ class Optimization {
   // Returns a stack of parallel project nodes if parallelization makes sense.
   // nullptr means use regular ProjectNode in output.
   velox::core::PlanNodePtr maybeParallelProject(
-      Project* op,
+      const Project* op,
       core::PlanNodePtr input);
 
   core::PlanNodePtr makeParallelProject(
-      core::PlanNodePtr input,
+      const core::PlanNodePtr& input,
       const PlanObjectSet& topExprs,
       const PlanObjectSet& placed,
       const PlanObjectSet& extraColumns);

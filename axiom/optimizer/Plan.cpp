@@ -379,7 +379,7 @@ PlanPtr PlanSet::best(const Distribution& distribution, bool& needsShuffle) {
   return best;
 }
 
-float startingScore(PlanObjectCP table, DerivedTableP /*dt*/) {
+float startingScore(PlanObjectCP table) {
   if (table->type() == PlanType::kTable) {
     return table->as<BaseTable>()
         ->schemaTable->columnGroups[0]
@@ -563,7 +563,8 @@ void forJoinedTables(const PlanState& state, Func func) {
         }
         bool usable = true;
         for (auto key : join->leftKeys()) {
-          if (!state.placed.isSubset(key->allTables())) {
+          if (!key->allTables().isSubset(state.placed)) {
+            // All items that the left key depends on must be placed.
             usable = false;
             break;
           }
@@ -803,7 +804,7 @@ RelationOpPtr repartitionForAgg(const RelationOpPtr& plan, PlanState& state) {
   Distribution distribution(
       plan->distribution().distributionType,
       plan->resultCardinality(),
-      keyValues);
+      std::move(keyValues));
   auto* repartition =
       make<Repartition>(plan, std::move(distribution), plan->columns());
   state.addCost(*repartition);
@@ -811,7 +812,7 @@ RelationOpPtr repartitionForAgg(const RelationOpPtr& plan, PlanState& state) {
 }
 
 void Optimization::addPostprocess(
-    DerivedTableP dt,
+    DerivedTableCP dt,
     RelationOpPtr& plan,
     PlanState& state) {
   if (dt->aggregation) {
@@ -1414,7 +1415,8 @@ void Optimization::addJoin(
   joinByIndex(plan, candidate, state, toTry);
   auto sizeAfterIndex = toTry.size();
   joinByHash(plan, candidate, state, toTry);
-  if (toTry.size() > sizeAfterIndex && candidate.join->isNonCommutative()) {
+  if (toTry.size() > sizeAfterIndex && candidate.join->isNonCommutative() &&
+      candidate.join->hasRightHashVariant()) {
     // There is a hash based candidate with a non-commutative join. Try a right
     // join variant.
     joinByHashRight(plan, candidate, state, toTry);
@@ -1626,7 +1628,7 @@ void Optimization::makeJoins(RelationOpPtr plan, PlanState& state) {
     for (auto i = 0; i < firstTables.size(); ++i) {
       auto table = firstTables[i];
       state.setFirstTable(table->id());
-      scores.at(i) = startingScore(table, dt);
+      scores.at(i) = startingScore(table);
     }
     std::vector<int32_t> ids(firstTables.size());
     std::iota(ids.begin(), ids.end(), 0);
@@ -1692,7 +1694,7 @@ void Optimization::makeJoins(RelationOpPtr plan, PlanState& state) {
 }
 
 namespace {
-RelationOpPtr makeDistinct(RelationOpPtr input) {
+RelationOpPtr makeDistinct(const RelationOpPtr& input) {
   ExprVector exprs;
   for (auto& c : input->columns()) {
     exprs.push_back(c);
@@ -1704,38 +1706,40 @@ RelationOpPtr makeDistinct(RelationOpPtr input) {
 }
 
 Distribution somePartition(const RelationOpPtrVector& inputs) {
-  Distribution result;
-  ExprVector columns;
   float card = 1;
-  auto inputColumns = inputs[0]->columns();
 
   // A simple type and many values is a good partitioning key.
   auto score = [&](ColumnCP column) {
-    auto card = column->value().cardinality;
-    return column->value().type->kind() >= TypeKind::ARRAY ? card / 10000
-                                                           : card;
+    const auto& value = column->value();
+    const auto card = value.cardinality;
+    return value.type->kind() >= TypeKind::ARRAY ? card / 10000 : card;
   };
 
+  const auto& firstInput = inputs[0];
+  auto inputColumns = firstInput->columns();
   std::sort(
       inputColumns.begin(),
       inputColumns.end(),
       [&](ColumnCP left, ColumnCP right) {
         return score(left) > score(right);
       });
-  for (auto i = 0; i < inputs[0]->columns().size(); ++i) {
-    auto column = inputColumns[i];
+
+  ExprVector columns;
+  for (const auto* column : inputColumns) {
     card *= column->value().cardinality;
     columns.push_back(column);
-    if (card > 100000) {
+    if (card > 100'000) {
       break;
     }
   }
-  result.partition = columns;
-  DistributionType distributionType;
 
+  DistributionType distributionType;
   distributionType.numPartitions =
       queryCtx()->optimization()->options().numWorkers;
-  distributionType.locus = inputs[0]->distribution().distributionType.locus;
+  distributionType.locus = firstInput->distribution().distributionType.locus;
+
+  Distribution result;
+  result.partition = columns;
   result.distributionType = distributionType;
   return result;
 }
@@ -1745,17 +1749,20 @@ Distribution somePartition(const RelationOpPtrVector& inputs) {
 PlanPtr unionPlan(
     std::vector<PlanState>& states,
     const std::vector<PlanPtr>& inputPlans,
-    RelationOpPtr result,
+    const RelationOpPtr& result,
     Aggregation* distinct) {
+  auto& firstState = states[0];
+
   PlanObjectSet fullyImported = inputPlans[0]->fullyImported;
   for (auto i = 1; i < states.size(); ++i) {
+    const auto& otherCost = states[i].cost;
     fullyImported.intersect(inputPlans[i]->fullyImported);
-    states[0].cost.add(states[i].cost);
+    firstState.cost.add(otherCost);
     // The input cardinality is not additive, the fanout and other metrics are.
-    states[0].cost.inputCardinality -= states[i].cost.inputCardinality;
+    firstState.cost.inputCardinality -= otherCost.inputCardinality;
   }
   if (distinct) {
-    states[0].addCost(*distinct);
+    firstState.addCost(*distinct);
   }
   auto plan = make<Plan>(result, states[0]);
   plan->fullyImported = fullyImported;
@@ -1772,21 +1779,20 @@ PlanPtr Optimization::makePlan(
     bool& needsShuffle) {
   if (key.firstTable->type() == PlanType::kDerivedTable &&
       key.firstTable->as<DerivedTable>()->setOp.has_value()) {
-    auto setDt = const_cast<DerivedTable*>(key.firstTable->as<DerivedTable>());
-    bool isDistinct =
-        setDt->setOp.value() == logical_plan::SetOperation::kUnion;
+    const auto* setDt = key.firstTable->as<DerivedTable>();
+
     RelationOpPtrVector inputs;
     std::vector<PlanPtr> inputPlans;
     std::vector<PlanState> inputStates;
     std::vector<bool> inputNeedsShuffle;
 
-    for (auto inputDt : setDt->children) {
+    for (auto* inputDt : setDt->children) {
       MemoKey inputKey = key;
       inputKey.firstTable = inputDt;
       inputKey.tables.erase(key.firstTable);
       inputKey.tables.add(inputDt);
-      bool inputShuffle = false;
 
+      bool inputShuffle = false;
       auto inputPlan = makePlan(
           inputKey,
           distribution,
@@ -1799,6 +1805,9 @@ PlanPtr Optimization::makePlan(
       inputs.push_back(inputPlan->op);
       inputNeedsShuffle.push_back(inputShuffle);
     }
+
+    const bool isDistinct =
+        setDt->setOp.value() == logical_plan::SetOperation::kUnion;
     if (isSingle_) {
       RelationOpPtr result = make<UnionAll>(inputs);
       Aggregation* distinct = nullptr;
@@ -1808,6 +1817,7 @@ PlanPtr Optimization::makePlan(
       }
       return unionPlan(inputStates, inputPlans, result, distinct);
     }
+
     if (distribution.partition.empty()) {
       if (isDistinct) {
         // Pick some partitioning key and shuffle on that and make distinct.

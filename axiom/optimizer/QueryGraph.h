@@ -399,7 +399,7 @@ class Call : public Expr {
   }
 
   Call(Name name, Value value, ExprVector args, FunctionSet functions)
-      : Call(PlanType::kCall, name, value, args, functions) {}
+      : Call(PlanType::kCall, name, value, std::move(args), functions) {}
 
   Name name() const {
     return name_;
@@ -419,6 +419,10 @@ class Call : public Expr {
 
   const ExprVector& args() const {
     return args_;
+  }
+
+  ExprCP argAt(size_t index) const {
+    return args_[index];
   }
 
   CPSpan<PlanObject> children() const override {
@@ -455,7 +459,9 @@ bool isCallExpr(ExprCP expr, Name name);
 class Lambda : public Expr {
  public:
   Lambda(ColumnVector args, const Type* type, ExprCP body)
-      : Expr(PlanType::kLambda, Value(type, 1)), args_(args), body_(body) {}
+      : Expr(PlanType::kLambda, Value(type, 1)),
+        args_(std::move(args)),
+        body_(body) {}
   const ColumnVector& args() const {
     return args_;
   }
@@ -592,6 +598,13 @@ class JoinEdge {
     return !leftTable_ || rightOptional_ || leftOptional_ || rightExists_ ||
         rightNotExists_ || markColumn_ || directed_;
   }
+
+  /// True if has a hash based variant that builds on the left and probes on the
+  /// right.
+  bool hasRightHashVariant() const {
+    return isNonCommutative() && !rightNotExists_;
+  }
+
   // Returns the join side info for 'table'. If 'other' is set, returns the
   // other side.
   const JoinSide sideOf(PlanObjectCP side, bool other = false) const;
@@ -1007,6 +1020,7 @@ struct DerivedTable : public PlanObject {
 };
 
 using DerivedTableP = DerivedTable*;
+using DerivedTableCP = const DerivedTable*;
 
 float tableCardinality(PlanObjectCP table);
 

@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include "axiom/logical_plan/ExprApi.h"
 #include "axiom/logical_plan/LogicalPlanNode.h"
 #include "axiom/logical_plan/NameAllocator.h"
 #include "velox/parse/ExpressionsParser.h"
@@ -43,15 +44,25 @@ class PlanBuilder {
   };
 
   /// Maps from an untyped call and  resolved arguments to a FunctionRewrite. Returns true if 'rewrite' should replace the original. If false, 'rewrite' is not filled in and the caller should proceed as usual.
-  using FunctionRewriteHook = std::function<bool(const std::string& name, const std::vector<ExprPtr>& args, FunctionRewrite& rewrite)>;
+  using FunctionRewriteHook = std::function<ExprPtr(const std::string& name, const std::vector<ExprPtr>& args)>;
   
   PlanBuilder()
       : planNodeIdGenerator_(std::make_shared<core::PlanNodeIdGenerator>()),
         nameAllocator_(std::make_shared<NameAllocator>()) {}
 
-  explicit PlanBuilder(const Context& context)
+  using Scope = std::function<ExprPtr(
+      const std::optional<std::string>& alias,
+      const std::string& name)>;
+
+  PlanBuilder(Scope outerScope = nullptr)
+      : planNodeIdGenerator_(std::make_shared<core::PlanNodeIdGenerator>()),
+        nameAllocator_(std::make_shared<NameAllocator>()),
+        outerScope_{std::move(outerScope)} {}
+
+  explicit PlanBuilder(const Context& context, Scope outerScope = nullptr)
       : planNodeIdGenerator_{context.planNodeIdGenerator},
-        nameAllocator_{context.nameAllocator} {
+        nameAllocator_{context.nameAllocator},
+        outerScope_{std::move(outerScope)} {
     VELOX_CHECK_NOT_NULL(planNodeIdGenerator_);
     VELOX_CHECK_NOT_NULL(nameAllocator_);
   }
@@ -65,15 +76,51 @@ class PlanBuilder {
 
   PlanBuilder& filter(const std::string& predicate);
 
+  PlanBuilder& filter(const ExprApi& predicate);
+
   PlanBuilder& project(const std::vector<std::string>& projections);
+
+  PlanBuilder& project(std::initializer_list<std::string> projections) {
+    return project(std::vector<std::string>{projections});
+  }
+
+  PlanBuilder& project(const std::vector<ExprApi>& projections);
+
+  PlanBuilder& project(std::initializer_list<ExprApi> projections) {
+    return project(std::vector<ExprApi>{projections});
+  }
 
   /// An alias for 'project'.
   PlanBuilder& map(const std::vector<std::string>& projections) {
     return project(projections);
   }
 
+  PlanBuilder& map(std::initializer_list<std::string> projections) {
+    return map(std::vector<std::string>{projections});
+  }
+
+  PlanBuilder& map(const std::vector<ExprApi>& projections) {
+    return project(projections);
+  }
+
+  PlanBuilder& map(std::initializer_list<ExprApi> projections) {
+    return map(std::vector<ExprApi>{projections});
+  }
+
   /// Similar to 'project', but appends 'projections' to the existing columns.
-  PlanBuilder& with(const std::vector<std::string>& projections);
+  PlanBuilder& with(const std::vector<std::string>& projections) {
+    return with(parse(projections));
+  }
+
+  PlanBuilder& with(std::initializer_list<std::string> projections) {
+    return with(std::vector<std::string>{projections});
+  }
+
+  PlanBuilder& with(const std::vector<ExprApi>& projections);
+
+  PlanBuilder& with(std::initializer_list<ExprApi> projections) {
+    return with(std::vector<ExprApi>{projections});
+  }
 
   PlanBuilder& aggregate(
       const std::vector<std::string>& groupingKeys,
@@ -85,6 +132,14 @@ class PlanBuilder {
       JoinType joinType);
 
   PlanBuilder& unionAll(const PlanBuilder& other);
+
+  PlanBuilder& intersect(const PlanBuilder& other);
+
+  PlanBuilder& except(const PlanBuilder& other);
+
+  PlanBuilder& setOperation(
+      SetOperation op,
+      const std::vector<PlanBuilder>& inputs);
 
   PlanBuilder& sort(const std::vector<std::string>& sortingKeys);
 
@@ -101,9 +156,13 @@ class PlanBuilder {
 
   PlanBuilder& as(const std::string& alias);
 
-  PlanBuilder& setOperation(
-      SetOperation op,
-      const std::vector<PlanBuilder>& inputs);
+  PlanBuilder& captureScope(Scope& scope) {
+    scope = [this](const auto& alias, const auto& name) {
+      return resolveInputName(alias, name);
+    };
+
+    return *this;
+  }
 
   LogicalPlanNodePtr build();
 
@@ -130,14 +189,17 @@ class PlanBuilder {
 
   AggregateExprPtr resolveAggregateTypes(const core::ExprPtr& expr) const;
 
+  std::vector<ExprApi> parse(const std::vector<std::string>& exprs);
+
   void resolveProjections(
-      const std::vector<std::string>& projections,
+      const std::vector<ExprApi>& projections,
       std::vector<std::string>& outputNames,
       std::vector<ExprPtr>& exprs,
       NameMappings& mappings);
 
   const std::shared_ptr<core::PlanNodeIdGenerator> planNodeIdGenerator_;
   const std::shared_ptr<NameAllocator> nameAllocator_;
+  const Scope outerScope_;
   const parse::ParseOptions parseOptions_;
 
   LogicalPlanNodePtr node_;

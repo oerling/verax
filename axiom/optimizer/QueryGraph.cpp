@@ -280,8 +280,7 @@ bool Expr::sameOrEqual(const Expr& other) const {
         return false;
       }
     }
-      // Fall through.
-      FMT_FALLTHROUGH;
+      [[fallthrough]];
     case PlanType::kCall: {
       if (as<Call>()->name() != other.as<Call>()->name()) {
         return false;
@@ -291,7 +290,7 @@ bool Expr::sameOrEqual(const Expr& other) const {
         return false;
       }
       for (auto i = 0; i < numArgs; ++i) {
-        if (as<Call>()->args()[i]->sameOrEqual(*other.as<Call>()->args()[i])) {
+        if (as<Call>()->argAt(i)->sameOrEqual(*other.as<Call>()->argAt(i))) {
           return false;
         }
       }
@@ -570,8 +569,8 @@ JoinEdgeP makeExists(PlanObjectCP table, const PlanObjectSet& tables) {
         continue;
       }
 
-      auto* exists = QGC_MAKE_IN_ARENA(JoinEdge)(
-          table, join->leftTable(), {}, false, false, true, false);
+      auto* exists = make<JoinEdge>(
+          table, join->leftTable(), ExprVector{}, false, false, true, false);
       for (auto i = 0; i < join->leftKeys().size(); ++i) {
         exists->addEquality(join->rightKeys()[i], join->leftKeys()[i]);
       }
@@ -617,8 +616,8 @@ std::pair<DerivedTableP, JoinEdgeP> makeExistsDtAndJoin(
   } else {
     existsDt = it->second;
   }
-  auto* joinWithDt = QGC_MAKE_IN_ARENA(JoinEdge)(
-      firstTable, existsDt, {}, false, false, true, false);
+  auto* joinWithDt = make<JoinEdge>(
+      firstTable, existsDt, ExprVector{}, false, false, true, false);
   joinWithDt->setFanouts(existsFanout, 1);
   for (auto i = 0; i < existsJoin->leftKeys().size(); ++i) {
     joinWithDt->addEquality(existsJoin->leftKeys()[i], existsDt->columns[i]);
@@ -740,7 +739,7 @@ importExpr(ExprCP expr, const ColumnVector& outer, const ExprVector& inner) {
         return copy;
       }
     }
-      FMT_FALLTHROUGH;
+      [[fallthrough]];
     default:
       VELOX_UNREACHABLE();
   }
@@ -817,8 +816,8 @@ JoinEdgeP importedJoin(
   auto left = singleTable(innerKey);
   VELOX_CHECK(left);
   auto otherKey = join->sideOf(other).keys[0];
-  auto* newJoin = QGC_MAKE_IN_ARENA(JoinEdge)(
-      left, other, {}, false, false, !fullyImported, false);
+  auto* newJoin = make<JoinEdge>(
+      left, other, ExprVector{}, false, false, !fullyImported, false);
   newJoin->addEquality(innerKey, otherKey);
   return newJoin;
 }
@@ -831,8 +830,8 @@ JoinEdgeP importedDtJoin(
   auto left = singleTable(innerKey);
   VELOX_CHECK(left);
   auto otherKey = dt->columns[0];
-  auto* newJoin = QGC_MAKE_IN_ARENA(JoinEdge)(
-      left, dt, {}, false, false, !fullyImported, false);
+  auto* newJoin = make<JoinEdge>(
+      left, dt, ExprVector{}, false, false, !fullyImported, false);
   newJoin->addEquality(innerKey, otherKey);
   return newJoin;
 }
@@ -1007,8 +1006,8 @@ findJoin(DerivedTableP dt, std::vector<PlanObjectP>& tables, bool create) {
     }
   }
   if (create) {
-    auto* join = QGC_MAKE_IN_ARENA(JoinEdge)(
-        tables[0], tables[1], {}, false, false, false, false);
+    auto* join = make<JoinEdge>(
+        tables[0], tables[1], ExprVector{}, false, false, false, false);
     dt->joins.push_back(join);
     return join;
   }
@@ -1026,8 +1025,8 @@ bool isJoinEquality(
   if (expr->type() == PlanType::kCall) {
     auto call = expr->as<Call>();
     if (call->name() == toName("eq")) {
-      left = call->args()[0];
-      right = call->args()[1];
+      left = call->argAt(0);
+      right = call->argAt(1);
       auto leftTable = singleTable(left);
       auto rightTable = singleTable(right);
       if (!leftTable || !rightTable) {
@@ -1048,26 +1047,27 @@ void extractNonInnerJoinEqualities(
     ExprVector& leftKeys,
     ExprVector& rightKeys,
     PlanObjectSet& allLeft) {
+  const auto* eq = toName("eq");
+
   for (auto i = 0; i < conjuncts.size(); ++i) {
-    auto* eq = toName("eq");
-    auto conjunct = conjuncts[i];
+    const auto* conjunct = conjuncts[i];
     if (isCallExpr(conjunct, eq)) {
       auto eq = conjunct->as<Call>();
-      auto leftTables = eq->args()[0]->allTables();
-      auto rightTables = eq->args()[1]->allTables();
+      auto leftTables = eq->argAt(0)->allTables();
+      auto rightTables = eq->argAt(1)->allTables();
       if (rightTables.size() == 1 && rightTables.contains(right) &&
           !leftTables.contains(right)) {
         allLeft.unionSet(leftTables);
-        leftKeys.push_back(eq->args()[0]);
-        rightKeys.push_back(eq->args()[1]);
+        leftKeys.push_back(eq->argAt(0));
+        rightKeys.push_back(eq->argAt(1));
         conjuncts.erase(conjuncts.begin() + i);
         --i;
       } else if (
           leftTables.size() == 1 && leftTables.contains(right) &&
           !rightTables.contains(right)) {
         allLeft.unionSet(rightTables);
-        leftKeys.push_back(eq->args()[1]);
-        rightKeys.push_back(eq->args()[0]);
+        leftKeys.push_back(eq->argAt(1));
+        rightKeys.push_back(eq->argAt(0));
         conjuncts.erase(conjuncts.begin() + i);
         --i;
       }
@@ -1081,17 +1081,26 @@ void DerivedTable::distributeConjuncts() {
     VELOX_CHECK(aggregation && aggregation->aggregation);
     auto op = aggregation->aggregation;
     PlanObjectSet grouping;
-    for (auto expr : op->grouping) {
-      grouping.unionSet(expr->columns());
+    // Gather the columns of grouping expressions. If a having depends
+    // on these alone it can move below the aggregation and gets
+    // translated from the aggregation output columns to the columns
+    // inside the agg. Consider both the grouping expr nd its rename
+    // after the aggregation.
+    for (auto i = 0; i < op->grouping.size(); ++i) {
+      grouping.unionSet(op->columns()[i]->columns());
+      grouping.unionSet(op->grouping[i]->columns());
     }
     for (auto i = 0; i < having.size(); ++i) {
       // No pushdown of non-deterministic.
       if (having[i]->containsFunction(FunctionSet::kNondeterministic)) {
         continue;
       }
-      // having that refers to no aggregates goes below the aggregation.
+      // having that refers to no aggregates goes below the
+      // aggregation. Translate from names after agg to pre-agg
+      // names. Pre/post agg names may differ for dts in set
+      // operations. If already in pre-agg names, no-op.
       if (having[i]->columns().isSubset(grouping)) {
-        conjuncts.push_back(having[i]);
+        conjuncts.push_back(importExpr(having[i], op->columns(), op->grouping));
         having.erase(having.begin() + i);
         --i;
       }

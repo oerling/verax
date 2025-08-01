@@ -90,7 +90,12 @@ PlanBuilder& PlanBuilder::filter(const std::string& predicate) {
   VELOX_USER_CHECK_NOT_NULL(node_, "Filter node cannot be a leaf node");
 
   auto untypedExpr = parse::parseExpr(predicate, parseOptions_);
-  auto expr = resolveScalarTypes(untypedExpr);
+
+  return filter(untypedExpr);
+}
+
+PlanBuilder& PlanBuilder::filter(const ExprApi& predicate) {
+  auto expr = resolveScalarTypes(predicate.expr());
 
   node_ = std::make_shared<FilterNode>(nextId(), node_, expr);
 
@@ -110,17 +115,26 @@ std::optional<std::string> tryGetRootName(const core::ExprPtr& expr) {
 }
 } // namespace
 
+std::vector<ExprApi> PlanBuilder::parse(const std::vector<std::string>& exprs) {
+  std::vector<ExprApi> untypedExprs;
+  untypedExprs.reserve(exprs.size());
+  for (const auto& sql : exprs) {
+    untypedExprs.emplace_back(parse::parseExpr(sql, parseOptions_));
+  }
+
+  return untypedExprs;
+}
+
 void PlanBuilder::resolveProjections(
-    const std::vector<std::string>& projections,
+    const std::vector<ExprApi>& projections,
     std::vector<std::string>& outputNames,
     std::vector<ExprPtr>& exprs,
     NameMappings& mappings) {
-  for (const auto& sql : projections) {
-    auto untypedExpr = parse::parseExpr(sql, parseOptions_);
-    auto expr = resolveScalarTypes(untypedExpr);
+  for (const auto& untypedExpr : projections) {
+    auto expr = resolveScalarTypes(untypedExpr.expr());
 
-    if (untypedExpr->alias().has_value()) {
-      const auto& alias = untypedExpr->alias().value();
+    if (!untypedExpr.name().empty()) {
+      const auto& alias = untypedExpr.name();
       outputNames.push_back(newName(alias));
       mappings.add(alias, outputNames.back());
     } else if (expr->isInputReference()) {
@@ -143,6 +157,10 @@ void PlanBuilder::resolveProjections(
 }
 
 PlanBuilder& PlanBuilder::project(const std::vector<std::string>& projections) {
+  return project(parse(projections));
+}
+
+PlanBuilder& PlanBuilder::project(const std::vector<ExprApi>& projections) {
   VELOX_USER_CHECK_NOT_NULL(node_, "Project node cannot be a leaf node");
 
   std::vector<std::string> outputNames;
@@ -161,7 +179,7 @@ PlanBuilder& PlanBuilder::project(const std::vector<std::string>& projections) {
   return *this;
 }
 
-PlanBuilder& PlanBuilder::with(const std::vector<std::string>& projections) {
+PlanBuilder& PlanBuilder::with(const std::vector<ExprApi>& projections) {
   VELOX_USER_CHECK_NOT_NULL(node_, "Project node cannot be a leaf node");
 
   std::vector<std::string> outputNames;
@@ -209,7 +227,8 @@ PlanBuilder& PlanBuilder::aggregate(
 
   auto newOutputMapping = std::make_shared<NameMappings>();
 
-  resolveProjections(groupingKeys, outputNames, keyExprs, *newOutputMapping);
+  resolveProjections(
+      parse(groupingKeys), outputNames, keyExprs, *newOutputMapping);
 
   std::vector<AggregateExprPtr> exprs;
   exprs.reserve(aggregates.size());
@@ -655,6 +674,11 @@ ExprPtr resolveScalarTypesImpl(
         inputs);
   }
 
+  if (const auto* subquery =
+          dynamic_cast<const core::SubqueryExpr*>(expr.get())) {
+    return std::make_shared<SubqueryExpr>(subquery->subquery());
+  }
+
   VELOX_NYI("Can't resolve {}", expr->toString());
 }
 
@@ -739,6 +763,45 @@ PlanBuilder& PlanBuilder::unionAll(const PlanBuilder& other) {
   return *this;
 }
 
+PlanBuilder& PlanBuilder::intersect(const PlanBuilder& other) {
+  VELOX_USER_CHECK_NOT_NULL(node_, "Intersect node cannot be a leaf node");
+  VELOX_USER_CHECK_NOT_NULL(other.node_);
+
+  node_ = std::make_shared<SetNode>(
+      nextId(),
+      std::vector<LogicalPlanNodePtr>{node_, other.node_},
+      SetOperation::kIntersect);
+
+  return *this;
+}
+
+PlanBuilder& PlanBuilder::except(const PlanBuilder& other) {
+  VELOX_USER_CHECK_NOT_NULL(node_, "Intersect node cannot be a leaf node");
+  VELOX_USER_CHECK_NOT_NULL(other.node_);
+
+  node_ = std::make_shared<SetNode>(
+      nextId(),
+      std::vector<LogicalPlanNodePtr>{node_, other.node_},
+      SetOperation::kExcept);
+
+  return *this;
+}
+
+PlanBuilder& PlanBuilder::setOperation(
+    SetOperation op,
+    const std::vector<PlanBuilder>& inputs) {
+  VELOX_USER_CHECK_NULL(node_, "setOperation must be a leaf");
+  outputMapping_ = inputs.front().outputMapping_;
+  std::vector<LogicalPlanNodePtr> nodes;
+  nodes.reserve(inputs.size());
+  for (auto& builder : inputs) {
+    VELOX_CHECK_NOT_NULL(builder.node_);
+    nodes.push_back(builder.node_);
+  }
+  node_ = std::make_shared<SetNode>(nextId(), std::move(nodes), op);
+  return *this;
+}
+
 PlanBuilder& PlanBuilder::sort(const std::vector<std::string>& sortingKeys) {
   VELOX_USER_CHECK_NOT_NULL(node_, "Sort node cannot be a leaf node");
 
@@ -775,12 +838,21 @@ ExprPtr PlanBuilder::resolveInputName(
           node_->outputType()->findChild(id.value()), id.value());
     }
 
+    if (outerScope_ != nullptr) {
+      // TODO Figure out how to handle dereference.
+      return outerScope_(alias, name);
+    }
+
     return nullptr;
   }
 
   if (auto id = outputMapping_->lookup(name)) {
     return std::make_shared<InputReferenceExpr>(
         node_->outputType()->findChild(id.value()), id.value());
+  }
+
+  if (outerScope_ != nullptr) {
+    return outerScope_(alias, name);
   }
 
   VELOX_USER_FAIL(
