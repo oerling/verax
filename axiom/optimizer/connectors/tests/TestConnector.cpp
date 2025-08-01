@@ -14,24 +14,20 @@
  * limitations under the License.
  */
 
-#include <gtest/gtest.h>
+#include "axiom/optimizer/connectors/tests/TestConnector.h"
 
-#include "axiom/logical_plan/NameAllocator.h"
+namespace facebook::velox::connector {
 
-namespace facebook::velox::logical_plan {
-
-TEST(NameAllocatorTest, basic) {
-  NameAllocator allocator;
-  EXPECT_EQ(allocator.newName("foo"), "foo");
-  EXPECT_EQ(allocator.newName("foo"), "foo_0");
-
-  EXPECT_EQ(allocator.newName("bar"), "bar");
-  EXPECT_EQ(allocator.newName("bar"), "bar_1");
-
-  EXPECT_EQ(allocator.newName("foo_0"), "foo_2");
-
-  EXPECT_EQ(allocator.newName("foo_bar"), "foo_bar");
-  EXPECT_EQ(allocator.newName("foo_bar"), "foo_bar_3");
+ConnectorTableHandlePtr TestConnectorMetadata::createTableHandle(
+    const TableLayout& /* layout */,
+    std::vector<ColumnHandlePtr> /* columnHandles */,
+    core::ExpressionEvaluator& /* evaluator */,
+    std::vector<core::TypedExprPtr> filters,
+    std::vector<core::TypedExprPtr>& rejectedFilters,
+    RowTypePtr /* dataColumns */,
+    std::optional<LookupKeys>) {
+  rejectedFilters = std::move(filters);
+  return std::make_shared<TestTableHandle>(connector_->connectorId());
 }
 
-} // namespace facebook::velox::logical_plan
+} // namespace facebook::velox::connector

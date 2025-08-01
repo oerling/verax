@@ -16,6 +16,7 @@
 
 #include "axiom/optimizer/PlanUtils.h"
 #include "axiom/optimizer/QueryGraph.h"
+#include "axiom/optimizer/DerivedTable.h"
 
 namespace facebook::velox::optimizer {
 
@@ -108,7 +109,7 @@ int64_t integerValueInner(const variant* variant) {
 }
 } // namespace
 
-int64_t integerValue(const variant* variant) {
+int64_t integerValue(const Variant* variant) {
   switch (variant->kind()) {
     case TypeKind::TINYINT:
       return integerValueInner<int8_t>(variant);
@@ -134,6 +135,15 @@ std::optional<int64_t> maybeIntegerLiteral(
     default:
       return std::nullopt;
   }
+}
+
+std::string conjunctsToString(const ExprVector& conjuncts) {
+  std::stringstream out;
+  for (auto i = 0; i < conjuncts.size(); ++i) {
+    out << conjuncts[i]->toString()
+        << (i == conjuncts.size() - 1 ? "" : " and ");
+  }
+  return out.str();
 }
 
 } // namespace facebook::velox::optimizer

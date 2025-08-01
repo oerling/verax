@@ -1,75 +1,437 @@
-.   LogicalSubFieldTest.cpp   16031 C++//l           ~/dv/data/users/oerling/fbsource/fbcode/axiom/optimizer/tests/LogicalSubFieldTest.cpp
-  * *shell*               52144 Shell:run        ~/verax/axiom/optimizer/tests/
-    CMakeLists.txt<axiom/optimizer/tests>    1777 CMake            ~/verax/axiom/optimizer/tests/CMakeLists.txt
- %* *compilation*           255 Compilation:exit [1] [0 0 0] 
-    CMakeLists.txt<optimizer>    1581 CMake            ~/verax/axiom/optimizer/CMakeLists.txt
-    CMakeLists.txt<verax>    4428 CMake            ~/verax/CMakeLists.txt
-    ToGraph.cpp           39516 C++//l           ~/verax/axiom/optimizer/ToGraph.cpp
-    PlanUtils.cpp<verax>    3807 C++//l           ~/verax/axiom/optimizer/PlanUtils.cpp
-    PlanUtils.h            4109 C++//l           ~/verax/axiom/optimizer/PlanUtils.h
-    Plan.h<verax>         52904 C++//l           ~/verax/axiom/optimizer/Plan.h
- %  optimizer              2774 Dired by name    ~/verax/frontend/optimizer/
-    PlanTest.cpp<axiom>   17723 C++//l           ~/verax/axiom/optimizer/tests/PlanTest.cpp
-    LogicalPlanSubfields.cpp<verax/axiom>   19445 C++//l           ~/verax/axiom/optimizer/LogicalPlanSubfields.cpp
-    PlanBuilder.cpp       28497 C++//l           ~/verax/axiom/logical_plan/PlanBuilder.cpp
-    PlanBuilder.h<verax>    7284 C++//l           ~/verax/axiom/logical_plan/PlanBuilder.h
-    Genies.h<verax>         958 C/*l             ~/verax/axiom/optimizer/tests/Genies.h
-    FeatureGen.h<verax>    2341 C/*l             ~/verax/axiom/optimizer/tests/FeatureGen.h
-    Genies.cpp<verax>      2631 C++//l           ~/verax/axiom/optimizer/tests/Genies.cpp
-    SubfieldTest.cpp<verax>   15472 C++//l           ~/verax/axiom/optimizer/tests/SubfieldTest.cpp
-    LogicalPlanToGraph.cpp<verax/axiom>   39763 C++//l           ~/verax/axiom/optimizer/LogicalPlanToGraph.cpp
-  * dv                   119462 Shell:run        ~/dv/data/users/oerling/fbsource/fbcode/axiom/optimizer/
-    QueryGraph.h<verax/axiom>   31156 C++//l           ~/verax/axiom/optimizer/QueryGraph.h
-    LogicalPlanToGraph.cpp<frontend>   39775 C++//l           ~/verax/frontend/optimizer/LogicalPlanToGraph.cpp
-    LogicalPlanSubfields.cpp<frontend>   19313 C++//l           ~/verax/frontend/optimizer/LogicalPlanSubfields.cpp
-    Expr.h<verax/frontend>   18554 C++//l           ~/verax/frontend/logical_plan/Expr.h
-    qo.txt                43412 Text             ~/qo.txt
-    pr.txt                13533 Text             ~/pr.txt
-    Genies.cpp<fbcode>     2631 C++//l           ~/dv/data/users/oerling/fbsource/fbcode/axiom/optimizer/tests/Genies.cpp
-    SubfieldTest.cpp<fbcode>   15472 C++//l           ~/dv/data/users/oerling/fbsource/fbcode/axiom/optimizer/tests/SubfieldTest.cpp
-    cm.txt                  373 Text             ~/dv/home/oerling/cm.txt
-    q                    146730 Fundamental      ~/dv/tmp/q
-    LogicalPlanSubfields.cpp<fbcode/axiom>   18697 C++//l           ~/dv/data/users/oerling/fbsource/fbcode/axiom/optimizer/LogicalPlanSubfields.cpp
-    LogicalPlanToGraph.cpp<fbcode/axiom>   38603 C++//l           ~/dv/data/users/oerling/fbsource/fbcode/axiom/optimizer/LogicalPlanToGraph.cpp
-    PlanUtils.cpp<fbcode>    2837 C++//l           ~/dv/data/users/oerling/fbsource/fbcode/axiom/optimizer/PlanUtils.cpp
-    FeatureGen.cpp        12200 C++//l           ~/fb/axiom/optimizer/tests/FeatureGen.cpp
-    Expr.h<axiom>         18360 C++//l           ~/fb/axiom/logical_plan/Expr.h
-    BUCK<tests>            3933 Fundamental      ~/fb/axiom/optimizer/tests/BUCK
-    ds.txt                  166 Text             ~/dv/home/oerling/ds.txt
-  * qqq                      54 Fundamental      
-    BUCK<optimizer>        2716 Fundamental      ~/fb/axiom/optimizer/BUCK
-    QueryGraph.h<fb/axiom>   30649 C++//l           ~/fb/axiom/optimizer/QueryGraph.h
-    ExprPrinter.h           850 C++//l           ~/dv/data/users/oerling/fbsource/fbcode/axiom/logical_plan/ExprPrinter.h
-    Genies.h<fbcode>        958 C/*l             ~/dv/data/users/oerling/fbsource/fbcode/axiom/optimizer/tests/Genies.h
-    FeatureGen.h<fbcode>    2341 C/*l             ~/dv/data/users/oerling/fbsource/fbcode/axiom/optimizer/tests/FeatureGen.h
-    Plan.h<fb>            51471 C++//l           ~/fb/axiom/optimizer/Plan.h
-    RelationOp.h<axiom>   13922 C++//l           ~/fb/axiom/optimizer/RelationOp.h
-    BUCK<logical_plan>     1156 Fundamental      ~/fb/axiom/logical_plan/BUCK
-  * dv2                   16247 Shell:run        ~/
-    lpin.add                245 Fundamental      ~/cms/lpin.add
-    PlanBuilder.h<fb>      7694 C++//l           ~/fb/axiom/logical_plan/PlanBuilder.h
-    PlanTest.cpp<frontend>   17503 C++//l           ~/verax/frontend/optimizer/tests/PlanTest.cpp
-    RelationOp.h<frontend>   14309 C++//l           ~/verax/frontend/optimizer/RelationOp.h
-    Schema.h              15813 C++//l           ~/verax/frontend/optimizer/Schema.h
-    QueryGraph.h<frontend>   31172 C++//l           ~/verax/frontend/optimizer/QueryGraph.h
-    PlanObject.h           5371 C++//l           ~/verax/frontend/optimizer/PlanObject.h
-    dv\                       0 Fundamental      
-    Expr.h<velox/frontend>   18547 C++//l           ~/fb/velox/frontend/logical_plan/Expr.h
-    Expr.cpp              10250 C++//l           ~/fb/velox/frontend/logical_plan/Expr.cpp
-    VeloxToLogical.cpp     5208 C++//l           ~/verax/frontend/optimizer/tests/utils/VeloxToLogical.cpp
-    LogicalPlanNode.h     20822 C++//l           ~/verax/frontend/logical_plan/LogicalPlanNode.h
- %  new_allocator.h        6047 C++//l           /usr/include/c++/11/ext/new_allocator.h
-    CMakeLists.txt<frontend/optimizer/tests>    1526 CMake            ~/verax/frontend/optimizer/tests/CMakeLists.txt
-    CMakeLists.txt<utils>     683 CMake            ~/verax/frontend/optimizer/tests/utils/CMakeLists.txt
-    Connector.h           24823 C++//l           ~/verax/velox/velox/connectors/Connector.h
-    TableHandle.h          5982 C++//l           ~/verax/velox/velox/connectors/hive/TableHandle.h
-  * vr2                    8756 Shell:run        ~/
-    PlanNode.h           156061 C++//l           ~/verax/velox/velox/core/PlanNode.h
-    books.txt              5716 Text             ~/books.txt
- %  *GNU Emacs*             851 Fundamental      
-    *scratch*               145 Lisp Interaction 
- %* *Messages*            25881 Messages         
- %* *Notifications*        2017 Special          
-    clipboard               141 Fundamental      ~/.emacspeak/clipboard
-    pwd                       0 Fundamental      ~/dv/data/users/oerling/fbsource/fbcode/axiom/optimizer/pwd
-    *vc*                      0 Fundamental      
+/*
+ * Copyright (c) Meta Platforms, Inc. and its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "axiom/logical_plan/PlanBuilder.h"
+#include "axiom/optimizer/FunctionRegistry.h"
+#include "axiom/optimizer/tests/FeatureGen.h"
+#include "axiom/optimizer/tests/Genies.h"
+#include "axiom/optimizer/tests/QueryTestBase.h"
+#include "velox/common/base/tests/GTestUtils.h"
+#include "velox/exec/tests/utils/PlanBuilder.h"
+#include "velox/parse/Expressions.h"
+#include "velox/vector/tests/utils/VectorMaker.h"
+
+DEFINE_string(subfield_data_path, "", "Data directory for subfield test data");
+
+using namespace facebook::velox;
+using namespace facebook::velox::optimizer;
+using namespace facebook::velox::optimizer::test;
+using namespace facebook::velox::exec::test;
+namespace lp = facebook::velox::logical_plan;
+
+class LogicalSubfieldTest : public QueryTestBase,
+                            public testing::WithParamInterface<int32_t> {
+ protected:
+  static void SetUpTestCase() {
+    testDataPath_ = FLAGS_subfield_data_path;
+    LocalRunnerTestBase::localFileFormat_ = "dwrf";
+    LocalRunnerTestBase::SetUpTestCase();
+  }
+
+  static void TearDownTestCase() {
+    LocalRunnerTestBase::TearDownTestCase();
+  }
+
+  void SetUp() override {
+    QueryTestBase::SetUp();
+    switch (GetParam()) {
+      case 1:
+        optimizerOptions_ = OptimizerOptions();
+        break;
+      case 2:
+        optimizerOptions_ = OptimizerOptions{.pushdownSubfields = true};
+        break;
+      case 3:
+        optimizerOptions_ = OptimizerOptions{.pushdownSubfields = true};
+        optimizerOptions_.mapAsStruct["features"] = {
+            "float_features", "id_list_features", "id_score_list_features"};
+        break;
+      default:
+        FAIL();
+        break;
+    }
+  }
+
+  void TearDown() override {
+    QueryTestBase::TearDown();
+  }
+
+  void declareGenies() {
+    TypePtr genieType = makeGenieType();
+    std::vector<TypePtr> genieArgs = {
+        genieType->childAt(0),
+        genieType->childAt(1),
+        genieType->childAt(2),
+        genieType->childAt(3)};
+    planner_->registerScalarFunction("genie", genieArgs, genieType);
+    planner_->registerScalarFunction("exploding_genie", genieArgs, genieType);
+    registerGenieUdfs();
+
+    auto metadata = std::make_unique<FunctionMetadata>();
+    metadata->fieldIndexForArg = {1, 2, 3};
+    metadata->argOrdinal = {1, 2, 3};
+    auto* instance = FunctionRegistry::instance();
+    auto explodingMetadata = std::make_unique<FunctionMetadata>(*metadata);
+    instance->registerFunction("genie", std::move(metadata));
+
+    explodingMetadata->logicalExplode = logicalExplodeGenie;
+    instance->registerFunction("exploding_genie", std::move(explodingMetadata));
+  }
+
+  static std::unordered_map<PathCP, lp::ExprPtr> logicalExplodeGenie(
+      const lp::CallExpr* call,
+      std::vector<PathCP>& paths) {
+    // This function understands paths like [1][cc], [2][cc],
+    // .__3[cc] where __x is an ordinal field reference and cc is an integer
+    // constant. If there is an empty path or a path with just one step, this
+    // returns empty, meaning nothing is exploded. If the paths are longer, e.g.
+    // idslf[11][1], then the trailing part is ignored. The returned map will
+    // have the expression for each distinct path that begins with one of [1],
+    // [2], [3] followed by an integer subscript.
+    std::unordered_map<PathCP, lp::ExprPtr> result;
+    for (auto& path : paths) {
+      auto& steps = path->steps();
+      if (steps.size() < 2) {
+        return {};
+      }
+
+      std::vector<Step> prefixSteps = {steps[0], steps[1]};
+      auto prefixPath = toPath(std::move(prefixSteps));
+      if (result.count(prefixPath)) {
+        // There already is an expression for this path.
+        continue;
+      }
+      VELOX_CHECK(steps.front().kind == StepKind::kField);
+      auto nth = steps.front().id;
+      VELOX_CHECK_LE(nth, 3);
+      auto args = call->inputs();
+
+      // Here, for the sake of example, we make every odd key return identity.
+      if (steps[1].id % 2 == 1) {
+        result[prefixPath] = stepToLogicalPlanGetter(steps[1], args[nth]);
+        continue;
+      }
+
+      // For changed float_features, we add the feature id to the value.
+      if (nth == 1) {
+        result[prefixPath] = std::make_shared<lp::CallExpr>(
+            REAL(),
+            "plus",
+            std::vector<lp::ExprPtr>{
+                stepToLogicalPlanGetter(steps[1], args[nth]),
+                std::make_shared<lp::ConstantExpr>(
+                    REAL(),
+                    std::make_shared<variant>(
+                        static_cast<float>(steps[1].id)))});
+        continue;
+      }
+
+      // For changed id list features, we do array_distinct on the list.
+      if (nth == 2) {
+        result[prefixPath] = std::make_shared<lp::CallExpr>(
+            ARRAY(BIGINT()),
+            "array_distinct",
+            std::vector<lp::ExprPtr>{
+                stepToLogicalPlanGetter(steps[1], args[nth])});
+        continue;
+      }
+
+      // Access to idslf. Identity.
+      result[prefixPath] = stepToLogicalPlanGetter(steps[1], args[nth]);
+    }
+    return result;
+  }
+
+  std::vector<RowVectorPtr> extractAndIncrementIdList(
+      const std::vector<RowVectorPtr>& vectors,
+      int32_t key) {
+    std::vector<RowVectorPtr> result;
+    facebook::velox::test::VectorMaker vectorMaker(pool_.get());
+
+    for (auto& row : vectors) {
+      auto* idList = row->childAt(3)->as<MapVector>();
+      auto* keys = idList->mapKeys()->as<FlatVector<int32_t>>();
+      auto* values = idList->mapValues()->as<ArrayVector>();
+      auto idsShared =
+          BaseVector::create(values->type(), row->size(), values->pool());
+      auto* ids = idsShared->as<ArrayVector>();
+      for (auto i = 0; i < idList->size(); ++i) {
+        bool found = false;
+        for (auto k = idList->offsetAt(i);
+             k < idList->offsetAt(i) + idList->sizeAt(i);
+             ++k) {
+          if (keys->valueAt(k) == key) {
+            ids->copy(values, i, k, 1);
+            auto* elt = ids->elements()->as<FlatVector<int64_t>>();
+            for (auto e = ids->offsetAt(i);
+                 e < ids->offsetAt(i) + ids->sizeAt(i);
+                 ++e) {
+              elt->set(e, elt->valueAt(e) + 1);
+            }
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          ids->setNull(i, true);
+        }
+      }
+      result.push_back(vectorMaker.rowVector({idsShared}));
+    }
+
+    return result;
+  }
+
+  std::vector<std::string> fieldNames(const RowTypePtr& type) {
+    std::vector<std::string> result;
+    for (auto i = 0; i < type->size(); ++i) {
+      result.push_back(type->nameOf(i));
+    }
+    return result;
+  }
+
+  void testParallelExpr(FeatureOptions& opts, const RowTypePtr& rowType) {
+    core::PlanNodePtr veloxPlan;
+    // No randoms in test expr, different runs must come out the same.
+    opts.randomPct = 0;
+
+    {
+      std::vector<std::string> names;
+      std::vector<core::TypedExprPtr> exprs;
+
+      opts.rng.seed(1);
+      makeExprs(opts, names, exprs);
+
+      auto builder = PlanBuilder()
+                         .tableScan("features", rowType)
+                         .addNode([&](std::string id, auto node) {
+                           return std::make_shared<core::ProjectNode>(
+                               id, std::move(names), std::move(exprs), node);
+                         });
+      veloxPlan = builder.planNode();
+    }
+
+    std::vector<std::string> names;
+    std::vector<lp::ExprPtr> exprs;
+
+    opts.rng.seed(1);
+    makeLogicalExprs(opts, names, exprs);
+    lp::PlanBuilder::Context ctx;
+    auto builder = lp::PlanBuilder(ctx).tableScan(
+        kHiveConnectorId, "features", fieldNames(rowType));
+    lp::LogicalPlanNodePtr logicalPlan = std::make_shared<lp::ProjectNode>(
+        ctx.planNodeIdGenerator->next(),
+        builder.build(),
+        std::move(names),
+        std::move(exprs));
+
+    optimizerOptions_.parallelProjectWidth = 8;
+    auto fragmentedPlan = planVelox(logicalPlan);
+    auto plan = veloxString(fragmentedPlan.plan);
+
+    expectRegexp(plan, "ParallelProject");
+    std::cout << plan;
+    assertSame(veloxPlan, fragmentedPlan);
+  }
+};
+
+TEST_P(LogicalSubfieldTest, structs) {
+  auto structType =
+      ROW({"s1", "s2", "s3"},
+          {BIGINT(), ROW({"s2s1"}, {BIGINT()}), ARRAY(BIGINT())});
+  auto rowType = ROW({"s", "i"}, {structType, BIGINT()});
+  auto vectors = makeVectors(rowType, 10, 10);
+  auto fs = filesystems::getFileSystem(testDataPath_, {});
+  fs->mkdir(testDataPath_ + "/structs");
+  auto filePath = testDataPath_ + "/structs/structs.dwrf";
+  writeToFile(filePath, vectors);
+  tablesCreated();
+
+  auto builder =
+      lp::PlanBuilder()
+          .tableScan(kHiveConnectorId, "structs", fieldNames(rowType))
+          .project({"s.s1 as a", "s.s3[0] as arr0"});
+
+  auto plan = veloxString(planVelox(builder.build()).plan);
+  expectRegexp(plan, "s.*Subfields.*s.s3\\[0\\]");
+  expectRegexp(plan, "s.*Subfields.*s.s1");
+}
+
+TEST_P(LogicalSubfieldTest, maps) {
+  FeatureOptions opts;
+  opts.rng.seed(1);
+  auto vectors = makeFeatures(1, 100, opts, pool_.get());
+  auto rowType = std::dynamic_pointer_cast<const RowType>(vectors[0]->type());
+  auto fields = fieldNames(rowType);
+  auto fs = filesystems::getFileSystem(testDataPath_, {});
+  fs->mkdir(testDataPath_ + "/features");
+  auto filePath = testDataPath_ + "/features/features.dwrf";
+  auto config = std::make_shared<dwrf::Config>();
+  config->set(dwrf::Config::FLATTEN_MAP, true);
+  config->set<const std::vector<uint32_t>>(
+      dwrf::Config::MAP_FLAT_COLS, {2, 3, 4});
+
+  writeToFile(filePath, vectors, config);
+  tablesCreated();
+  std::string plan;
+
+  {
+    lp::PlanBuilder::Context ctx;
+    auto builder =
+        lp::PlanBuilder(ctx)
+            .tableScan(kHiveConnectorId, "features", fields)
+            .project({"uid", "float_features as ff"})
+            .join(
+                lp::PlanBuilder(ctx)
+                    .tableScan(kHiveConnectorId, "features", fields)
+                    .filter(
+                        "uid % 2 = 1 and cast(float_features[10300::INTEGER] as integer) % 2::INTEGER = 0::INTEGER")
+                    .project({"uid as opt_uid", "float_features as opt_ff"}),
+                "uid = opt_uid",
+                lp::JoinType::kLeft)
+            .project(
+                {"uid",
+                 "opt_uid",
+                 "ff[10100::INTEGER] as f10",
+                 "ff[10200::INTEGER] as f20",
+                 "opt_ff[10100::INTEGER] as o10",
+                 "opt_ff[10200::INTEGER] as o20"});
+
+    plan = veloxString(planVelox(builder.build()).plan);
+    std::cout << plan << std::endl;
+  }
+  {
+    auto builder =
+        lp::PlanBuilder()
+            .tableScan(kHiveConnectorId, "features", fields)
+            .project(
+                {"float_features[10100::INTEGER] as f1",
+                 "float_features[10200::INTEGER] as f2",
+                 "id_score_list_features[200800::INTEGER][100000::BIGINT]"});
+    plan = veloxString(planVelox(builder.build()).plan);
+    expectRegexp(plan, "float_features.*Subfields.*float_features.10100.");
+    expectRegexp(plan, "float_features.*Subfields.*float_features.10200.");
+    expectRegexp(
+        plan,
+        "id_score_list_features.*Subfields.* id_score_list_features.200800.*\\[100000\\]");
+    expectRegexp(plan, "ubfield.*id_list", false);
+  }
+  {
+    auto builder = lp::PlanBuilder()
+                       .tableScan(kHiveConnectorId, "features", fields)
+                       .project(
+                           {"float_features[10000::INTEGER] as ff",
+                            "id_score_list_features[200800::INTEGER] as sc1",
+                            "id_list_features as idlf"})
+                       .project({"sc1[1::BIGINT] + 1::REAL as score"});
+    plan = veloxString(planVelox(builder.build()).plan);
+    expectRegexp(
+        plan,
+        "id_score_list_features.*Subfields:.*\\[ id_score_list_features.200800.*\\[1\\]");
+    expectRegexp(plan, "ubfield.*id_list", false);
+    expectRegexp(plan, "ubfield.*float_f", false);
+  }
+  {
+    auto builder = lp::PlanBuilder()
+                       .tableScan(kHiveConnectorId, "features", fields)
+                       .project(
+                           {"float_features[10100::INTEGER] as ff",
+                            "id_score_list_features[200800::INTEGER] as sc1",
+                            "id_list_features as idlf",
+                            "uid"})
+                       .project(
+                           {"sc1[1::BIGINT] + 1::REAL as score",
+                            "idlf[cast(uid % 100 as INTEGER)] as any"});
+    plan = veloxString(planVelox(builder.build()).plan);
+    expectRegexp(
+        plan, "id_list_features.*Subfields:.* id_list_features\\[\\*\\]");
+  }
+  declareGenies();
+
+  // Selected fields of genie are accessed. The uid and idslf args are not
+  // accessed and should not be in the table scan.
+  {
+    auto builder =
+        lp::PlanBuilder()
+            .tableScan(kHiveConnectorId, "features", fields)
+            .project(
+                {"genie(uid, float_features, id_list_features, id_score_list_features) as g"})
+            // Access some fields of the genie by name, others by index.
+            .project(
+                {"g.ff[10200::INTEGER] as f2",
+                 "g[2][10100::INTEGER] as f11",
+                 "g[2][10200::INTEGER] + 22::REAL  as f2b",
+                 "g.idlf[201600::INTEGER] as idl100"});
+
+    plan = veloxString(planVelox(builder.build()).plan);
+    expectRegexp(plan, "float_features.*Subfield.*float_features.10200");
+    expectRegexp(plan, "id_list_features.*Subfields.*id_list_features.201600");
+  }
+  // All of genie is returned.
+  {
+    auto builder =
+        lp::PlanBuilder()
+            .tableScan(kHiveConnectorId, "features", fields)
+            .project(
+                {"genie(uid, float_features, id_list_features, id_score_list_features) as g"})
+            .project(
+                {"g",
+                 "g[2][10100::INTEGER] as f10",
+                 "g[2][10200::INTEGER] as f2",
+                 "g[3][200600::INTEGER] as idl100"});
+
+    plan = veloxString(planVelox(builder.build()).plan);
+    std::cout << plan << std::endl;
+  }
+
+  // We expect the genie to explode and the filters to be first.
+  {
+    auto builder =
+        lp::PlanBuilder()
+            .tableScan(kHiveConnectorId, "features", fields)
+            .project(
+                {"exploding_genie(uid, float_features, id_list_features, id_score_list_features) as g"})
+            .project({"g[2] as ff", "g as gg"})
+            .project(
+                {"ff[10100::INTEGER] as f10",
+                 "ff[10100::INTEGER] as f11",
+                 "ff[10200::INTEGER] as f2",
+                 "gg[2][10200::INTEGER] + 22::REAL as f2b",
+                 "gg[3][200600::INTEGER] as idl100"})
+            .filter("f10 < 10::REAL and f11 < 10::REAL");
+
+    plan = veloxString(planVelox(builder.build()).plan);
+    std::cout << plan << std::endl;
+  }
+  {
+    auto builder =
+        lp::PlanBuilder()
+            .tableScan(kHiveConnectorId, "features", fields)
+            .project(
+                {"transform(id_list_features[201800::INTEGER], x -> x + 1) as ids"});
+
+    auto result = runVelox(builder.build());
+    auto expected = extractAndIncrementIdList(vectors, 201800);
+    assertEqualResults(expected, result.results);
+  }
+
+  testParallelExpr(opts, rowType);
+}
+
+VELOX_INSTANTIATE_TEST_SUITE_P(
+    LogicalSubfieldTests,
+    LogicalSubfieldTest,
+    testing::ValuesIn(std::vector<int32_t>{1, 2, 3}));

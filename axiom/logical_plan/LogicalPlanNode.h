@@ -34,6 +34,8 @@ enum class NodeKind {
   kUnnest = 9,
 };
 
+VELOX_DECLARE_ENUM_NAME(NodeKind)
+
 class LogicalPlanNode;
 using LogicalPlanNodePtr = std::shared_ptr<const LogicalPlanNode>;
 
@@ -63,6 +65,11 @@ class LogicalPlanNode {
 
   NodeKind kind() const {
     return kind_;
+  }
+
+  template <typename T>
+  const T* asUnchecked() const {
+    return dynamic_cast<const T*>(this);
   }
 
   const std::string& id() const {
@@ -235,6 +242,11 @@ class ProjectNode : public LogicalPlanNode {
 
   const std::vector<ExprPtr>& expressions() const {
     return expressions_;
+  }
+
+  const ExprPtr& expressionAt(size_t index) const {
+    VELOX_USER_CHECK_LT(index, expressions_.size());
+    return expressions_.at(index);
   }
 
   void accept(const PlanNodeVisitor& visitor, PlanNodeVisitorContext& context)
@@ -514,22 +526,19 @@ VELOX_DECLARE_ENUM_NAME(SetOperation)
 
 /// Set-level operation that supports combining datasets, possibly excluding
 /// rows based on various types of row level matching.
+///
+/// All inputs must have compatible types. Number and types of columns must be
+/// the same. Columns names being unique will be different. The output schema of
+/// the Set node is the schema of the first input. Column names in the output of
+/// the Set match column names in the first input.
+///
+/// Set operation must specify at least 2 inputs.
 class SetNode : public LogicalPlanNode {
  public:
   SetNode(
       const std::string& id,
       const std::vector<LogicalPlanNodePtr>& inputs,
-      SetOperation operation)
-      : LogicalPlanNode(NodeKind::kSet, id, inputs, inputs.at(0)->outputType()),
-        operation_{operation} {
-    VELOX_USER_CHECK_GE(
-        inputs.size(), 2, "Set operation requires at least 2 inputs");
-    for (const auto& input : inputs) {
-      VELOX_USER_CHECK(
-          *input->outputType() == *outputType(),
-          "Output schemas of all inputs to a Set operation must match");
-    }
-  }
+      SetOperation operation);
 
   SetOperation operation() const {
     return operation_;

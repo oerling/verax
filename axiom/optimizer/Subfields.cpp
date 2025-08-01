@@ -16,9 +16,6 @@
 
 #include "axiom/optimizer/FunctionRegistry.h"
 #include "axiom/optimizer/Plan.h"
-#include "axiom/optimizer/PlanUtils.h"
-#include "velox/exec/Aggregate.h"
-#include "velox/expression/ConstantExpr.h"
 
 namespace facebook::velox::optimizer {
 
@@ -62,9 +59,6 @@ void Optimization::markFieldAccessed(
   auto fields = isControl ? &controlSubfields_ : &payloadSubfields_;
   if (source.planNode) {
     auto name = source.planNode->name();
-    if (name == "TableScan") {
-      LOG(INFO) << "ff";
-    }
     auto path = stepsToPath(steps);
     fields->nodeFields[source.planNode].resultPaths[ordinal].add(path->id());
     if (name == "Project") {
@@ -132,14 +126,16 @@ void Optimization::markFieldAccessed(
   }
   // The source is a lambda arg. We apply the path to the corresponding
   // container arg of the 2nd order function call that has the lambda.
-  auto* md =
-      FunctionRegistry::instance()->metadata(toName(source.call->name()));
-  auto* lInfo = md->lambdaInfo(source.lambdaOrdinal);
-  auto nth = lInfo->argOrdinal[ordinal];
   auto callContext = context;
   callContext.erase(callContext.begin());
   auto callSources = sources;
   callSources.erase(callSources.begin());
+
+  auto* md =
+      FunctionRegistry::instance()->metadata(toName(source.call->name()));
+  const auto* lambdaInfo = md->lambdaInfo(source.lambdaOrdinal);
+  const auto nth = lambdaInfo->argOrdinal[ordinal];
+
   markSubfields(
       source.call->inputs()[nth].get(),
       steps,
@@ -152,7 +148,7 @@ void Optimization::markSubfields(
     const core::ITypedExpr* expr,
     std::vector<Step>& steps,
     bool isControl,
-    const std::vector<const RowType*> context,
+    const std::vector<const RowType*>& context,
     const std::vector<ContextSource>& sources) {
   if (auto* field = dynamic_cast<const core::DereferenceTypedExpr*>(expr)) {
     auto* input = field->inputs()[0].get();
@@ -276,7 +272,7 @@ void Optimization::markSubfields(
           continue;
         }
       }
-      if (auto* lambda = metadata->lambdaInfo(i)) {
+      if (metadata->lambdaInfo(i)) {
         auto argType = lambdaArgType(call->inputs()[i].get());
         std::vector<const RowType*> newContext = {argType.get()};
         newContext.insert(newContext.end(), context.begin(), context.end());

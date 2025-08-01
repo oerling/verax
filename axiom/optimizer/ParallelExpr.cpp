@@ -14,12 +14,13 @@
  * limitations under the License.
  */
 
-#include "axiom/optimizer/ParallelProject.h"
 #include "axiom/optimizer/Plan.h"
 #include "velox/core/Expressions.h"
+#include "velox/core/PlanNode.h"
 
 namespace facebook::velox::optimizer {
 
+namespace {
 struct LevelData {
   int32_t exprCount{0};
   float levelCost{0};
@@ -76,7 +77,7 @@ void makeExprLevels(
 }
 
 PlanObjectSet makeCseBorder(
-    std::vector<LevelData> levelData,
+    const std::vector<LevelData>& levelData,
     PlanObjectSet& placed,
     std::unordered_map<ExprCP, int32_t>& refCount) {
   PlanObjectSet border;
@@ -101,8 +102,10 @@ PlanObjectSet makeCseBorder(
   return border;
 }
 
+} // namespace
+
 core::PlanNodePtr Optimization::makeParallelProject(
-    core::PlanNodePtr input,
+    const core::PlanNodePtr& input,
     const PlanObjectSet& topExprs,
     const PlanObjectSet& placed,
     const PlanObjectSet& extraColumns) {
@@ -154,9 +157,11 @@ core::PlanNodePtr Optimization::makeParallelProject(
       VELOX_UNREACHABLE();
     }
   });
-  return std::make_shared<exec::ParallelProjectNode>(
+  return std::make_shared<core::ParallelProjectNode>(
       nextId(), std::move(names), std::move(groups), std::move(extra), input);
 }
+
+namespace {
 
 // Returns the columns used by Exprs in 'top', excluding columns only referenced
 // from 'placed'.
@@ -257,9 +262,10 @@ float parallelBorder(
       return 0;
   }
 }
+} // namespace
 
 core::PlanNodePtr Optimization::maybeParallelProject(
-    Project* project,
+    const Project* project,
     core::PlanNodePtr input) {
   PlanObjectSet top;
   PlanObjectSet allColumns;

@@ -19,21 +19,34 @@
 #include "axiom/optimizer/FunctionRegistry.h"
 #include "axiom/optimizer/Plan.h"
 #include "axiom/optimizer/PlanUtils.h"
-#include "velox/exec/Aggregate.h"
+#include "velox/exec/AggregateFunctionRegistry.h"
 #include "velox/expression/ConstantExpr.h"
 #include "velox/expression/FunctionSignature.h"
+#include "velox/vector/VariantToVector.h"
 
 namespace facebook::velox::optimizer {
 
 namespace lp = facebook::velox::logical_plan;
 
+namespace {
+std::string leString(const lp::Expr* e) {
+  return lp::ExprPrinter::toText(*e);
+}
+
+std::string pString(const lp::LogicalPlanNode* p) {
+  return lp::PlanPrinter::toText(*p);
+}
+
+} // namespace
+
 void Optimization::setDerivedTableOutput(
     DerivedTableP dt,
     const lp::LogicalPlanNode& planNode) {
-  auto& outputType = planNode.outputType();
+  const auto& outputType = planNode.outputType();
   for (auto i = 0; i < outputType->size(); ++i) {
-    auto fieldType = outputType->childAt(i);
-    auto fieldName = outputType->nameOf(i);
+    const auto& fieldType = outputType->childAt(i);
+    const auto& fieldName = outputType->nameOf(i);
+
     auto expr = translateColumn(fieldName);
     Value value(toType(fieldType), 0);
     auto* column = make<Column>(toName(fieldName), dt, value);
@@ -45,33 +58,13 @@ void Optimization::setDerivedTableOutput(
 
 DerivedTableP Optimization::makeQueryGraphFromLogical() {
   markAllSubfields(logicalPlan_->outputType().get(), logicalPlan_);
-  auto* root = make<DerivedTable>();
-  root_ = root;
+
+  root_ = newDt();
   currentSelect_ = root_;
-  root->cname = toName(fmt::format("dt{}", ++nameCounter_));
+
   makeQueryGraph(*logicalPlan_, kAllAllowedInDt);
   return root_;
 }
-
-namespace {
-
-const std::string* columnName(const lp::Expr& expr) {
-  if (expr.isInputReference()) {
-    return &expr.asUnchecked<lp::InputReferenceExpr>()->name();
-  }
-  return nullptr;
-}
-
-template <TypeKind kind>
-std::shared_ptr<const variant> toVariant(BaseVector& constantVector) {
-  using T = typename TypeTraits<kind>::NativeType;
-  if (auto typed = dynamic_cast<ConstantVector<T>*>(&constantVector)) {
-    return std::make_shared<Variant>(typed->valueAt(0));
-  }
-  VELOX_FAIL("Literal not of foldable type");
-}
-
-} // namespace
 
 void Optimization::translateConjuncts(
     const lp::ExprPtr& input,
@@ -91,10 +84,10 @@ void Optimization::translateConjuncts(
 std::shared_ptr<const exec::ConstantExpr> Optimization::foldConstant(
     const core::TypedExprPtr& typedExpr) {
   auto exprSet = evaluator_.compile(typedExpr);
-  auto first = exprSet->exprs().front().get();
-  if (dynamic_cast<const exec::ConstantExpr*>(first)) {
-    return std::dynamic_pointer_cast<exec::ConstantExpr>(
-        exprSet->exprs().front());
+  const auto& first = exprSet->exprs().front();
+
+  if (first->isConstant()) {
+    return std::dynamic_pointer_cast<exec::ConstantExpr>(first);
   }
   return nullptr;
 }
@@ -115,30 +108,17 @@ ExprCP Optimization::tryFoldConstant(
     auto exprSet = evaluator_.compile(typedExpr);
     auto first = exprSet->exprs().front().get();
     if (auto constantExpr = dynamic_cast<const exec::ConstantExpr*>(first)) {
-      lp::ConstantExprPtr typed;
-      auto kind = constantExpr->type()->kind();
-      switch (kind) {
-        case TypeKind::ARRAY:
-        case TypeKind::ROW:
-        case TypeKind::MAP:
-          VELOX_NYI("Need complex type to variant conversion");
-          break;
-        default: {
-          auto variantLiteral = VELOX_DYNAMIC_SCALAR_TYPE_DISPATCH(
-              toVariant,
-              constantExpr->value()->typeKind(),
-              *constantExpr->value());
-          typed = std::make_shared<lp::ConstantExpr>(
-              constantExpr->type(), variantLiteral);
-          break;
-        }
-      }
+      auto typed = std::make_shared<lp::ConstantExpr>(
+          constantExpr->type(),
+          std::make_shared<Variant>(vectorToVariant(constantExpr->value(), 0)));
+
       return makeConstant(*typed);
     }
-    return nullptr;
   } catch (const std::exception&) {
-    return nullptr;
+    // Swallow exception.
   }
+
+  return nullptr;
 }
 
 bool Optimization::isSubfield(
@@ -165,7 +145,8 @@ bool Optimization::isSubfield(
     input = expr->inputAt(0);
     return true;
   }
-  if (auto* call = dynamic_cast<const lp::CallExpr*>(expr)) {
+
+  if (const auto* call = expr->asUnchecked<lp::CallExpr>()) {
     auto name = call->name();
     if (name == "subscript" || name == "element_at") {
       auto subscript = translateExpr(call->inputAt(1));
@@ -206,12 +187,10 @@ void Optimization::getExprForField(
     const lp::LogicalPlanNode*& context) {
   for (;;) {
     auto& name = field->asUnchecked<lp::InputReferenceExpr>()->name();
-    auto row = context->outputType();
-    auto ordinal = row->getChildIdx(name);
-    if (auto* project = dynamic_cast<const lp::ProjectNode*>(context)) {
+    auto ordinal = context->outputType()->getChildIdx(name);
+    if (const auto* project = context->asUnchecked<lp::ProjectNode>()) {
       auto& def = project->expressions()[ordinal];
-      if (auto* innerField =
-              dynamic_cast<const lp::InputReferenceExpr*>(def.get())) {
+      if (const auto* innerField = def->asUnchecked<lp::InputReferenceExpr>()) {
         context = context->inputAt(0).get();
         field = innerField;
         continue;
@@ -220,7 +199,8 @@ void Optimization::getExprForField(
       context = project->inputAt(0).get();
       return;
     }
-    auto& sources = context->inputs();
+
+    const auto& sources = context->inputs();
     if (sources.empty()) {
       auto leaf = findLeaf(context);
       auto it = renames_.find(name);
@@ -237,11 +217,10 @@ void Optimization::getExprForField(
       return;
     }
 
-    for (auto i = 0; i < sources.size(); ++i) {
-      auto& row = sources[i]->outputType();
-      auto maybe = row->getChildIdxIfExists(name);
-      if (maybe.has_value()) {
-        context = sources[i].get();
+    for (const auto& source : sources) {
+      const auto& row = source->outputType();
+      if (auto maybe = row->getChildIdxIfExists(name)) {
+        context = source.get();
         break;
       }
     }
@@ -314,24 +293,24 @@ PathCP innerPath(const std::vector<Step>& steps, int32_t last) {
 }
 } // namespace
 
-variant* subscriptLiteral(TypeKind kind, const Step& step) {
+Variant* subscriptLiteral(TypeKind kind, const Step& step) {
   auto* ctx = queryCtx();
   switch (kind) {
     case TypeKind::VARCHAR:
       return ctx->registerVariant(
-          std::make_unique<variant>(std::string(step.field)));
+          std::make_unique<Variant>(std::string(step.field)));
     case TypeKind::BIGINT:
       return ctx->registerVariant(
-          std::make_unique<variant>(static_cast<int64_t>(step.id)));
+          std::make_unique<Variant>(static_cast<int64_t>(step.id)));
     case TypeKind::INTEGER:
       return ctx->registerVariant(
-          std::make_unique<variant>(static_cast<int32_t>(step.id)));
+          std::make_unique<Variant>(static_cast<int32_t>(step.id)));
     case TypeKind::SMALLINT:
       return ctx->registerVariant(
-          std::make_unique<variant>(static_cast<int16_t>(step.id)));
+          std::make_unique<Variant>(static_cast<int16_t>(step.id)));
     case TypeKind::TINYINT:
       return ctx->registerVariant(
-          std::make_unique<variant>(static_cast<int8_t>(step.id)));
+          std::make_unique<Variant>(static_cast<int8_t>(step.id)));
     default:
       VELOX_FAIL("Unsupported key type");
   }
@@ -458,7 +437,7 @@ BitSet Optimization::functionSubfields(
 }
 
 void Optimization::ensureFunctionSubfields(const lp::ExprPtr& expr) {
-  if (auto* call = dynamic_cast<const lp::CallExpr*>(expr.get())) {
+  if (const auto* call = expr->asUnchecked<lp::CallExpr>()) {
     auto metadata = FunctionRegistry::instance()->metadata(
         exec::sanitizeName(call->name()));
     if (!metadata) {
@@ -543,7 +522,7 @@ ExprCP Optimization::deduppedCall(
   }
   auto* call =
       make<Call>(name, std::move(value), std::move(args), std::move(flags));
-  if (!call->containsFunction(FunctionSet::kNondeterministic)) {
+  if (!call->containsNonDeterministic()) {
     key.args = &call->args();
     functionDedup_[key] = call;
   }
@@ -581,16 +560,16 @@ const char* specialFormCallName(const lp::SpecialFormExpr* form) {
     case lp::SpecialForm::kSwitch:
       return "switch";
     default:
-      VELOX_UNREACHABLE(
-          "Bad special form {}", static_cast<int32_t>(form->form()));
+      VELOX_UNREACHABLE(lp::SpecialFormName::toName(form->form()));
   }
 }
 } // namespace
 
 ExprCP Optimization::translateExpr(const lp::ExprPtr& expr) {
-  if (auto name = columnName(*expr)) {
-    return translateColumn(*name);
+  if (expr->isInputReference()) {
+    return translateColumn(expr->asUnchecked<lp::InputReferenceExpr>()->name());
   }
+
   if (expr->isConstant()) {
     return makeConstant(*expr->asUnchecked<lp::ConstantExpr>());
   }
@@ -598,7 +577,8 @@ ExprCP Optimization::translateExpr(const lp::ExprPtr& expr) {
   if (path.has_value()) {
     return path.value();
   }
-  auto call = dynamic_cast<const lp::CallExpr*>(expr.get());
+
+  const auto* call = expr->asUnchecked<lp::CallExpr>();
   std::string callName;
   if (call) {
     callName = exec::sanitizeName(call->name());
@@ -727,7 +707,7 @@ std::optional<ExprCP> Optimization::translateSubfieldFunction(
       // make a null of the type for the unused arg to keep the tree valid.
       args[i] = make<Literal>(
           Value(toType(call->inputs()[i]->type()), 1),
-          make<variant>(variant::null(call->inputs()[i]->type()->kind())));
+          make<Variant>(Variant::null(call->inputs()[i]->type()->kind())));
     }
   }
   auto* name = toName(exec::sanitizeName(call->name()));
@@ -750,11 +730,11 @@ std::optional<ExprCP> Optimization::translateSubfieldFunction(
 }
 
 ExprCP Optimization::translateColumn(const std::string& name) {
-  auto column = renames_.find(name);
-  if (column != renames_.end()) {
-    return column->second;
+  auto it = renames_.find(name);
+  if (it != renames_.end()) {
+    return it->second;
   }
-  VELOX_FAIL("could not resolve name {}", name);
+  VELOX_FAIL("Cannot resolve column name: {}", name);
 }
 
 ExprVector Optimization::translateColumns(
@@ -767,34 +747,37 @@ ExprVector Optimization::translateColumns(
 }
 
 AggregationP Optimization::translateAggregation(
-    const lp::AggregateNode& source) {
+    const lp::AggregateNode& logicalAgg) {
   auto* aggregation =
-      make<Aggregation>(nullptr, translateColumns(source.groupingKeys()));
-  std::unordered_map<std::string, ExprCP> keyRenames;
+      make<Aggregation>(nullptr, translateColumns(logicalAgg.groupingKeys()));
 
-  for (auto i = 0; i < source.groupingKeys().size(); ++i) {
-    if (aggregation->grouping[i]->type() == PlanType::kColumn) {
-      aggregation->mutableColumns().push_back(
-          aggregation->grouping[i]->as<Column>());
+  for (auto i = 0; i < logicalAgg.groupingKeys().size(); ++i) {
+    auto name = toName(logicalAgg.outputType()->nameOf(i));
+    auto* key = aggregation->grouping[i];
+
+    if (key->type() == PlanType::kColumn) {
+      aggregation->mutableColumns().push_back(key->as<Column>());
     } else {
-      auto name = toName(source.outputType()->nameOf(i));
-      toType(source.outputType()->childAt(i));
+      toType(logicalAgg.outputType()->childAt(i));
 
-      auto* column =
-          make<Column>(name, currentSelect_, aggregation->grouping[i]->value());
+      auto* column = make<Column>(name, currentSelect_, key->value());
       aggregation->mutableColumns().push_back(column);
-      keyRenames[name] = column;
     }
+
+    renames_[name] = aggregation->mutableColumns().back();
   }
+
   // The keys for intermediate are the same as for final.
   aggregation->intermediateColumns = aggregation->columns();
-  for (auto channel : usedChannels(&source)) {
-    if (channel < source.groupingKeys().size()) {
+  for (auto channel : usedChannels(&logicalAgg)) {
+    if (channel < logicalAgg.groupingKeys().size()) {
       continue;
     }
-    auto i = channel - source.groupingKeys().size();
-    auto aggregate = source.aggregates()[i];
+
+    const auto i = channel - logicalAgg.groupingKeys().size();
+    const auto& aggregate = logicalAgg.aggregates()[i];
     ExprVector args = translateColumns(aggregate->inputs());
+
     FunctionSet funcs;
     std::vector<TypePtr> argTypes;
     for (auto& arg : args) {
@@ -806,10 +789,10 @@ AggregationP Optimization::translateAggregation(
       condition = translateExpr(aggregate->filter());
     }
     VELOX_CHECK(aggregate->ordering().empty());
-    Name aggName = toName(aggregate->name());
 
-    auto accumulatorType =
-        toType(exec::Aggregate::intermediateType(aggregate->name(), argTypes));
+    Name aggName = toName(aggregate->name());
+    auto accumulatorType = toType(
+        exec::resolveAggregateFunction(aggregate->name(), argTypes).second);
     Value finalValue = Value(toType(aggregate->type()), 1);
     auto* agg = make<Aggregate>(
         aggName,
@@ -820,7 +803,7 @@ AggregationP Optimization::translateAggregation(
         condition,
         false,
         accumulatorType);
-    auto name = toName(source.outputNames()[channel]);
+    auto name = toName(logicalAgg.outputNames()[channel]);
     auto* column = make<Column>(name, currentSelect_, agg->value());
     aggregation->mutableColumns().push_back(column);
     auto intermediateValue = agg->value();
@@ -830,16 +813,14 @@ AggregationP Optimization::translateAggregation(
     aggregation->intermediateColumns.push_back(intermediateColumn);
     auto dedupped = queryCtx()->dedup(agg);
     aggregation->aggregates.push_back(dedupped->as<Aggregate>());
-    auto resultName = toName(source.outputNames()[i]);
-    renames_[resultName] = aggregation->columns().back();
+
+    renames_[name] = aggregation->columns().back();
   }
-  for (auto& pair : keyRenames) {
-    renames_[pair.first] = pair.second;
-  }
+
   return aggregation;
 }
 
-OrderByP Optimization::translateOrderBy(const lp::SortNode& order) {
+PlanObjectP Optimization::addOrderBy(const lp::SortNode& order) {
   OrderTypeVector orderType;
   ExprVector keys;
   for (auto& field : order.ordering()) {
@@ -852,20 +833,24 @@ OrderByP Optimization::translateOrderBy(const lp::SortNode& order) {
 
     keys.push_back(translateExpr(field.expression));
   }
-  auto* orderBy = QGC_MAKE_IN_ARENA(OrderBy)(nullptr, keys, orderType, {});
-  return orderBy;
+
+  currentSelect_->orderBy = make<OrderBy>(nullptr, keys, orderType);
+  return currentSelect_;
 }
 
 void Optimization::translateJoin(const lp::JoinNode& join) {
-  auto joinLeft = join.left();
-  auto joinRight = join.right();
+  const auto& joinLeft = join.left();
+  const auto& joinRight = join.right();
 
-  auto joinType = join.joinType();
-  bool isInner = joinType == lp::JoinType::kInner;
+  const auto joinType = join.joinType();
+  const bool isInner = joinType == lp::JoinType::kInner;
+
   makeQueryGraph(*joinLeft, allow(PlanType::kJoin));
+
   // For an inner join a join tree on the right can be flattened, for all other
   // kinds it must be kept together in its own dt.
   makeQueryGraph(*joinRight, isInner ? allow(PlanType::kJoin) : 0);
+
   ExprVector conjuncts;
   translateConjuncts(join.condition(), conjuncts);
 
@@ -873,21 +858,26 @@ void Optimization::translateJoin(const lp::JoinNode& join) {
     currentSelect_->conjuncts.insert(
         currentSelect_->conjuncts.end(), conjuncts.begin(), conjuncts.end());
   } else {
-    bool leftOptional =
+    const bool leftOptional =
         joinType == lp::JoinType::kRight || joinType == lp::JoinType::kFull;
-    bool rightOptional =
+    const bool rightOptional =
         joinType == lp::JoinType::kLeft || joinType == lp::JoinType::kFull;
-    ExprVector leftKeys;
-    ExprVector rightKeys;
-    PlanObjectSet leftTables;
+
     // If non-inner, and many tables on the right they are one dt. If a single
     // table then this too is the last in 'tables'.
     auto rightTable = currentSelect_->tables.back();
+
+    ExprVector leftKeys;
+    ExprVector rightKeys;
+    PlanObjectSet leftTables;
     extractNonInnerJoinEqualities(
         conjuncts, rightTable, leftKeys, rightKeys, leftTables);
+
     std::vector<PlanObjectCP> leftTableVector;
+    leftTableVector.reserve(leftTables.size());
     leftTables.forEach(
         [&](PlanObjectCP table) { leftTableVector.push_back(table); });
+
     auto* edge = make<JoinEdge>(
         leftTableVector.size() == 1 ? leftTableVector[0] : nullptr,
         rightTable,
@@ -903,71 +893,66 @@ void Optimization::translateJoin(const lp::JoinNode& join) {
   }
 }
 
-namespace {
-
-bool isJoin(const lp::LogicalPlanNode& node) {
-  auto kind = node.kind();
-  if (kind == lp::NodeKind::kJoin) {
-    return true;
-  }
-  if (kind == lp::NodeKind::kFilter || kind == lp::NodeKind::kProject) {
-    return isJoin(*node.inputAt(0));
-  }
-  return false;
+DerivedTableP Optimization::newDt() {
+  auto* dt = make<DerivedTable>();
+  dt->cname = toName(fmt::format("dt{}", ++nameCounter_));
+  return dt;
 }
-
-bool isDirectOver(const lp::LogicalPlanNode& node, lp::NodeKind kind) {
-  auto source = node.inputAt(0);
-  return source && source->kind() == kind;
-}
-} // namespace
 
 PlanObjectP Optimization::wrapInDt(const lp::LogicalPlanNode& node) {
   DerivedTableP previousDt = currentSelect_;
-  auto* newDt = make<DerivedTable>();
-  auto cname = toName(fmt::format("dt{}", ++nameCounter_));
-  newDt->cname = cname;
-  currentSelect_ = newDt;
+  auto* dt = newDt();
+
+  currentSelect_ = dt;
   makeQueryGraph(node, kAllAllowedInDt);
 
   currentSelect_ = previousDt;
-  velox::RowTypePtr type = node.outputType();
-  // node.name() == "Aggregation" ? aggFinalType_ : node.outputType();
-  for (auto i : usedChannels(&node)) {
-    ExprCP inner = translateColumn(type->nameOf(i));
-    newDt->exprs.push_back(inner);
-    auto* outer = make<Column>(toName(type->nameOf(i)), newDt, inner->value());
-    newDt->columns.push_back(outer);
-    renames_[type->nameOf(i)] = outer;
-  }
-  currentSelect_->tables.push_back(newDt);
-  currentSelect_->tableSet.add(newDt);
-  newDt->makeInitialPlan();
 
-  return newDt;
+  const auto& type = node.outputType();
+  for (auto i : usedChannels(&node)) {
+    const auto& name = type->nameOf(i);
+
+    const auto* inner = translateColumn(name);
+    dt->exprs.push_back(inner);
+
+    const auto* outer = make<Column>(toName(name), dt, inner->value());
+    dt->columns.push_back(outer);
+    renames_[name] = outer;
+  }
+
+  currentSelect_->tables.push_back(dt);
+  currentSelect_->tableSet.add(dt);
+  dt->makeInitialPlan();
+
+  return dt;
 }
 
 PlanObjectP Optimization::makeBaseTable(const lp::TableScanNode* tableScan) {
-  auto schemaTable = schema_.findTable(tableScan->tableName());
-  auto cname = fmt::format("t{}", ++nameCounter_);
+  const auto* schemaTable = schema_.findTable(tableScan->tableName());
+  VELOX_CHECK_NOT_NULL(
+      schemaTable, "Table not found: {}", tableScan->tableName());
 
   auto* baseTable = make<BaseTable>();
-  baseTable->cname = toName(cname);
+  baseTable->cname = toName(fmt::format("t{}", ++nameCounter_));
   baseTable->schemaTable = schemaTable;
   logicalPlanLeaves_[tableScan] = baseTable;
+
   auto channels = usedChannels(tableScan);
-  auto type = tableScan->outputType();
-  auto& names = tableScan->columnNames();
+  const auto& type = tableScan->outputType();
+  const auto& names = tableScan->columnNames();
   for (auto i = 0; i < type->size(); ++i) {
     if (std::find(channels.begin(), channels.end(), i) == channels.end()) {
       continue;
     }
-    auto schemaColumn = schemaTable->findColumn(names[i]);
+
+    const auto& name = names[i];
+    auto schemaColumn = schemaTable->findColumn(name);
     auto value = schemaColumn->value();
     auto* column =
-        make<Column>(toName(names[i]), baseTable, value, schemaColumn->name());
+        make<Column>(toName(name), baseTable, value, schemaColumn->name());
     baseTable->columns.push_back(column);
-    auto kind = column->value().type->kind();
+
+    const auto kind = column->value().type->kind();
     if (kind == TypeKind::ARRAY || kind == TypeKind::ROW ||
         kind == TypeKind::MAP) {
       BitSet allPaths;
@@ -991,6 +976,7 @@ PlanObjectP Optimization::makeBaseTable(const lp::TableScanNode* tableScan) {
         }
       }
     }
+
     renames_[type->nameOf(i)] = column;
   }
 
@@ -1051,62 +1037,66 @@ void Optimization::makeSubfieldColumns(
   allColumnSubfields_[column] = std::move(projections);
 }
 
-void Optimization::addProjection(const lp::ProjectNode* project) {
-  logicalExprSource_ = project->inputAt(0).get();
+PlanObjectP Optimization::addProjection(const lp::ProjectNode* project) {
+  logicalExprSource_ = project->onlyInput().get();
   const auto& names = project->names();
   const auto& exprs = project->expressions();
   for (auto i : usedChannels(project)) {
     if (exprs[i]->isInputReference()) {
-      auto name = exprs[i]->asUnchecked<lp::InputReferenceExpr>()->name();
+      const auto& name =
+          exprs[i]->asUnchecked<lp::InputReferenceExpr>()->name();
       // A variable projected to itself adds no renames. Inputs contain this
       // all the time.
       if (name == names[i]) {
         continue;
       }
     }
+
     auto expr = translateExpr(exprs.at(i));
     renames_[names[i]] = expr;
   }
+
+  return currentSelect_;
 }
 
-void Optimization::addFilter(const lp::FilterNode* filter) {
-  logicalExprSource_ = filter->inputAt(0).get();
+PlanObjectP Optimization::addFilter(const lp::FilterNode* filter) {
+  logicalExprSource_ = filter->onlyInput().get();
+
   ExprVector flat;
   translateConjuncts(filter->predicate(), flat);
-  if (isDirectOver(*filter, lp::NodeKind::kAggregate)) {
+  if (logicalExprSource_->kind() == lp::NodeKind::kAggregate) {
     VELOX_CHECK(
         currentSelect_->having.empty(),
-        "Must have aall of HAVING in one filter");
+        "Must have all of HAVING in one filter");
     currentSelect_->having = flat;
   } else {
     currentSelect_->conjuncts.insert(
         currentSelect_->conjuncts.end(), flat.begin(), flat.end());
   }
+
+  return currentSelect_;
 }
 
-PlanObjectP Optimization::addAggregation(
-    const lp::AggregateNode& aggNode,
-    uint64_t allowedInDt) {
-  using AggregateNode = lp::AggregateNode;
-  if (!contains(allowedInDt, PlanType::kAggregation)) {
-    return wrapInDt(aggNode);
-  }
+PlanObjectP Optimization::addAggregation(const lp::AggregateNode& aggNode) {
   aggFinalType_ = aggNode.outputType();
-  makeQueryGraph(
-      *aggNode.inputAt(0), makeDtIf(allowedInDt, PlanType::kAggregation));
-  auto agg = translateAggregation(aggNode);
-  if (agg) {
-    auto* aggPlan = make<AggregationPlan>(agg);
-    currentSelect_->aggregation = aggPlan;
-  }
+
+  auto* aggPlan = make<AggregationPlan>(translateAggregation(aggNode));
+  currentSelect_->aggregation = aggPlan;
+
+  return currentSelect_;
+}
+
+PlanObjectP Optimization::addLimit(const logical_plan::LimitNode& limitNode) {
+  currentSelect_->limit = limitNode.count();
+  currentSelect_->offset = limitNode.offset();
   return currentSelect_;
 }
 
 namespace {
 bool hasNondeterministic(const lp::ExprPtr& expr) {
-  if (auto* call = dynamic_cast<const lp::CallExpr*>(expr.get())) {
+  if (const auto* call = expr->asUnchecked<lp::CallExpr>()) {
     if (functionBits(toName(call->name()))
-            .contains(FunctionSet::kNondeterministic)) {
+            .contains(FunctionSet::kNonDeterministic)) {
       return true;
     }
   }
@@ -1119,79 +1109,281 @@ bool hasNondeterministic(const lp::ExprPtr& expr) {
 }
 } // namespace
 
+DerivedTableP Optimization::translateSetJoin(
+    const lp::SetNode& set,
+    DerivedTableP setDt) {
+  auto previousDt = currentSelect_;
+  currentSelect_ = setDt;
+  for (auto& input : set.inputs()) {
+    wrapInDt(*input);
+  }
+
+  const bool exists = set.operation() == lp::SetOperation::kIntersect;
+  const bool anti = set.operation() == lp::SetOperation::kExcept;
+
+  const auto* left = setDt->tables[0]->as<DerivedTable>();
+
+  for (auto i = 1; i < setDt->tables.size(); ++i) {
+    const auto* right = setDt->tables[i]->as<DerivedTable>();
+
+    auto* joinEdge =
+        make<JoinEdge>(left, right, ExprVector{}, false, false, exists, anti);
+    for (auto i = 0; i < left->columns.size(); ++i) {
+      joinEdge->addEquality(left->columns[i], right->columns[i]);
+    }
+
+    setDt->joins.push_back(joinEdge);
+  }
+
+  const auto& type = set.outputType();
+  ExprVector exprs;
+  ColumnVector columns;
+  for (auto i = 0; i < type->size(); ++i) {
+    exprs.push_back(left->columns[i]);
+    columns.push_back(
+        make<Column>(toName(type->nameOf(i)), setDt, exprs.back()->value()));
+    renames_[type->nameOf(i)] = columns.back();
+  }
+
+  auto agg = make<Aggregation>(nullptr, exprs);
+  agg->mutableColumns() = columns;
+  agg->intermediateColumns = columns;
+
+  setDt->aggregation = make<AggregationPlan>(agg);
+  for (auto& c : columns) {
+    setDt->exprs.push_back(c);
+  }
+  setDt->columns = columns;
+  setDt->makeInitialPlan();
+  currentSelect_ = previousDt;
+  return setDt;
+}
+
+void Optimization::makeUnionDistributionAndStats(
+    DerivedTableP setDt,
+    DerivedTableP innerDt) {
+  if (setDt->distribution == nullptr) {
+    DistributionType empty;
+    setDt->distribution = make<Distribution>(empty, 0, ExprVector{});
+  }
+  if (innerDt == nullptr) {
+    innerDt = setDt;
+  }
+  if (innerDt->children.empty()) {
+    VELOX_CHECK_EQ(
+        innerDt->columns.size(),
+        setDt->columns.size(),
+        "Union inputs must have same arity also after pruning");
+
+    MemoKey key;
+    key.firstTable = innerDt;
+    key.tables.add(innerDt);
+    for (auto& column : innerDt->columns) {
+      key.columns.add(column);
+    }
+
+    auto it = memo_.find(key);
+    VELOX_CHECK(it != memo_.end(), "Expecting to find a plan for union branch");
+
+    bool ignore;
+    Distribution emptyDistribution;
+    auto plan = it->second.best(emptyDistribution, ignore)->op;
+    setDt->distribution->cardinality += plan->distribution().cardinality;
+    for (auto i = 0; i < setDt->columns.size(); ++i) {
+      // The Column is created in setDt before all branches are planned so the
+      // value is mutated here.
+      auto mutableValue =
+          const_cast<float*>(&setDt->columns[i]->value().cardinality);
+      *mutableValue += plan->columns()[i]->value().cardinality;
+    }
+  } else {
+    for (auto& child : innerDt->children) {
+      makeUnionDistributionAndStats(setDt, child);
+    }
+  }
+}
+
+DerivedTableP Optimization::translateUnion(
+    const lp::SetNode& set,
+    DerivedTableP setDt,
+    bool isTopLevel,
+    bool& isLeftLeaf) {
+  auto initialRenames = renames_;
+  std::vector<DerivedTableP, QGAllocator<DerivedTable*>> children;
+  bool isFirst = true;
+  DerivedTableP previousDt = currentSelect_;
+  for (auto& input : set.inputs()) {
+    if (!isFirst) {
+      renames_ = initialRenames;
+    } else {
+      isFirst = false;
+    }
+
+    currentSelect_ = newDt();
+
+    auto& newDt = currentSelect_;
+
+    auto isUnionLike =
+        [](const lp::LogicalPlanNode& node) -> const lp::SetNode* {
+      if (node.kind() == lp::NodeKind::kSet) {
+        const auto* set = node.asUnchecked<lp::SetNode>();
+        if (set->operation() == lp::SetOperation::kUnion ||
+            set->operation() == lp::SetOperation::kUnionAll) {
+          return set;
+        }
+      }
+
+      return nullptr;
+    };
+
+    if (auto* setNode = isUnionLike(*input)) {
+      auto inner = translateUnion(*setNode, setDt, false, isLeftLeaf);
+      children.push_back(inner);
+    } else {
+      makeQueryGraph(*input, kAllAllowedInDt);
+
+      const auto& type = input->outputType();
+
+      if (isLeftLeaf) {
+        // This is the left leaf of a union tree.
+        for (auto i : usedChannels(input.get())) {
+          const auto& name = type->nameOf(i);
+
+          ExprCP inner = translateColumn(name);
+          newDt->exprs.push_back(inner);
+
+          // The top dt has the same columns as all the unioned dts.
+          auto* outer = make<Column>(toName(name), setDt, inner->value());
+          setDt->columns.push_back(outer);
+          newDt->columns.push_back(outer);
+        }
+        isLeftLeaf = false;
+      } else {
+        for (auto i : usedChannels(input.get())) {
+          ExprCP inner = translateColumn(type->nameOf(i));
+          newDt->exprs.push_back(inner);
+        }
+
+        // Same outward facing columns as the top dt of union.
+        newDt->columns = setDt->columns;
+      }
+
+      newDt->makeInitialPlan();
+      children.push_back(newDt);
+    }
+  }
+
+  currentSelect_ = previousDt;
+  if (isTopLevel) {
+    setDt->children = std::move(children);
+    setDt->setOp = set.operation();
+
+    makeUnionDistributionAndStats(setDt);
+
+    renames_ = initialRenames;
+    for (const auto* column : setDt->columns) {
+      renames_[column->name()] = column;
+    }
+  } else {
+    setDt = newDt();
+    setDt->children = std::move(children);
+    setDt->setOp = set.operation();
+  }
+  return setDt;
+}
+
 PlanObjectP Optimization::makeQueryGraph(
     const lp::LogicalPlanNode& node,
     uint64_t allowedInDt) {
-  auto kind = node.kind();
-  if (kind == lp::NodeKind::kFilter &&
-      !contains(allowedInDt, PlanType::kFilter)) {
-    return wrapInDt(node);
-  }
+  switch (node.kind()) {
+    case lp::NodeKind::kValues:
+      VELOX_NYI(
+          "Unsupported PlanNode {}",
+          logical_plan::NodeKindName::toName(node.kind()));
 
-  if (kind == lp::NodeKind::kJoin && !contains(allowedInDt, PlanType::kJoin)) {
-    return wrapInDt(node);
-  }
-  if (kind == lp::NodeKind::kTableScan) {
-    return makeBaseTable(reinterpret_cast<const lp::TableScanNode*>(&node));
-  }
-  if (kind == lp::NodeKind::kProject) {
-    makeQueryGraph(*node.inputAt(0), allowedInDt);
-    addProjection(reinterpret_cast<const lp::ProjectNode*>(&node));
-    return currentSelect_;
-  }
-  if (kind == lp::NodeKind::kFilter) {
-    auto filter = reinterpret_cast<const lp::FilterNode*>(&node);
-    if (!isNondeterministicWrap_ && hasNondeterministic(filter->predicate())) {
-      // Force wrap the filter and its input inside a dt so the filter
-      // does not get mixed with parrent nodes.
-      isNondeterministicWrap_ = true;
-      return makeQueryGraph(node, 0);
-    }
-    isNondeterministicWrap_ = false;
-    makeQueryGraph(*node.inputAt(0), allowedInDt);
-    addFilter(filter);
-    return currentSelect_;
-  }
-  if (kind == lp::NodeKind::kJoin) {
-    if (!contains(allowedInDt, PlanType::kJoin)) {
-      return wrapInDt(node);
-    }
-    translateJoin(*reinterpret_cast<const lp::JoinNode*>(&node));
-    return currentSelect_;
-  }
-  if (kind == lp::NodeKind::kAggregate) {
-    return addAggregation(
-        *reinterpret_cast<const lp::AggregateNode*>(&node), allowedInDt);
-  }
-  if (kind == lp::NodeKind::kSort) {
-    if (!contains(allowedInDt, PlanType::kOrderBy)) {
-      return wrapInDt(node);
-    }
-    makeQueryGraph(*node.inputAt(0), makeDtIf(allowedInDt, PlanType::kOrderBy));
-    currentSelect_->orderBy =
-        translateOrderBy(*reinterpret_cast<const lp::SortNode*>(&node));
-    return currentSelect_;
-  }
-  if (kind == lp::NodeKind::kLimit) {
-    if (!contains(allowedInDt, PlanType::kLimit)) {
-      return wrapInDt(node);
-    }
-    makeQueryGraph(*node.inputAt(0), makeDtIf(allowedInDt, PlanType::kLimit));
-    auto limit = reinterpret_cast<const lp::LimitNode*>(&node);
-    currentSelect_->limit = limit->count();
-    currentSelect_->offset = limit->offset();
-  } else {
-    VELOX_NYI("Unsupported PlanNode {}", static_cast<int32_t>(kind));
-  }
-  return currentSelect_;
-}
+    case lp::NodeKind::kTableScan:
+      return makeBaseTable(node.asUnchecked<lp::TableScanNode>());
 
-std::string leString(const lp::Expr* e) {
-  return lp::ExprPrinter::toText(*e);
-}
+    case lp::NodeKind::kFilter: {
+      if (!contains(allowedInDt, PlanType::kFilter)) {
+        return wrapInDt(node);
+      }
 
-std::string pString(const lp::LogicalPlanNode* p) {
-  return lp::PlanPrinter::toText(*p);
+      const auto* filter = node.asUnchecked<lp::FilterNode>();
+      if (!isNondeterministicWrap_ &&
+          hasNondeterministic(filter->predicate())) {
+        // Force wrap the filter and its input inside a dt so the filter
+        // does not get mixed with parrent nodes.
+        isNondeterministicWrap_ = true;
+        return makeQueryGraph(node, 0);
+      }
+
+      isNondeterministicWrap_ = false;
+      makeQueryGraph(*node.onlyInput(), allowedInDt);
+      return addFilter(filter);
+    }
+
+    case lp::NodeKind::kProject:
+      makeQueryGraph(*node.onlyInput(), allowedInDt);
+      return addProjection(node.asUnchecked<lp::ProjectNode>());
+
+    case lp::NodeKind::kAggregate:
+      if (!contains(allowedInDt, PlanType::kAggregation)) {
+        return wrapInDt(node);
+      }
+
+      makeQueryGraph(
+          *node.onlyInput(), makeDtIf(allowedInDt, PlanType::kAggregation));
+      return addAggregation(*node.asUnchecked<lp::AggregateNode>());
+
+    case lp::NodeKind::kJoin:
+      if (!contains(allowedInDt, PlanType::kJoin)) {
+        return wrapInDt(node);
+      }
+
+      translateJoin(*node.asUnchecked<lp::JoinNode>());
+      return currentSelect_;
+
+    case lp::NodeKind::kSort:
+      if (!contains(allowedInDt, PlanType::kOrderBy)) {
+        return wrapInDt(node);
+      }
+
+      makeQueryGraph(
+          *node.onlyInput(), makeDtIf(allowedInDt, PlanType::kOrderBy));
+      return addOrderBy(*node.asUnchecked<lp::SortNode>());
+
+    case lp::NodeKind::kLimit: {
+      if (!contains(allowedInDt, PlanType::kLimit)) {
+        return wrapInDt(node);
+      }
+
+      makeQueryGraph(
+          *node.onlyInput(), makeDtIf(allowedInDt, PlanType::kLimit));
+      return addLimit(*node.asUnchecked<lp::LimitNode>());
+    }
+
+    case lp::NodeKind::kSet: {
+      auto* setDt = newDt();
+
+      auto* set = node.asUnchecked<lp::SetNode>();
+      if (set->operation() == lp::SetOperation::kUnion ||
+          set->operation() == lp::SetOperation::kUnionAll) {
+        bool isLeftLeaf = true;
+        translateUnion(*set, setDt, true, isLeftLeaf);
+      } else {
+        translateSetJoin(*set, setDt);
+      }
+      currentSelect_->tables.push_back(setDt);
+      currentSelect_->tableSet.add(setDt);
+      return currentSelect_;
+    }
+    case lp::NodeKind::kUnnest:
+    default:
+      VELOX_NYI(
+          "Unsupported PlanNode {}",
+          logical_plan::NodeKindName::toName(node.kind()));
+  }
 }
 
 } // namespace facebook::velox::optimizer

@@ -15,6 +15,7 @@
  */
 
 #include "axiom/logical_plan/PlanBuilder.h"
+#include "axiom/logical_plan/NameMappings.h"
 #include "axiom/optimizer/connectors/ConnectorMetadata.h"
 #include "velox/connectors/Connector.h"
 #include "velox/exec/Aggregate.h"
@@ -87,7 +88,12 @@ PlanBuilder& PlanBuilder::filter(const std::string& predicate) {
   VELOX_USER_CHECK_NOT_NULL(node_, "Filter node cannot be a leaf node");
 
   auto untypedExpr = parse::parseExpr(predicate, parseOptions_);
-  auto expr = resolveScalarTypes(untypedExpr);
+
+  return filter(untypedExpr);
+}
+
+PlanBuilder& PlanBuilder::filter(const ExprApi& predicate) {
+  auto expr = resolveScalarTypes(predicate.expr());
 
   node_ = std::make_shared<FilterNode>(nextId(), node_, expr);
 
@@ -107,17 +113,26 @@ std::optional<std::string> tryGetRootName(const core::ExprPtr& expr) {
 }
 } // namespace
 
+std::vector<ExprApi> PlanBuilder::parse(const std::vector<std::string>& exprs) {
+  std::vector<ExprApi> untypedExprs;
+  untypedExprs.reserve(exprs.size());
+  for (const auto& sql : exprs) {
+    untypedExprs.emplace_back(parse::parseExpr(sql, parseOptions_));
+  }
+
+  return untypedExprs;
+}
+
 void PlanBuilder::resolveProjections(
-    const std::vector<std::string>& projections,
+    const std::vector<ExprApi>& projections,
     std::vector<std::string>& outputNames,
     std::vector<ExprPtr>& exprs,
     NameMappings& mappings) {
-  for (const auto& sql : projections) {
-    auto untypedExpr = parse::parseExpr(sql, parseOptions_);
-    auto expr = resolveScalarTypes(untypedExpr);
+  for (const auto& untypedExpr : projections) {
+    auto expr = resolveScalarTypes(untypedExpr.expr());
 
-    if (untypedExpr->alias().has_value()) {
-      const auto& alias = untypedExpr->alias().value();
+    if (!untypedExpr.name().empty()) {
+      const auto& alias = untypedExpr.name();
       outputNames.push_back(newName(alias));
       mappings.add(alias, outputNames.back());
     } else if (expr->isInputReference()) {
@@ -140,6 +155,10 @@ void PlanBuilder::resolveProjections(
 }
 
 PlanBuilder& PlanBuilder::project(const std::vector<std::string>& projections) {
+  return project(parse(projections));
+}
+
+PlanBuilder& PlanBuilder::project(const std::vector<ExprApi>& projections) {
   VELOX_USER_CHECK_NOT_NULL(node_, "Project node cannot be a leaf node");
 
   std::vector<std::string> outputNames;
@@ -158,7 +177,7 @@ PlanBuilder& PlanBuilder::project(const std::vector<std::string>& projections) {
   return *this;
 }
 
-PlanBuilder& PlanBuilder::with(const std::vector<std::string>& projections) {
+PlanBuilder& PlanBuilder::with(const std::vector<ExprApi>& projections) {
   VELOX_USER_CHECK_NOT_NULL(node_, "Project node cannot be a leaf node");
 
   std::vector<std::string> outputNames;
@@ -206,7 +225,8 @@ PlanBuilder& PlanBuilder::aggregate(
 
   auto newOutputMapping = std::make_shared<NameMappings>();
 
-  resolveProjections(groupingKeys, outputNames, keyExprs, *newOutputMapping);
+  resolveProjections(
+      parse(groupingKeys), outputNames, keyExprs, *newOutputMapping);
 
   std::vector<AggregateExprPtr> exprs;
   exprs.reserve(aggregates.size());
@@ -645,6 +665,11 @@ ExprPtr resolveScalarTypesImpl(
         inputs);
   }
 
+  if (const auto* subquery =
+          dynamic_cast<const core::SubqueryExpr*>(expr.get())) {
+    return std::make_shared<SubqueryExpr>(subquery->subquery());
+  }
+
   VELOX_NYI("Can't resolve {}", expr->toString());
 }
 
@@ -717,6 +742,57 @@ PlanBuilder& PlanBuilder::join(
   return *this;
 }
 
+PlanBuilder& PlanBuilder::unionAll(const PlanBuilder& other) {
+  VELOX_USER_CHECK_NOT_NULL(node_, "UnionAll node cannot be a leaf node");
+  VELOX_USER_CHECK_NOT_NULL(other.node_);
+
+  node_ = std::make_shared<SetNode>(
+      nextId(),
+      std::vector<LogicalPlanNodePtr>{node_, other.node_},
+      SetOperation::kUnionAll);
+
+  return *this;
+}
+
+PlanBuilder& PlanBuilder::intersect(const PlanBuilder& other) {
+  VELOX_USER_CHECK_NOT_NULL(node_, "Intersect node cannot be a leaf node");
+  VELOX_USER_CHECK_NOT_NULL(other.node_);
+
+  node_ = std::make_shared<SetNode>(
+      nextId(),
+      std::vector<LogicalPlanNodePtr>{node_, other.node_},
+      SetOperation::kIntersect);
+
+  return *this;
+}
+
+PlanBuilder& PlanBuilder::except(const PlanBuilder& other) {
+  VELOX_USER_CHECK_NOT_NULL(node_, "Intersect node cannot be a leaf node");
+  VELOX_USER_CHECK_NOT_NULL(other.node_);
+
+  node_ = std::make_shared<SetNode>(
+      nextId(),
+      std::vector<LogicalPlanNodePtr>{node_, other.node_},
+      SetOperation::kExcept);
+
+  return *this;
+}
+
+PlanBuilder& PlanBuilder::setOperation(
+    SetOperation op,
+    const std::vector<PlanBuilder>& inputs) {
+  VELOX_USER_CHECK_NULL(node_, "setOperation must be a leaf");
+  outputMapping_ = inputs.front().outputMapping_;
+  std::vector<LogicalPlanNodePtr> nodes;
+  nodes.reserve(inputs.size());
+  for (auto& builder : inputs) {
+    VELOX_CHECK_NOT_NULL(builder.node_);
+    nodes.push_back(builder.node_);
+  }
+  node_ = std::make_shared<SetNode>(nextId(), std::move(nodes), op);
+  return *this;
+}
+
 PlanBuilder& PlanBuilder::sort(const std::vector<std::string>& sortingKeys) {
   VELOX_USER_CHECK_NOT_NULL(node_, "Sort node cannot be a leaf node");
 
@@ -753,12 +829,21 @@ ExprPtr PlanBuilder::resolveInputName(
           node_->outputType()->findChild(id.value()), id.value());
     }
 
+    if (outerScope_ != nullptr) {
+      // TODO Figure out how to handle dereference.
+      return outerScope_(alias, name);
+    }
+
     return nullptr;
   }
 
   if (auto id = outputMapping_->lookup(name)) {
     return std::make_shared<InputReferenceExpr>(
         node_->outputType()->findChild(id.value()), id.value());
+  }
+
+  if (outerScope_ != nullptr) {
+    return outerScope_(alias, name);
   }
 
   VELOX_USER_FAIL(
@@ -830,141 +915,6 @@ LogicalPlanNodePtr PlanBuilder::build() {
   }
 
   return node_;
-}
-
-namespace {
-bool isAllDigits(std::string_view str) {
-  for (auto c : str) {
-    if (!isdigit(c)) {
-      return false;
-    }
-  }
-  return true;
-}
-} // namespace
-
-std::string NameAllocator::newName(const std::string& hint) {
-  VELOX_CHECK(!hint.empty(), "Hint cannot be empty");
-
-  // Strip suffix past '_' if all digits.
-  std::string prefix = hint;
-
-  auto pos = prefix.rfind('_');
-  if (pos != std::string::npos &&
-      isAllDigits(
-          std::string_view(prefix.data() + pos + 1, prefix.size() - pos - 1))) {
-    prefix = prefix.substr(0, pos);
-  }
-
-  std::string name = prefix;
-  do {
-    if (names_.insert(name).second) {
-      return name;
-    }
-    name = fmt::format("{}_{}", prefix, nextId_++);
-  } while (true);
-}
-
-std::optional<std::string> NameMappings::lookup(const std::string& name) const {
-  auto it = mappings_.find(QualifiedName{.alias = {}, .name = name});
-  if (it != mappings_.end()) {
-    return it->second;
-  }
-
-  return std::nullopt;
-}
-
-std::optional<std::string> NameMappings::lookup(
-    const std::string& alias,
-    const std::string& name) const {
-  auto it = mappings_.find(QualifiedName{.alias = alias, .name = name});
-  if (it != mappings_.end()) {
-    return it->second;
-  }
-
-  return std::nullopt;
-}
-
-std::vector<NameMappings::QualifiedName> NameMappings::reverseLookup(
-    const std::string& id) const {
-  std::vector<QualifiedName> names;
-  for (const auto& [key, value] : mappings_) {
-    if (value == id) {
-      names.push_back(key);
-    }
-  }
-
-  VELOX_CHECK_LE(names.size(), 2);
-  if (names.size() == 2) {
-    VELOX_CHECK_EQ(names[0].name, names[1].name);
-    VELOX_CHECK_NE(names[0].alias.has_value(), names[1].alias.has_value());
-  }
-
-  return names;
-}
-
-void NameMappings::setAlias(const std::string& alias) {
-  std::vector<std::pair<std::string, std::string>> names;
-  for (auto it = mappings_.begin(); it != mappings_.end();) {
-    if (it->first.alias.has_value()) {
-      it = mappings_.erase(it);
-    } else {
-      names.emplace_back(it->first.name, it->second);
-      ++it;
-    }
-  }
-
-  for (auto& [name, id] : names) {
-    mappings_.emplace(
-        QualifiedName{.alias = alias, .name = std::move(name)}, std::move(id));
-  }
-}
-
-void NameMappings::merge(const NameMappings& other) {
-  for (const auto& [name, id] : other.mappings_) {
-    if (mappings_.count(name) != 0) {
-      VELOX_CHECK(!name.alias.has_value());
-      mappings_.erase(name);
-    } else {
-      mappings_.emplace(name, id);
-    }
-  }
-}
-
-std::unordered_map<std::string, std::string> NameMappings::uniqueNames() const {
-  std::unordered_map<std::string, std::string> names;
-  for (const auto& [name, id] : mappings_) {
-    if (!name.alias.has_value()) {
-      names.emplace(id, name.name);
-    }
-  }
-  return names;
-}
-
-std::string NameMappings::toString() const {
-  bool first = true;
-  std::stringstream out;
-  for (const auto& [name, id] : mappings_) {
-    if (!first) {
-      out << ", ";
-    } else {
-      first = false;
-    }
-    out << name.toString() << " -> " << id;
-  }
-  return out.str();
-}
-
-size_t NameMappings::QualifiedNameHasher::operator()(
-    const QualifiedName& value) const {
-  size_t h1 = 0;
-  if (value.alias.has_value()) {
-    h1 = std::hash<std::string>()(value.alias.value());
-  }
-
-  size_t h2 = std::hash<std::string>()(value.name);
-
-  return h1 ^ (h2 << 1);
 }
 
 } // namespace facebook::velox::logical_plan

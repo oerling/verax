@@ -18,6 +18,26 @@
 #include "axiom/logical_plan/PlanNodeVisitor.h"
 
 namespace facebook::velox::logical_plan {
+
+namespace {
+folly::F14FastMap<NodeKind, std::string> nodeKindNames() {
+  return {
+      {NodeKind::kValues, "VALUES"},
+      {NodeKind::kTableScan, "TABLE_SCAN"},
+      {NodeKind::kFilter, "FILTER"},
+      {NodeKind::kProject, "PROJECT"},
+      {NodeKind::kAggregate, "AGGREGATE"},
+      {NodeKind::kJoin, "JOIN"},
+      {NodeKind::kSort, "SORT"},
+      {NodeKind::kLimit, "LIMIT"},
+      {NodeKind::kSet, "SET"},
+      {NodeKind::kUnnest, "UNNEST"},
+  };
+}
+} // namespace
+
+VELOX_DEFINE_ENUM_NAME(NodeKind, nodeKindNames)
+
 namespace {
 
 class UniqueNameChecker {
@@ -50,18 +70,14 @@ ValuesNode::ValuesNode(
     std::vector<Variant> rows)
     : LogicalPlanNode(NodeKind::kValues, id, {}, rowType),
       rows_{std::move(rows)} {
-  if (rows_.empty()) {
-    VELOX_USER_CHECK_EQ(0, rowType->size());
-  }
-
   UniqueNameChecker::check(rowType->names());
 
   for (const auto& row : rows_) {
     VELOX_USER_CHECK(
-        rowType->equivalent(*row.inferType()),
+        row.isTypeCompatible(rowType),
         "Incompatible types: {} vs. {}",
-        rowType->toString(),
-        row.inferType()->toString());
+        row.inferType()->toString(),
+        rowType->toString());
   }
 }
 
@@ -199,6 +215,38 @@ folly::F14FastMap<SetOperation, std::string> setOperationNames() {
 } // namespace
 
 VELOX_DEFINE_ENUM_NAME(SetOperation, setOperationNames)
+
+SetNode::SetNode(
+    const std::string& id,
+    const std::vector<LogicalPlanNodePtr>& inputs,
+    SetOperation operation)
+    : LogicalPlanNode(NodeKind::kSet, id, inputs, inputs.at(0)->outputType()),
+      operation_{operation} {
+  VELOX_USER_CHECK_GE(
+      inputs.size(), 2, "Set operation requires at least 2 inputs");
+
+  const auto firstRowType = inputs.at(0)->outputType();
+
+  for (auto i = 1; i < inputs.size(); ++i) {
+    const auto& rowType = inputs.at(i)->outputType();
+
+    // The names are different, but types must be the same.
+    VELOX_USER_CHECK(
+        firstRowType->equivalent(*rowType),
+        "Output schemas of all inputs to a Set operation must match");
+
+    // Individual column types must match exactly.
+    for (auto j = 0; j < firstRowType->size(); ++j) {
+      VELOX_USER_CHECK(
+          *firstRowType->childAt(j) == *rowType->childAt(j),
+          "Output schemas of all inputs to a Set operation must match: {} vs. {} at {}.{}",
+          firstRowType->childAt(j)->toSummaryString(),
+          rowType->childAt(j)->toSummaryString(),
+          j,
+          firstRowType->nameOf(j));
+    }
+  }
+}
 
 void SetNode::accept(
     const PlanNodeVisitor& visitor,
