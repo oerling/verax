@@ -87,7 +87,7 @@ class QueryTestBase : public exec::test::LocalRunnerTestBase {
       std::string* planString = nullptr);
 
   std::shared_ptr<core::QueryCtx> getQueryCtx();
-  
+
   template <typename PlanPtr>
   optimizer::PlanAndStats planFromTree(
       const PlanPtr& plan,

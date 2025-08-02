@@ -224,11 +224,11 @@ optimizer::PlanAndStats QueryTestBase::planSql(
   return planVelox(plan, planString);
 }
 
-  std::shared_ptr<core::QueryCtx> QueryTestBase::getQueryCtx() {
-    if (queryCtx_) {
-      return queryCtx_;
-    }
-    ++queryCounter_;
+std::shared_ptr<core::QueryCtx> QueryTestBase::getQueryCtx() {
+  if (queryCtx_) {
+    return queryCtx_;
+  }
+  ++queryCounter_;
   std::unordered_map<std::string, std::shared_ptr<config::ConfigBase>>
       connectorConfigs;
   auto copy = hiveConfig_;
@@ -243,14 +243,14 @@ optimizer::PlanAndStats QueryTestBase::planSql(
       spillExecutor_.get(),
       fmt::format("query_{}", queryCounter_));
   return queryCtx_;
-  }
-  
+}
+
 template <typename PlanPtr>
 optimizer::PlanAndStats QueryTestBase::planFromTree(
     const PlanPtr& plan,
     std::string* planString) {
   auto queryCtx = getQueryCtx();
-  
+
   // The default Locus for planning is the system and data of 'connector_'.
   optimizer::Locus locus(connector_->connectorId().c_str(), connector_.get());
   runner::MultiFragmentPlan::Options opts;

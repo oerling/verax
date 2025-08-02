@@ -19,11 +19,11 @@
 #include "axiom/optimizer/tests/FeatureGen.h"
 #include "axiom/optimizer/tests/Genies.h"
 #include "axiom/optimizer/tests/QueryTestBase.h"
+#include "axiom/optimizer/tests/utils/DfFunctions.h"
 #include "velox/common/base/tests/GTestUtils.h"
 #include "velox/exec/tests/utils/PlanBuilder.h"
 #include "velox/parse/Expressions.h"
 #include "velox/vector/tests/utils/VectorMaker.h"
-#include "axiom/optimizer/tests/utils/DfFunctions.h"
 
 DEFINE_string(subfield_data_path, "", "Data directory for subfield test data");
 
@@ -249,16 +249,19 @@ class LogicalSubfieldTest : public QueryTestBase,
   }
 
   void testMakeRowFromMap() {
+    auto plan =
+        lp::PlanBuilder()
+            .tableScan(
+                exec::test::kHiveConnectorId,
+                "features",
+                {"float_features", "id_list_features"})
+            .project(
+                {"make_row_from_map(float_features, array['f1', 'f2'], array[10010, 10030]) as r"})
+            .project({"make_named_row('f1v', r.f1, 'f2v', r.f2) as ff_result"})
+            .build();
 
-    auto plan = lp::PlanBuilder()
-      .tableScan(exec::test::kHiveConnectorId, "features", {"float_features", "id_list_features"})
-      .project({"make_row_from_map(float_features, array['f1', 'f2'], array[10010, 10030]) as r"})
-      .project({"make_named_row('f1v', r.f1, 'f2v', r.f2) as ff_result"})
-      .build();
-    
     auto planString = veloxString(planVelox(plan).plan);
   }
-
 };
 
 TEST_P(LogicalSubfieldTest, structs) {
