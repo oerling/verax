@@ -256,7 +256,7 @@ class LogicalSubfieldTest : public QueryTestBase,
       .project({"make_named_row('f1v', r.f1, 'f2v', r.f2) as ff_result"})
       .build();
     
-    auto planString = veloxString(planVelox(plan));
+    auto planString = veloxString(planVelox(plan).plan);
   }
 
 };

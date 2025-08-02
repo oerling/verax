@@ -196,7 +196,7 @@ TestResult QueryTestBase::runFragmentedPlan(
   try {
     result.runner = std::make_shared<runner::LocalRunner>(
         fragmentedPlan.plan,
-        queryCtx_,
+        getQueryCtx(),
         std::make_shared<connector::ConnectorSplitSourceFactory>());
 
     while (auto rows = result.runner->next()) {
@@ -207,9 +207,13 @@ TestResult QueryTestBase::runFragmentedPlan(
   } catch (const std::exception& e) {
     std::cerr << "Query terminated with: " << e.what() << std::endl;
     waitForCompletion(result.runner);
+    queryCtx_.reset();
     throw;
   }
   waitForCompletion(result.runner);
+
+  // Next query will need a different one.
+  queryCtx_.reset();
   return result;
 }
 
@@ -220,11 +224,11 @@ optimizer::PlanAndStats QueryTestBase::planSql(
   return planVelox(plan, planString);
 }
 
-template <typename PlanPtr>
-optimizer::PlanAndStats QueryTestBase::planFromTree(
-    const PlanPtr& plan,
-    std::string* planString) {
-  ++queryCounter_;
+  std::shared_ptr<core::QueryCtx> QueryTestBase::getQueryCtx() {
+    if (queryCtx_) {
+      return queryCtx_;
+    }
+    ++queryCounter_;
   std::unordered_map<std::string, std::shared_ptr<config::ConfigBase>>
       connectorConfigs;
   auto copy = hiveConfig_;
@@ -238,7 +242,15 @@ optimizer::PlanAndStats QueryTestBase::planFromTree(
       rootPool_->shared_from_this(),
       spillExecutor_.get(),
       fmt::format("query_{}", queryCounter_));
-
+  return queryCtx_;
+  }
+  
+template <typename PlanPtr>
+optimizer::PlanAndStats QueryTestBase::planFromTree(
+    const PlanPtr& plan,
+    std::string* planString) {
+  auto queryCtx = getQueryCtx();
+  
   // The default Locus for planning is the system and data of 'connector_'.
   optimizer::Locus locus(connector_->connectorId().c_str(), connector_.get());
   runner::MultiFragmentPlan::Options opts;
