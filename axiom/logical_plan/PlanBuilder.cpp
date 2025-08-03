@@ -23,6 +23,8 @@
 #include "velox/expression/SignatureBinder.h"
 #include "velox/functions/FunctionRegistry.h"
 #include "velox/parse/Expressions.h"
+#include "velox/vector/VariantToVector.h"
+#include "velox/expression/Expr.h"
 
 namespace facebook::velox::logical_plan {
 
@@ -587,6 +589,60 @@ ExprPtr ExprResolver::tryResolveCallWithLambdas(
   return std::make_shared<CallExpr>(returnType, callExpr->name(), children);
 }
 
+core::TypedExprPtr ExprResolver::makeConstantTypedExpr(
+    const ExprPtr& expr) const {
+  auto vector = variantToVector(
+				expr->type(), *expr->asUnchecked<ConstantExpr>()->value(), pool_.get());
+  return std::make_shared<core::ConstantTypedExpr>(vector);
+}
+
+ExprPtr ExprResolver::makeConstant(const VectorPtr& vector) const {
+  auto variant = std::make_shared<Variant>(vectorToVariant(vector, 0));
+  return std::make_shared<ConstantExpr>(vector->type(), std::move(variant));
+}
+
+ExprPtr ExprResolver::tryFoldCall(
+    const TypePtr& type,
+    const std::string& name,
+    const std::vector<ExprPtr>& inputs) const {
+  if (!queryCtx_) {
+    return nullptr;
+  }
+  for (const auto& arg : inputs) {
+    if (arg->kind() != ExprKind::kConstant) {
+      return nullptr;
+    }
+  }
+  std::vector<core::TypedExprPtr> args;
+  for (const auto& arg : inputs) {
+    args.push_back(makeConstantTypedExpr(arg));
+  }
+  auto vector = exec::tryEvaluateConstantExpression(
+      std::make_shared<core::CallTypedExpr>(type, std::move(args), name),
+      pool_.get(),
+      queryCtx_,
+      true);
+  if (vector) {
+    return makeConstant(vector);
+  }
+  return nullptr;
+}
+
+  ExprPtr ExprResolver::tryFoldCast(const TypePtr& type, const ExprPtr& input) const {
+  if (!queryCtx_ || input->kind() != ExprKind::kConstant) {
+    return nullptr;
+  }
+  auto vector = exec::tryEvaluateConstantExpression(
+						    std::make_shared<core::CastTypedExpr>(type, makeConstantTypedExpr(input), false),
+      pool_.get(),
+      queryCtx_,
+      true);
+    if (vector) {
+    return makeConstant(vector);
+  }
+    return nullptr;
+}
+
 ExprPtr ExprResolver::resolveScalarTypes(
     const core::ExprPtr& expr,
     const InputNameResolver& inputNameResolver) const {
@@ -654,11 +710,19 @@ ExprPtr ExprResolver::resolveScalarTypes(
     }
 
     auto type = resolveScalarFunction(name, inputTypes);
+    auto folded = tryFoldCall(type, name, inputs);
+    if (folded != nullptr) {
+      return folded;
+    }
 
     return std::make_shared<CallExpr>(type, name, inputs);
   }
 
   if (const auto* cast = dynamic_cast<const core::CastExpr*>(expr.get())) {
+    auto folded = tryFoldCast(cast->type(), inputs[0]);
+    if (folded != nullptr) {
+      return folded;
+    }
     return std::make_shared<SpecialFormExpr>(
         cast->type(),
         cast->isTryCast() ? SpecialForm::kTryCast : SpecialForm::kCast,

@@ -14,58 +14,88 @@
  * limitations under the License.
  */
 
-#include "frontend/optimizer/tests/utils/VeloxToLogical.h"
+#include "axiom/optimizer/tests/utils/VeloxToLogical.h"
+#include "velox/vector/VariantToVector.h"
 
 namespace facebook::velox::optimizer::test {
 
 namespace lp = facebook::velox::logical_plan;
 
+std::optional<lp::SpecialForm> nameToSpecialForm(const std::string& name) {
+  if (name == "and") {
+    return lp::SpecialForm::kAnd;
+  }
+  if (name == "or") {
+    return lp::SpecialForm::kOr;
+  }
+  if (name == "try") {
+    return lp::SpecialForm::kTry;
+  }
+
+  if (name == "coalesce") {
+    return lp::SpecialForm::kCoalesce;
+  }
+  if (name == "if") {
+    return lp::SpecialForm::kIf;
+  }
+
+  if (name == "switch") {
+    return lp::SpecialForm::kSwitch;
+  }
+  return std::nullopt;
+}
+
 lp::ExprPtr toExpr(const core::TypedExprPtr& expr) {
-  if (auto call = dynamic_cast<const CallTypedExpr*>(expr.get())) {
-    std::vector<ExprPtr> args;
+  if (auto call = dynamic_cast<const core::CallTypedExpr*>(expr.get())) {
+    std::vector<lp::ExprPtr> args;
     for (auto& arg : call->inputs()) {
       args.push_back(toExpr(arg));
     }
-    lp::SpecialForm = nameToSpecialForm(call->name());
+    auto specialForm = nameToSpecialForm(call->name());
     if (specialForm.has_value()) {
       return std::make_shared<lp::SpecialFormExpr>(
           call->type(), specialForm.value(), args);
     }
     return std::make_shared<lp::CallExpr>(expr->type(), call->name(), args);
   }
-  if (const constant =
+  if (auto* constant =
           dynamic_cast<const core::ConstantTypedExpr*>(expr.get())) {
-    VELOX_CHECK(!constant->hasValueVector());
+    if (constant->hasValueVector()) {
+      auto variant = std::make_shared<Variant>(
+          vectorToVariant(constant->valueVector(), 0));
+      return std::make_shared<lp::ConstantExpr>(
+          constant->valueVector()->type(), std::move(variant));
+    }
     return std::make_shared<lp::ConstantExpr>(
         constant->type(), constant->value());
   }
-  if (const field =
-          dynamic_cast<const core::FieldAccessTypedExpr>(expr.get())) {
+  if (auto* field =
+          dynamic_cast<const core::FieldAccessTypedExpr*>(expr.get())) {
     if (field->isInputColumn()) {
       return std::make_shared<lp::InputReferenceExpr>(
           expr->type(), field->name());
     }
-    return std::make_shared<lp::SpecialForm>(
+    return std::make_shared<lp::SpecialFormExpr>(
         expr->type(),
         lp::SpecialForm::kDereference,
         std::vector<lp::ExprPtr>{toExpr(
-            field->inputs()[0],
-            std::make_shared<lp::ConstantExpr>(
-                VARCHAR(), Variant(field->name())))});
+					field->inputs()[0]),
+	  std::make_shared<lp::ConstantExpr>(
+                VARCHAR(), Variant(field->name()))});
   }
-  if (auto deref = dynamic_cast<const core::DereferenceExpr*>(expr.get())) {
-    return std::make_shared<lp::SpecialForm>(
+  if (auto deref = dynamic_cast<const core::DereferenceTypedExpr*>(expr.get())) {
+    return std::make_shared<lp::SpecialFormExpr>(
         expr->type(),
         lp::SpecialForm::kDereference,
         std::vector<lp::ExprPtr>{toExpr(
-            field->inputs()[0],
+					deref->inputs()[0]),
             std::make_shared<lp::ConstantExpr>(
-                VARCHAR(), Variant(deref->index())))});
+					       INTEGER(), std::make_shared<Variant>(static_cast<int32_t>(deref->index())))});
   }
   VELOX_NYI();
 }
 
-logical_plan::LogicalPlanNodePtr toLogicalPlan(const core::PlanNodePtr& node) {
+lp::LogicalPlanNodePtr toLogicalPlan(const core::PlanNodePtr& node) {
     uint64_t allowedInDt) {
       auto name = node.name();
       if (name == "TableScan") {

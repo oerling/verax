@@ -28,6 +28,7 @@ add_test(velox_plan_test velox_plan_test)
 
 target_link_libraries(
   velox_plan_test
+  velox_optimizer_test_utils
   velox_verax
   velox_fe_logical_plan_builder
   velox_test_connector

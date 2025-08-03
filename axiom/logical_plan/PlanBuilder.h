@@ -13,11 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #pragma once
 
 #include "axiom/logical_plan/ExprApi.h"
 #include "axiom/logical_plan/LogicalPlanNode.h"
 #include "axiom/logical_plan/NameAllocator.h"
+#include "velox/core/Expressions.h"
 #include "velox/core/QueryCtx.h"
 #include "velox/parse/Expressions.h"
 #include "velox/parse/ExpressionsParser.h"
@@ -67,6 +69,17 @@ class ExprResolver {
   ExprPtr tryResolveCallWithLambdas(
       const std::shared_ptr<const core::CallExpr>& callExpr,
       const InputNameResolver& inputNameResolver) const;
+
+  ExprPtr tryFoldCall(const TypePtr& type, const std::string& name, const std::vector<ExprPtr>& inputs) const;
+
+  ExprPtr tryFoldCast(const TypePtr& type, const ExprPtr& input) const;
+
+
+  core::TypedExprPtr makeConstantTypedExpr(const ExprPtr& expr) const;
+
+  ExprPtr makeConstant(const VectorPtr& vector) const;
+
+  ExprPtr tryFoldCall(const TypePtr& type, ExprPtr input) const;
 
   std::shared_ptr<core::QueryCtx> queryCtx_;
   FunctionRewriteHook hook_;

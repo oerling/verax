@@ -14,50 +14,58 @@
  * limitations under the License.
  */
 
-#include "frontend/optimizer/tests/DfFumctions.h"
-
+#include "axiom/optimizer/tests/utils/DfFunctions.h"
 namespace facebook::velox::optimizer::test {
 
+namespace lp = facebook::velox::logical_plan;
+
 namespace {
-std::unordered_map<std::string, logical_plan::PlanBuilder::FunctionRewriteHook>
+std::unordered_map<std::string, logical_plan::ExprResolver::FunctionRewriteHook>
     functionHooks;
 }
 
-bool featureFuncHook(
+lp::ExprPtr featureFuncHook(
     const std::string& name,
-    const std::vector<ExprPtr> args,
-    logicalPlan::PlanBuilder::FunctionRewrite& rewrite) {
-  auto it = featureFuncs.find(name);
-  if (name == featureFuncs.end()) {
-    return false;
+    const std::vector<lp::ExprPtr>& args) {
+  auto it = functionHooks.find(name);
+  if (it == functionHooks.end()) {
+    return nullptr;
   }
-  return it->second(name, args, rewrite);
+  return it->second(name, args);
 }
 
 void registerFeatureFuncHook(
     const std::string& name,
-    logical_plan::PlanBuilder::FunctionRewriteHook) {
-  featureFuncHooks[name] = hook;
+    logical_plan::ExprResolver::FunctionRewriteHook hook) {
+  functionHooks[name] = hook;
 }
 
-bool makeRowFromMapHook(
+lp::ExprPtr makeRowFromMapHook(
     const std::string& name,
-    const std::vector<ExprPtr>& args,
-    lp::logical_plan::FunctionRewrite& rewrite) {
+    const std::vector<lp::ExprPtr>& args) {
   VELOX_CHECK_EQ(3, args.size());
   std::vector<std::string> names;
   std::vector<TypePtr> types;
   VELOX_CHECK_EQ(TypeKind::MAP, args[0]->type()->kind());
   auto type = args[0]->type()->childAt(1);
-    auto names = args[asUnchecked<lp::ConstantExpr>()->value().value<std::vector<Variant >>();
-		      for (auto i = 0; i < names; ++i) {
-			
-		      }
+  auto* namesVariant = args[1]->asUnchecked<lp::ConstantExpr>()->value().get();
+  auto namesArray = namesVariant->value<TypeKind::ARRAY>();
+  for (auto i = 0; i < namesArray.size(); ++i) {
+  }
+  return nullptr;
+}
+
+lp::ExprPtr makeNamedRowHook(
+    const std::string& name,
+    const std::vector<lp::ExprPtr>& args) {
+  VELOX_CHECK_EQ(3, args.size());
+  return nullptr;
 }
 
 void registerDfFunctions() {
-  registerFeatureFuncHook("make_row_from_map", akeRowFromMapHook);
+  registerFeatureFuncHook("make_row_from_map", makeRowFromMapHook);
   registerFeatureFuncHook("make_named_row", makeNamedRowHook);
 }
+
 
 } // namespace facebook::velox::optimizer::test

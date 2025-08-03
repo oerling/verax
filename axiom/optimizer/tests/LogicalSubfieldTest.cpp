@@ -40,6 +40,7 @@ class LogicalSubfieldTest : public QueryTestBase,
     testDataPath_ = FLAGS_subfield_data_path;
     LocalRunnerTestBase::localFileFormat_ = "dwrf";
     LocalRunnerTestBase::SetUpTestCase();
+    registerDfFunctions();
   }
 
   static void TearDownTestCase() {
@@ -249,8 +250,9 @@ class LogicalSubfieldTest : public QueryTestBase,
   }
 
   void testMakeRowFromMap() {
+    lp::PlanBuilder::Context ctx(getQueryCtx(), resolveDfFunction);
     auto plan =
-        lp::PlanBuilder()
+        lp::PlanBuilder(ctx)
             .tableScan(
                 exec::test::kHiveConnectorId,
                 "features",

@@ -14,8 +14,14 @@
  * limitations under the License.
  */
 
+#pragma once
+
+
+#include "axiom/logical_plan/PlanBuilder.h"
+
 namespace facebook::velox::optimizer::test {
 
 void registerDfFunctions();
+ logical_plan::ExprPtr resolveDfFunction(const std::string& name, std::vector<logical_plan::ExprPtr> args);
 
 }
