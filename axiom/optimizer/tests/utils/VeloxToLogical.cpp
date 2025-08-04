@@ -64,10 +64,10 @@ lp::ExprPtr toExpr(const core::TypedExprPtr& expr) {
       auto variant = std::make_shared<Variant>(
           vectorToVariant(constant->valueVector(), 0));
       return std::make_shared<lp::ConstantExpr>(
-          constant->valueVector()->type(), std::move(variant));
+          constant->type(), std::move(variant));
     }
     return std::make_shared<lp::ConstantExpr>(
-        constant->type(), constant->value());
+					      constant->type(), std::make_shared<Variant>(constant->value()));
   }
   if (auto* field =
           dynamic_cast<const core::FieldAccessTypedExpr*>(expr.get())) {
@@ -78,76 +78,71 @@ lp::ExprPtr toExpr(const core::TypedExprPtr& expr) {
     return std::make_shared<lp::SpecialFormExpr>(
         expr->type(),
         lp::SpecialForm::kDereference,
-        std::vector<lp::ExprPtr>{toExpr(
-					field->inputs()[0]),
-	  std::make_shared<lp::ConstantExpr>(
-                VARCHAR(), Variant(field->name()))});
+        std::vector<lp::ExprPtr>{
+            toExpr(field->inputs()[0]),
+            std::make_shared<lp::ConstantExpr>(
+					       VARCHAR(), std::make_shared<Variant>(field->name()))});
   }
-  if (auto deref = dynamic_cast<const core::DereferenceTypedExpr*>(expr.get())) {
+  if (auto deref =
+          dynamic_cast<const core::DereferenceTypedExpr*>(expr.get())) {
     return std::make_shared<lp::SpecialFormExpr>(
         expr->type(),
         lp::SpecialForm::kDereference,
-        std::vector<lp::ExprPtr>{toExpr(
-					deref->inputs()[0]),
+        std::vector<lp::ExprPtr>{
+            toExpr(deref->inputs()[0]),
             std::make_shared<lp::ConstantExpr>(
-					       INTEGER(), std::make_shared<Variant>(static_cast<int32_t>(deref->index())))});
+                INTEGER(),
+                std::make_shared<Variant>(
+                    static_cast<int32_t>(deref->index())))});
   }
   VELOX_NYI();
 }
 
-lp::LogicalPlanNodePtr toLogicalPlan(const core::PlanNodePtr& node) {
-    uint64_t allowedInDt) {
-      auto name = node.name();
-      if (name == "TableScan") {
-        auto* scan = reinterpret_cast<const core::TableScanNode*>(&node);
-        auto handle = scan->tableHandle();
-        auto assignments = scan->assignments();
-        std::vector<std::string> names;
-        std::vector<std::string> outputNames;
-        for (auto& pair : assignments) {
-          outputNames.push_back(pair.first);
-          names.push_back(pair.second->name());
-        }
-        std::vector<TypePtr> outputTypes;
-        return std::make_shared<lp::TableScan>(
-            scan->id(), rowType, handle->connector(), handle->name(), names);
-      }
-      if (name == "Project") {
-        auto input = toLogicalPlan(*node.sources()[0], allowedInDt);
-        addProjection(reinterpret_cast<const core::ProjectNode*>(&node));
-        return currentSelect_;
-      }
-      if (name == "Filter") {
-        auto filter = reinterpret_cast<const core::FilterNode*>(&node);
-        if (!isNondeterministicWrap_ && hasNondeterministic(filter->filter())) {
-          // Force wrap the filter and its input inside a dt so the filter
-          // does not get mixed with parrent nodes.
-          isNondeterministicWrap_ = true;
-          return makeQueryGraph(node, 0);
-        }
-        isNondeterministicWrap_ = false;
-        makeQueryGraph(*node.sources()[0], allowedInDt);
-        addFilter(filter);
-        return currentSelect_;
-      }
-      if (name == "HashJoin" || name == "MergeJoin") {
-        if (!contains(allowedInDt, PlanType::kJoin)) {
-          return wrapInDt(node);
-        }
-        translateJoin(*reinterpret_cast<const core::AbstractJoinNode*>(&node));
-        return currentSelect_;
-      }
+lp::LogicalPlanNodePtr toLogicalPlan(const core::PlanNode& node) {
+  auto name = node.name();
+  if (name == "TableScan") {
+    auto* scan = reinterpret_cast<const core::TableScanNode*>(&node);
+    auto handle = scan->tableHandle();
+    auto assignments = scan->assignments();
+    std::vector<std::string> names;
+    std::vector<std::string> outputNames;
+    for (auto& pair : assignments) {
+      outputNames.push_back(pair.first);
+      names.push_back(pair.second->name());
+    }
+    std::vector<TypePtr> outputTypes;
+    return std::make_shared<lp::TableScanNode>(
+					       scan->id(), scan->outputType(), handle->connectorId(), handle->name(), names);
+  }
+  if (name == "Project") {
+    auto input = toLogicalPlan(*node.sources()[0]);
+    auto& project = *reinterpret_cast<const core::ProjectNode*>(&node);
+    std::vector<lp::ExprPtr> exprs;
+    std::vector<std::string> names;
+    for (auto i = 0; i < project.names().size(); ++i) {
+      exprs.push_back(toExpr(project.projections()[i]));
+    }
+    return std::make_shared<lp::ProjectNode>(project.id(), input, project.names(), exprs);
+  }
+  if (name == "Filter") {
+    auto& filter = *reinterpret_cast<const core::FilterNode*>(&node);
+    auto input = toLogicalPlan(node.sources()[0]);
+    return std::make_shared<lp::FilterNode>(filter.id(), input, toExpr(filter.filter()));
+  }
+  if (name == "HashJoin" || name == "MergeJoin") {
+    auto& join = *reinterpret_cast<const core::AbstractJoinNode*>(&node);
+    auto& left = join.leftKeys();
+    auto& right = join.rightKeys();
+    return nullptr;
+  }
+#if 0
       if (name == "NestedLoopJoin") {
-        if (!contains(allowedInDt, PlanType::kJoin)) {
-          return wrapInDt(node);
-        }
         translateNonEqualityJoin(
             *reinterpret_cast<const core::NestedLoopJoinNode*>(&node));
-        return currentSelect_;
       }
       if (name == "LocalPartition") {
-        makeQueryGraph(*node.sources()[0], allowedInDt);
-        return currentSelect_;
+	VELOX_CHECK_EQ(node.inputs().size(), 1);
+        return toLogicalPlan(node.inputs()[0]);
       }
       if (name == "Aggregation") {
         return addAggregation(
@@ -176,6 +171,7 @@ lp::LogicalPlanNodePtr toLogicalPlan(const core::PlanNodePtr& node) {
       } else {
         VELOX_NYI("Unsupported PlanNode {}", name);
       }
-      return currentSelect_;
-    }
+#endif
+  return nullptr;
 }
+} // namespace facebook::velox::optimizer::test
