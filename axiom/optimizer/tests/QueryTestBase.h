@@ -118,8 +118,6 @@ class QueryTestBase : public exec::test::LocalRunnerTestBase {
       const RowTypePtr& rowType,
       const std::vector<std::string>& columnNames);
 
-  void waitForCompletion(const std::shared_ptr<runner::LocalRunner>& runner);
-
   std::shared_ptr<memory::MemoryPool> rootPool_;
   std::shared_ptr<memory::MemoryPool> optimizerPool_;
   std::shared_ptr<memory::MemoryPool> schemaPool_;
