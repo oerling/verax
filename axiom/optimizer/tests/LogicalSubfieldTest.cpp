@@ -252,7 +252,7 @@ class LogicalSubfieldTest : public QueryTestBase,
 
   void testMakeRowFromMap() {
     lp::PlanBuilder::Context ctx(getQueryCtx(), resolveDfFunction);
-    auto plan =
+    auto logical =
         lp::PlanBuilder(ctx)
             .tableScan(
                 exec::test::kHiveConnectorId,
@@ -266,13 +266,19 @@ class LogicalSubfieldTest : public QueryTestBase,
                 {"float_features", "id_list_features"}))
 
       .project(
-                {"make_row_from_map(float_features, array['f1', 'f2', 'f3'], array[10010, 10020, 10030]) as r"})
-            .project({"make_named_row('f1v', r.f1 + 1, 'f2v', r.f2 + 2) as ff_result"})
-      .filter("f1b < 10000")
-      .project({"make_named_row('rf2', f2b * 2) as fin"})
+                {"make_row_from_map(float_features, array[10010, 10020, 10030], array['f1', 'f2', 'f3']) as r"})
+            .project({"make_named_row('f1b', r.f1 + 1::REAL, 'f2b', r.f2 + 2::REAL) as named"})
+      .filter("named.f1b < 10000::REAL")
+      .project({"make_named_row('rf2', named.f2b * 2::REAL) as fin"})
       .build();
 
-    auto planString = veloxString(planVelox(plan).plan);
+    std::string planString;
+    auto plan = planVelox(logical, &planString);
+    expectPlan(planString, "(features t4 project 1 columns  union all features t6 project 1 columns ) project 1 columns ");
+    auto exe = veloxString(plan.plan);
+    // Filters should be pushed down to scan.
+    expectRegexp(exe, "remaining filter: .lt.plus.subscript.*float_features.*10010..1..10000");
+    expectRegexp(exe, "requiredSubfields: . float_features.10010. float_features.10020");
   }
 };
 

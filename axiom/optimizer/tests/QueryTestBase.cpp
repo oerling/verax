@@ -411,4 +411,48 @@ void QueryTestBase::assertSame(
   }
 }
 
+namespace {
+// Breaks str into tokens at whitespace and punctuation. Returns tokens as
+// string, character position pairs.
+std::vector<std::pair<std::string, int32_t>> tokenize(const std::string& str) {
+  std::vector<std::pair<std::string, int32_t>> result;
+  std::string token;
+  for (auto i = 0; i < str.size(); ++i) {
+    char c = str[i];
+    if (strchr(" \n\t", c)) {
+      if (token.empty()) {
+        continue;
+      }
+      auto offset = i - token.size();
+      result.push_back(std::make_pair(std::move(token), offset));
+    } else if (strchr("()[]*%", c)) {
+      if (!token.empty()) {
+        auto offset = i - token.size();
+        result.push_back(std::make_pair(std::move(token), offset));
+      }
+      token.resize(1);
+      token[0] = c;
+      result.push_back(std::make_pair(std::move(token), i));
+    } else {
+      token.push_back(c);
+    }
+  }
+  return result;
+}
+} // namespace
+
+  void QueryTestBase::expectPlan(const std::string& actual, const std::string& expected) {
+  auto expectedTokens = tokenize(expected);
+  auto actualTokens = tokenize(expected);
+  for (auto i = 0; i < actualTokens.size() && i < expectedTokens.size(); ++i) {
+    if (actualTokens[i].first != expectedTokens[i].first) {
+      FAIL() << "Difference at " << i << " position " << actualTokens[i].second
+             << "= " << actualTokens[i].first << " vs "
+             << expectedTokens[i].first << "\na actual= " << actual
+             << "\nexpected=" << expected;
+      return;
+    }
+  }
+}
+
 } // namespace facebook::velox::optimizer::test

@@ -98,7 +98,7 @@ std::unordered_map<PathCP, logical_plan::ExprPtr> makeRowFromMapExplodeGeneric(
     VELOX_CHECK(steps.front().kind == StepKind::kField);
     auto nth = steps.front().id;
     auto type = call->type()->childAt(0);
-    auto subscriptType = call->inputAt(2)->type()->childAt(0);
+    auto subscriptType = call->inputAt(1)->type()->childAt(0);
     auto keys = call->inputAt(1)->asUnchecked<lp::ConstantExpr>()->value()->value<TypeKind::ARRAY>();
     lp::ExprPtr getter = std::make_shared<lp::CallExpr>(
         type,
@@ -143,7 +143,7 @@ lp::ExprPtr makeRowFromMapHook(
   std::vector<TypePtr> types;
   VELOX_CHECK_EQ(TypeKind::MAP, args[0]->type()->kind());
   auto type = args[0]->type()->childAt(1);
-  auto* namesVariant = args[1]->asUnchecked<lp::ConstantExpr>()->value().get();
+  auto* namesVariant = args[2]->asUnchecked<lp::ConstantExpr>()->value().get();
   auto namesArray = namesVariant->value<TypeKind::ARRAY>();
   for (auto i = 0; i < namesArray.size(); ++i) {
     nameStrings.push_back(namesArray[i].value<TypeKind::VARCHAR>());
@@ -175,13 +175,18 @@ lp::ExprPtr makeNamedRowHook(
   
 void registerDfFunctions() {
   registerFeatureFuncHook("make_row_from_map", makeRowFromMapHook);
-  auto meta = FunctionRegistry::instance()->metadata("make_row_from_map");
+  registerFeatureFuncHook("padded_make_row_from_map", makeRowFromMapHook);
+  auto meta = std::make_unique<FunctionMetadata>();
   meta->logicalExplode = makeRowFromMapExplode;
   meta->valuePathToArgPath = makeRowFromMapSubfield;
+  FunctionRegistry::instance()->registerFunction("make_row_from_map", std::move(meta));
 
+  meta = std::make_unique<FunctionMetadata>();
+  meta->logicalExplode = paddedMakeRowFromMapExplode;
+  meta->valuePathToArgPath = makeRowFromMapSubfield;
+  FunctionRegistry::instance()->registerFunction("padded_make_row_from_map", std::move(meta));
+  
   registerFeatureFuncHook("make_named_row", makeNamedRowHook);
-  meta = FunctionRegistry::instance()->metadata("row_constructor");
-
 }
 
 } // namespace facebook::velox::optimizer::test

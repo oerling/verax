@@ -36,14 +36,14 @@ class MakeRowFromMapFunction : public exec::VectorFunction {
     return {
         exec::FunctionSignatureBuilder()
             .returnType(
-                "row()")
+                "row(real)")
 	.argumentType("map(integer, real)").build(),
         exec::FunctionSignatureBuilder()
-	.returnType("ROW()")
+	.returnType("row(real)")
 	.argumentType("map(integer, array(bigint))").build(),
         exec::FunctionSignatureBuilder()
 
-	.returnType("ROW()")
+	.returnType("ROW(real)")
 	.argumentType("map(integer, map(bigint, real))").build() };
   }
 };

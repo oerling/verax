@@ -48,29 +48,11 @@ std::pair<std::vector<Step>, int32_t> rowConstructorSubfield(
     const std::vector<Step>& steps,
     const logical_plan::CallExpr& call) {
   VELOX_CHECK(steps.back().kind == StepKind::kField);
-  auto& list = call.inputAt(2)
-                   ->asUnchecked<lp::ConstantExpr>()
-                   ->value()
-                   ->value<TypeKind::ARRAY>();
   auto field = steps.back().field;
-  int32_t len = strlen(field);
-  int32_t found = -1;
-  for (auto i = 0; i < list.size(); ++i) {
-    auto& name = list[i].value<TypeKind::VARCHAR>();
-    if (name.size() != len) {
-      continue;
-    }
-    if (memcmp(name.data(), field, len) == 0) {
-      found = i;
-      break;
-    }
-  }
-  VELOX_CHECK(
-      found != -1, "Subfield not found in make_row_from_map: {}", field);
-
+  auto idx = call.type()->as<TypeKind::ROW>().getChildIdx(field);
   auto newFields = steps;
   newFields.pop_back();
-  return std::make_pair(newFields, found);
+  return std::make_pair(newFields, idx);
 }
 
 std::unordered_map<PathCP, logical_plan::ExprPtr> rowConstructorExplode(

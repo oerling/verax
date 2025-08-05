@@ -49,7 +49,7 @@ class ExprResolver {
       : queryCtx_(std::move(queryCtx)),
         hook_(hook),
         pool_(
-            queryCtx_ ? queryCtx_->pool()->addLeafChild("literals") : nullptr) {
+	      queryCtx_ ? queryCtx_->pool()->addLeafChild(fmt::format("literals{}", ++literalsCounter_)) : nullptr) {
   }
 
   ExprPtr resolveScalarTypes(
@@ -84,6 +84,7 @@ class ExprResolver {
   std::shared_ptr<core::QueryCtx> queryCtx_;
   FunctionRewriteHook hook_;
   std::shared_ptr<memory::MemoryPool> pool_;
+  static inline int32_t literalsCounter_{0};
 };
 
 class PlanBuilder {
