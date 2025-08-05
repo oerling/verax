@@ -12,6 +12,47 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+velox_add_library(velox_optimizer_tests_parquet_tpch ParquetTpchTest.cpp)
+
+velox_link_libraries(
+  velox_optimizer_tests_parquet_tpch
+  velox_verax
+  velox_schema_resolver
+  velox_tpch_gen
+  velox_connector_split_source
+  velox_hive_connector_metadata
+  velox_exec_runner_test_util
+  velox_exec_test_lib
+  velox_dwio_parquet_reader
+  velox_dwio_native_parquet_reader
+  gtest
+  gtest_main)
+
+velox_add_library(velox_optimizer_tests_query_test_base QueryTestBase.cpp)
+
+velox_link_libraries(
+  velox_optimizer_tests_query_test_base
+  velox_verax
+  velox_schema_resolver
+  velox_tpch_gen
+  velox_connector_split_source
+  velox_hive_connector_metadata
+  velox_exec_runner_test_util
+  velox_exec_test_lib
+  velox_dwio_parquet_reader
+  velox_dwio_native_parquet_reader
+  gtest
+  gtest_main)
+
+add_executable(velox_optimizer_tests_tpch_plan TpchPlanTest.cpp)
+
+add_test(velox_optimizer_tests_tpch_plan velox_optimizer_tests_tpch_plan)
+
+target_link_libraries(
+  velox_optimizer_tests_tpch_plan
+  velox_optimizer_tests_parquet_tpch
+  velox_optimizer_tests_query_test_base)
+
 add_executable(
   velox_plan_test
   PlanTest.cpp
@@ -31,18 +72,13 @@ target_link_libraries(
   velox_optimizer_test_utils
   velox_verax
   velox_fe_logical_plan_builder
+  velox_optimizer_tests_parquet_tpch
+  velox_optimizer_tests_query_test_base
   velox_test_connector
-  velox_schema_resolver
-  velox_tpch_gen
-  velox_connector_split_source
-  velox_hive_connector_metadata
-  velox_exec_runner_test_util
-  velox_exec_test_lib
-  velox_dwio_parquet_reader
-  velox_dwio_native_parquet_reader
   GTest::gmock
-  gtest
-  gtest_main)
+  glog::glog
+  GTest::gtest
+  GTest::gtest_main)
 
 add_executable(velox_sql VeloxSql.cpp)
 

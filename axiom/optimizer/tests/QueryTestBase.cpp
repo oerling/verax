@@ -189,6 +189,17 @@ TestResult QueryTestBase::runSql(const std::string& sql) {
   return runFragmentedPlan(planAndStats);
 }
 
+namespace {
+void waitForCompletion(const std::shared_ptr<runner::LocalRunner>& runner) {
+  if (runner) {
+    try {
+      runner->waitForCompletion(50000);
+    } catch (const std::exception& /*ignore*/) {
+    }
+  }
+}
+} // namespace
+
 TestResult QueryTestBase::runFragmentedPlan(
     optimizer::PlanAndStats& fragmentedPlan) {
   TestResult result;
@@ -313,16 +324,6 @@ TestResult QueryTestBase::runVelox(
   return runFragmentedPlan(fragmentedPlan);
 }
 
-void QueryTestBase::waitForCompletion(
-    const std::shared_ptr<runner::LocalRunner>& runner) {
-  if (runner) {
-    try {
-      runner->waitForCompletion(50000);
-    } catch (const std::exception& /*ignore*/) {
-    }
-  }
-}
-
 std::string QueryTestBase::veloxString(const std::string& sql) {
   auto plan = planSql(sql);
   VELOX_CHECK_NOT_NULL(plan.plan);
@@ -366,9 +367,10 @@ std::string QueryTestBase::veloxString(
   return out.str();
 }
 
+// static
 void QueryTestBase::expectRegexp(
-    std::string& text,
-    const std::string regexp,
+    const std::string& text,
+    const std::string& regexp,
     bool expect) {
   std::istringstream iss(text);
   std::string line;
@@ -379,36 +381,8 @@ void QueryTestBase::expectRegexp(
       break;
     }
   }
-  if (found != expect) {
-    FAIL() << "Expected " << (expect == false ? " no " : "") << regexp << " in "
-           << text;
-  }
-}
-
-void QueryTestBase::assertSame(
-    const core::PlanNodePtr& reference,
-    optimizer::PlanAndStats& experiment,
-    TestResult* referenceReturn) {
-  auto refId = fmt::format("q{}", ++queryCounter_);
-  auto idGenerator = std::make_shared<core::PlanNodeIdGenerator>();
-  runner::MultiFragmentPlan::Options options = {
-      .queryId = refId, .numWorkers = 1, .numDrivers = FLAGS_num_drivers};
-
-  exec::test::DistributedPlanBuilder builder(options, idGenerator, pool_.get());
-  builder.addNode(
-      [&](std::string nodeId, core::PlanNodePtr) { return reference; });
-
-  auto referencePlan = std::make_shared<runner::MultiFragmentPlan>(
-      builder.fragments(), std::move(options));
-  optimizer::PlanAndStats referencePlanAndStats = {.plan = referencePlan};
-  auto referenceResult = runFragmentedPlan(referencePlanAndStats);
-  auto experimentResult = runFragmentedPlan(experiment);
-
-  exec::test::assertEqualResults(
-      referenceResult.results, experimentResult.results);
-  if (referenceReturn) {
-    *referenceReturn = referenceResult;
-  }
+  ASSERT_EQ(found, expect) << "Expected " << (expect == false ? " no " : "")
+                           << regexp << " in " << text;
 }
 
 namespace {
@@ -441,19 +415,43 @@ std::vector<std::pair<std::string, int32_t>> tokenize(const std::string& str) {
 }
 } // namespace
 
+// static
 void QueryTestBase::expectPlan(
     const std::string& actual,
     const std::string& expected) {
-  auto expectedTokens = tokenize(expected);
-  auto actualTokens = tokenize(expected);
+  const auto expectedTokens = tokenize(expected);
+  const auto actualTokens = tokenize(actual);
   for (auto i = 0; i < actualTokens.size() && i < expectedTokens.size(); ++i) {
-    if (actualTokens[i].first != expectedTokens[i].first) {
-      FAIL() << "Difference at " << i << " position " << actualTokens[i].second
-             << "= " << actualTokens[i].first << " vs "
-             << expectedTokens[i].first << "\na actual= " << actual
-             << "\nexpected=" << expected;
-      return;
-    }
+    ASSERT_EQ(actualTokens[i].first, expectedTokens[i].first)
+        << "Difference at " << i << " position " << actualTokens[i].second
+        << "= " << actualTokens[i].first << " vs " << expectedTokens[i].first
+        << "\nactual  =" << actual << "\nexpected=" << expected;
+  }
+}
+
+void QueryTestBase::assertSame(
+    const core::PlanNodePtr& reference,
+    optimizer::PlanAndStats& experiment,
+    TestResult* referenceReturn) {
+  auto refId = fmt::format("q{}", ++queryCounter_);
+  auto idGenerator = std::make_shared<core::PlanNodeIdGenerator>();
+  runner::MultiFragmentPlan::Options options = {
+      .queryId = refId, .numWorkers = 1, .numDrivers = FLAGS_num_drivers};
+
+  exec::test::DistributedPlanBuilder builder(options, idGenerator, pool_.get());
+  builder.addNode(
+      [&](std::string nodeId, core::PlanNodePtr) { return reference; });
+
+  auto referencePlan = std::make_shared<runner::MultiFragmentPlan>(
+      builder.fragments(), std::move(options));
+  optimizer::PlanAndStats referencePlanAndStats = {.plan = referencePlan};
+  auto referenceResult = runFragmentedPlan(referencePlanAndStats);
+  auto experimentResult = runFragmentedPlan(experiment);
+
+  exec::test::assertEqualResults(
+      referenceResult.results, experimentResult.results);
+  if (referenceReturn) {
+    *referenceReturn = referenceResult;
   }
 }
 
