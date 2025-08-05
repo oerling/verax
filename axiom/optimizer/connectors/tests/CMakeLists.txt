@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+velox_add_library(velox_test_connector TestConnector.cpp)
 
-
-add_library(
+velox_link_libraries(
   velox_test_connector
-  TestConnector.cpp)
-
-target_link_libraries(velox_test_connector velox_connector_metadata
-                      velox_exception velox_vector)
+  velox_connector_metadata
+  velox_common_base
+  velox_memory
+  velox_connector)
 
