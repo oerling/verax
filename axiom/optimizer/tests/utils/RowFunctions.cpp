@@ -56,7 +56,7 @@ VELOX_DECLARE_VECTOR_FUNCTION_WITH_METADATA(
 
 void registerRowUdfs() {
   VELOX_REGISTER_VECTOR_FUNCTION(udf_makeRowFromMap, "makeRowFromMap");
-  VELOX_REGISTER_VECTOR_FUNCTION(udf_paddedMakeRowFromMap, "padded_makeRowFromMap");
+  VELOX_REGISTER_VECTOR_FUNCTION(udf_makeRowFromMap, "padded_makeRowFromMap");
 }
 
 }

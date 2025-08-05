@@ -41,6 +41,7 @@ class LogicalSubfieldTest : public QueryTestBase,
     LocalRunnerTestBase::localFileFormat_ = "dwrf";
     LocalRunnerTestBase::SetUpTestCase();
     registerDfFunctions();
+    registerRowUdfs();
   }
 
   static void TearDownTestCase() {
@@ -257,10 +258,19 @@ class LogicalSubfieldTest : public QueryTestBase,
                 exec::test::kHiveConnectorId,
                 "features",
                 {"float_features", "id_list_features"})
-            .project(
-                {"make_row_from_map(float_features, array['f1', 'f2'], array[10010, 10030]) as r"})
-            .project({"make_named_row('f1v', r.f1, 'f2v', r.f2) as ff_result"})
-            .build();
+      .unionAll(
+		lp::PlanBuilder(ctx)
+            .tableScan(
+                exec::test::kHiveConnectorId,
+                "features",
+                {"float_features", "id_list_features"}))
+
+      .project(
+                {"make_row_from_map(float_features, array['f1', 'f2', 'f3'], array[10010, 10020, 10030]) as r"})
+            .project({"make_named_row('f1v', r.f1 + 1, 'f2v', r.f2 + 2) as ff_result"})
+      .filter("f1b < 10000")
+      .project({"make_named_row('rf2', f2b * 2) as fin"})
+      .build();
 
     auto planString = veloxString(planVelox(plan).plan);
   }
@@ -306,6 +316,8 @@ TEST_P(LogicalSubfieldTest, maps) {
   tablesCreated();
   std::string plan;
 
+
+  testMakeRowFromMap();
   {
     lp::PlanBuilder::Context ctx;
     auto builder =

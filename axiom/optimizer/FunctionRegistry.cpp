@@ -17,7 +17,8 @@
 #include "axiom/optimizer/FunctionRegistry.h"
 
 namespace facebook::velox::optimizer {
-
+namespace lp = facebook::velox::logical_plan;
+  
 FunctionMetadata* FunctionRegistry::metadata(const std::string& name) {
   auto it = metadata_.find(name);
   if (it == metadata_.end()) {
@@ -42,6 +43,60 @@ const FunctionMetadata* functionMetadata(Name name) {
   return FunctionRegistry::instance()->metadata(name);
 }
 
+  namespace {
+std::pair<std::vector<Step>, int32_t> rowConstructorSubfield(
+    const std::vector<Step>& steps,
+    const logical_plan::CallExpr& call) {
+  VELOX_CHECK(steps.back().kind == StepKind::kField);
+  auto& list = call.inputAt(2)
+                   ->asUnchecked<lp::ConstantExpr>()
+                   ->value()
+                   ->value<TypeKind::ARRAY>();
+  auto field = steps.back().field;
+  int32_t len = strlen(field);
+  int32_t found = -1;
+  for (auto i = 0; i < list.size(); ++i) {
+    auto& name = list[i].value<TypeKind::VARCHAR>();
+    if (name.size() != len) {
+      continue;
+    }
+    if (memcmp(name.data(), field, len) == 0) {
+      found = i;
+      break;
+    }
+  }
+  VELOX_CHECK(
+      found != -1, "Subfield not found in make_row_from_map: {}", field);
+
+  auto newFields = steps;
+  newFields.pop_back();
+  return std::make_pair(newFields, found);
+}
+
+std::unordered_map<PathCP, logical_plan::ExprPtr> rowConstructorExplode(
+    const logical_plan::CallExpr* call,
+    std::vector<PathCP>& paths) {
+  std::unordered_map<PathCP, logical_plan::ExprPtr> result;
+  for (auto& path : paths) {
+    auto& steps = path->steps();
+    if (steps.empty()) {
+      return {};
+    }
+    std::vector<Step> prefixSteps = {steps[0]};
+    auto prefixPath = toPath(std::move(prefixSteps));
+    if (result.count(prefixPath)) {
+      // There already is an expression for this path.
+      continue;
+    }
+    VELOX_CHECK(steps.front().kind == StepKind::kField);
+    auto nth = steps.front().id;
+    result[prefixPath] = call->inputAt(nth);
+  }
+  return result;
+}
+  }
+
+  
 bool declareBuiltIn() {
   {
     LambdaInfo info{
@@ -77,6 +132,12 @@ bool declareBuiltIn() {
     metadata->lambdas.push_back(std::move(info));
     metadata->cost = 20;
     FunctionRegistry::instance()->registerFunction("zip", std::move(metadata));
+  }
+  {
+    auto metadata = std::make_unique<FunctionMetadata>();
+    metadata->valuePathToArgPath = rowConstructorSubfield;
+    metadata->logicalExplode = rowConstructorExplode;
+    FunctionRegistry::instance()->registerFunction("row_constructor", std::move(metadata));
   }
   return true;
 }

@@ -338,7 +338,7 @@ struct ResultAccess;
 struct FunctionMetadata {
   bool processSubfields() const {
     return subfieldArg.has_value() || !fieldIndexForArg.empty() ||
-        isArrayConstructor || isMapConstructor;
+        isArrayConstructor || isMapConstructor || valuePathToArgPath;
   }
 
   const LambdaInfo* lambdaInfo(int32_t index) const {

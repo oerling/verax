@@ -23,7 +23,7 @@ namespace facebook::velox::optimizer::test {
 void registerDfFunctions();
 logical_plan::ExprPtr resolveDfFunction(
     const std::string& name,
-    std::vector<logical_plan::ExprPtr> args);
+    const std::vector<logical_plan::ExprPtr>& args);
 
 void registerRowUdfs();
 
