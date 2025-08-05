@@ -49,8 +49,7 @@ add_executable(velox_optimizer_tests_tpch_plan TpchPlanTest.cpp)
 add_test(velox_optimizer_tests_tpch_plan velox_optimizer_tests_tpch_plan)
 
 target_link_libraries(
-  velox_optimizer_tests_tpch_plan
-  velox_optimizer_tests_parquet_tpch
+  velox_optimizer_tests_tpch_plan velox_optimizer_tests_parquet_tpch
   velox_optimizer_tests_query_test_base)
 
 add_executable(
