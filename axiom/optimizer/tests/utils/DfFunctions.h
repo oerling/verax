@@ -14,24 +14,17 @@
  * limitations under the License.
  */
 
-#include <gtest/gtest.h>
+#pragma once
 
-#include "axiom/logical_plan/NameAllocator.h"
+#include "axiom/logical_plan/PlanBuilder.h"
 
-namespace facebook::velox::logical_plan {
+namespace facebook::velox::optimizer::test {
 
-TEST(NameAllocatorTest, basic) {
-  NameAllocator allocator;
-  EXPECT_EQ(allocator.newName("f_oo"), "f_oo");
-  EXPECT_EQ(allocator.newName("f_oo"), "f_oo_0");
+void registerDfFunctions();
+logical_plan::ExprPtr resolveDfFunction(
+    const std::string& name,
+    const std::vector<logical_plan::ExprPtr>& args);
 
-  EXPECT_EQ(allocator.newName("bar"), "bar");
-  EXPECT_EQ(allocator.newName("bar"), "bar_1");
+void registerRowUdfs();
 
-  EXPECT_EQ(allocator.newName("foo_0"), "foo_2");
-
-  EXPECT_EQ(allocator.newName("foo_bar"), "foo_bar");
-  EXPECT_EQ(allocator.newName("foo_bar"), "foo_bar_3");
-}
-
-} // namespace facebook::velox::logical_plan
+} // namespace facebook::velox::optimizer::test

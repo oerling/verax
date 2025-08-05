@@ -196,7 +196,7 @@ TestResult QueryTestBase::runFragmentedPlan(
   try {
     result.runner = std::make_shared<runner::LocalRunner>(
         fragmentedPlan.plan,
-        queryCtx_,
+        getQueryCtx(),
         std::make_shared<connector::ConnectorSplitSourceFactory>());
 
     while (auto rows = result.runner->next()) {
@@ -207,9 +207,13 @@ TestResult QueryTestBase::runFragmentedPlan(
   } catch (const std::exception& e) {
     std::cerr << "Query terminated with: " << e.what() << std::endl;
     waitForCompletion(result.runner);
+    queryCtx_.reset();
     throw;
   }
   waitForCompletion(result.runner);
+
+  // Next query will need a different one.
+  queryCtx_.reset();
   return result;
 }
 
@@ -220,10 +224,10 @@ optimizer::PlanAndStats QueryTestBase::planSql(
   return planVelox(plan, planString);
 }
 
-template <typename PlanPtr>
-optimizer::PlanAndStats QueryTestBase::planFromTree(
-    const PlanPtr& plan,
-    std::string* planString) {
+std::shared_ptr<core::QueryCtx> QueryTestBase::getQueryCtx() {
+  if (queryCtx_) {
+    return queryCtx_;
+  }
   ++queryCounter_;
   std::unordered_map<std::string, std::shared_ptr<config::ConfigBase>>
       connectorConfigs;
@@ -238,6 +242,14 @@ optimizer::PlanAndStats QueryTestBase::planFromTree(
       rootPool_->shared_from_this(),
       spillExecutor_.get(),
       fmt::format("query_{}", queryCounter_));
+  return queryCtx_;
+}
+
+template <typename PlanPtr>
+optimizer::PlanAndStats QueryTestBase::planFromTree(
+    const PlanPtr& plan,
+    std::string* planString) {
+  auto queryCtx = getQueryCtx();
 
   // The default Locus for planning is the system and data of 'connector_'.
   optimizer::Locus locus(connector_->connectorId().c_str(), connector_.get());
@@ -396,6 +408,52 @@ void QueryTestBase::assertSame(
       referenceResult.results, experimentResult.results);
   if (referenceReturn) {
     *referenceReturn = referenceResult;
+  }
+}
+
+namespace {
+// Breaks str into tokens at whitespace and punctuation. Returns tokens as
+// string, character position pairs.
+std::vector<std::pair<std::string, int32_t>> tokenize(const std::string& str) {
+  std::vector<std::pair<std::string, int32_t>> result;
+  std::string token;
+  for (auto i = 0; i < str.size(); ++i) {
+    char c = str[i];
+    if (strchr(" \n\t", c)) {
+      if (token.empty()) {
+        continue;
+      }
+      auto offset = i - token.size();
+      result.push_back(std::make_pair(std::move(token), offset));
+    } else if (strchr("()[]*%", c)) {
+      if (!token.empty()) {
+        auto offset = i - token.size();
+        result.push_back(std::make_pair(std::move(token), offset));
+      }
+      token.resize(1);
+      token[0] = c;
+      result.push_back(std::make_pair(std::move(token), i));
+    } else {
+      token.push_back(c);
+    }
+  }
+  return result;
+}
+} // namespace
+
+void QueryTestBase::expectPlan(
+    const std::string& actual,
+    const std::string& expected) {
+  auto expectedTokens = tokenize(expected);
+  auto actualTokens = tokenize(expected);
+  for (auto i = 0; i < actualTokens.size() && i < expectedTokens.size(); ++i) {
+    if (actualTokens[i].first != expectedTokens[i].first) {
+      FAIL() << "Difference at " << i << " position " << actualTokens[i].second
+             << "= " << actualTokens[i].first << " vs "
+             << expectedTokens[i].first << "\na actual= " << actual
+             << "\nexpected=" << expected;
+      return;
+    }
   }
 }
 
