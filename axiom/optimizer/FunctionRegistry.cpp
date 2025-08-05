@@ -18,7 +18,7 @@
 
 namespace facebook::velox::optimizer {
 namespace lp = facebook::velox::logical_plan;
-  
+
 FunctionMetadata* FunctionRegistry::metadata(const std::string& name) {
   auto it = metadata_.find(name);
   if (it == metadata_.end()) {
@@ -43,7 +43,7 @@ const FunctionMetadata* functionMetadata(Name name) {
   return FunctionRegistry::instance()->metadata(name);
 }
 
-  namespace {
+namespace {
 std::pair<std::vector<Step>, int32_t> rowConstructorSubfield(
     const std::vector<Step>& steps,
     const logical_plan::CallExpr& call) {
@@ -76,9 +76,8 @@ std::unordered_map<PathCP, logical_plan::ExprPtr> rowConstructorExplode(
   }
   return result;
 }
-  }
+} // namespace
 
-  
 bool declareBuiltIn() {
   {
     LambdaInfo info{
@@ -119,7 +118,8 @@ bool declareBuiltIn() {
     auto metadata = std::make_unique<FunctionMetadata>();
     metadata->valuePathToArgPath = rowConstructorSubfield;
     metadata->logicalExplode = rowConstructorExplode;
-    FunctionRegistry::instance()->registerFunction("row_constructor", std::move(metadata));
+    FunctionRegistry::instance()->registerFunction(
+        "row_constructor", std::move(metadata));
   }
   return true;
 }

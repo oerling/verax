@@ -49,8 +49,9 @@ class ExprResolver {
       : queryCtx_(std::move(queryCtx)),
         hook_(hook),
         pool_(
-	      queryCtx_ ? queryCtx_->pool()->addLeafChild(fmt::format("literals{}", ++literalsCounter_)) : nullptr) {
-  }
+            queryCtx_ ? queryCtx_->pool()->addLeafChild(
+                            fmt::format("literals{}", ++literalsCounter_))
+                      : nullptr) {}
 
   ExprPtr resolveScalarTypes(
       const core::ExprPtr& expr,
@@ -70,10 +71,12 @@ class ExprResolver {
       const std::shared_ptr<const core::CallExpr>& callExpr,
       const InputNameResolver& inputNameResolver) const;
 
-  ExprPtr tryFoldCall(const TypePtr& type, const std::string& name, const std::vector<ExprPtr>& inputs) const;
+  ExprPtr tryFoldCall(
+      const TypePtr& type,
+      const std::string& name,
+      const std::vector<ExprPtr>& inputs) const;
 
   ExprPtr tryFoldCast(const TypePtr& type, const ExprPtr& input) const;
-
 
   core::TypedExprPtr makeConstantTypedExpr(const ExprPtr& expr) const;
 

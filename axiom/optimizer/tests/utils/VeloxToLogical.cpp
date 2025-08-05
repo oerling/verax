@@ -67,7 +67,7 @@ lp::ExprPtr toExpr(const core::TypedExprPtr& expr) {
           constant->type(), std::move(variant));
     }
     return std::make_shared<lp::ConstantExpr>(
-					      constant->type(), std::make_shared<Variant>(constant->value()));
+        constant->type(), std::make_shared<Variant>(constant->value()));
   }
   if (auto* field =
           dynamic_cast<const core::FieldAccessTypedExpr*>(expr.get())) {
@@ -81,7 +81,7 @@ lp::ExprPtr toExpr(const core::TypedExprPtr& expr) {
         std::vector<lp::ExprPtr>{
             toExpr(field->inputs()[0]),
             std::make_shared<lp::ConstantExpr>(
-					       VARCHAR(), std::make_shared<Variant>(field->name()))});
+                VARCHAR(), std::make_shared<Variant>(field->name()))});
   }
   if (auto deref =
           dynamic_cast<const core::DereferenceTypedExpr*>(expr.get())) {
@@ -112,7 +112,11 @@ lp::LogicalPlanNodePtr toLogicalPlan(const core::PlanNode& node) {
     }
     std::vector<TypePtr> outputTypes;
     return std::make_shared<lp::TableScanNode>(
-					       scan->id(), scan->outputType(), handle->connectorId(), handle->name(), names);
+        scan->id(),
+        scan->outputType(),
+        handle->connectorId(),
+        handle->name(),
+        names);
   }
   if (name == "Project") {
     auto input = toLogicalPlan(*node.sources()[0]);
@@ -122,12 +126,14 @@ lp::LogicalPlanNodePtr toLogicalPlan(const core::PlanNode& node) {
     for (auto i = 0; i < project.names().size(); ++i) {
       exprs.push_back(toExpr(project.projections()[i]));
     }
-    return std::make_shared<lp::ProjectNode>(project.id(), input, project.names(), exprs);
+    return std::make_shared<lp::ProjectNode>(
+        project.id(), input, project.names(), exprs);
   }
   if (name == "Filter") {
     auto& filter = *reinterpret_cast<const core::FilterNode*>(&node);
     auto input = toLogicalPlan(node.sources()[0]);
-    return std::make_shared<lp::FilterNode>(filter.id(), input, toExpr(filter.filter()));
+    return std::make_shared<lp::FilterNode>(
+        filter.id(), input, toExpr(filter.filter()));
   }
   if (name == "HashJoin" || name == "MergeJoin") {
     auto& join = *reinterpret_cast<const core::AbstractJoinNode*>(&node);

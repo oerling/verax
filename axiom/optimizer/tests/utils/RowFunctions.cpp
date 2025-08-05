@@ -18,7 +18,6 @@
 #include "velox/expression/VectorFunction.h"
 #include "velox/functions/FunctionRegistry.h"
 
-
 namespace facebook::velox::optimizer::test {
 
 class MakeRowFromMapFunction : public exec::VectorFunction {
@@ -35,16 +34,18 @@ class MakeRowFromMapFunction : public exec::VectorFunction {
   static std::vector<std::shared_ptr<exec::FunctionSignature>> signatures() {
     return {
         exec::FunctionSignatureBuilder()
-            .returnType(
-                "row(real)")
-	.argumentType("map(integer, real)").build(),
+            .returnType("row(real)")
+            .argumentType("map(integer, real)")
+            .build(),
         exec::FunctionSignatureBuilder()
-	.returnType("row(real)")
-	.argumentType("map(integer, array(bigint))").build(),
+            .returnType("row(real)")
+            .argumentType("map(integer, array(bigint))")
+            .build(),
         exec::FunctionSignatureBuilder()
 
-	.returnType("ROW(real)")
-	.argumentType("map(integer, map(bigint, real))").build() };
+            .returnType("ROW(real)")
+            .argumentType("map(integer, map(bigint, real))")
+            .build()};
   }
 };
 
@@ -59,4 +60,4 @@ void registerRowUdfs() {
   VELOX_REGISTER_VECTOR_FUNCTION(udf_makeRowFromMap, "padded_makeRowFromMap");
 }
 
-}
+} // namespace facebook::velox::optimizer::test

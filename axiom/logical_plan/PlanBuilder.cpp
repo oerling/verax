@@ -20,11 +20,11 @@
 #include "velox/connectors/Connector.h"
 #include "velox/exec/Aggregate.h"
 #include "velox/exec/AggregateFunctionRegistry.h"
+#include "velox/expression/Expr.h"
 #include "velox/expression/SignatureBinder.h"
 #include "velox/functions/FunctionRegistry.h"
 #include "velox/parse/Expressions.h"
 #include "velox/vector/VariantToVector.h"
-#include "velox/expression/Expr.h"
 
 namespace facebook::velox::logical_plan {
 
@@ -592,7 +592,7 @@ ExprPtr ExprResolver::tryResolveCallWithLambdas(
 core::TypedExprPtr ExprResolver::makeConstantTypedExpr(
     const ExprPtr& expr) const {
   auto vector = variantToVector(
-				expr->type(), *expr->asUnchecked<ConstantExpr>()->value(), pool_.get());
+      expr->type(), *expr->asUnchecked<ConstantExpr>()->value(), pool_.get());
   return std::make_shared<core::ConstantTypedExpr>(vector);
 }
 
@@ -628,19 +628,21 @@ ExprPtr ExprResolver::tryFoldCall(
   return nullptr;
 }
 
-  ExprPtr ExprResolver::tryFoldCast(const TypePtr& type, const ExprPtr& input) const {
+ExprPtr ExprResolver::tryFoldCast(const TypePtr& type, const ExprPtr& input)
+    const {
   if (!queryCtx_ || input->kind() != ExprKind::kConstant) {
     return nullptr;
   }
   auto vector = exec::tryEvaluateConstantExpression(
-						    std::make_shared<core::CastTypedExpr>(type, makeConstantTypedExpr(input), false),
+      std::make_shared<core::CastTypedExpr>(
+          type, makeConstantTypedExpr(input), false),
       pool_.get(),
       queryCtx_,
       true);
-    if (vector) {
+  if (vector) {
     return makeConstant(vector);
   }
-    return nullptr;
+  return nullptr;
 }
 
 ExprPtr ExprResolver::resolveScalarTypes(

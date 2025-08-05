@@ -441,7 +441,9 @@ std::vector<std::pair<std::string, int32_t>> tokenize(const std::string& str) {
 }
 } // namespace
 
-  void QueryTestBase::expectPlan(const std::string& actual, const std::string& expected) {
+void QueryTestBase::expectPlan(
+    const std::string& actual,
+    const std::string& expected) {
   auto expectedTokens = tokenize(expected);
   auto actualTokens = tokenize(expected);
   for (auto i = 0; i < actualTokens.size() && i < expectedTokens.size(); ++i) {

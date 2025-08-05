@@ -103,7 +103,7 @@ class QueryTestBase : public exec::test::LocalRunnerTestBase {
   static void expectPlan(
       const std::string& actual,
       const std::string& expected);
-  
+
   void waitForCompletion(const std::shared_ptr<runner::LocalRunner>& runner);
 
   OptimizerOptions optimizerOptions_;

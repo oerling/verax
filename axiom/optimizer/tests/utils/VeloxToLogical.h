@@ -21,6 +21,6 @@
 
 namespace facebook::velox::optimizer::test {
 
-  logical_plan::LogicalPlanNodePtr toLogicalPlan(const core::PlanNodePtr& node);
+logical_plan::LogicalPlanNodePtr toLogicalPlan(const core::PlanNodePtr& node);
 
 } // namespace facebook::velox::optimizer::test

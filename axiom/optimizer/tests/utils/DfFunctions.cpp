@@ -82,7 +82,7 @@ std::pair<std::vector<Step>, int32_t> makeRowFromMapSubfield(
 std::unordered_map<PathCP, logical_plan::ExprPtr> makeRowFromMapExplodeGeneric(
     const logical_plan::CallExpr* call,
     std::vector<PathCP>& paths,
-									       bool addCoalesce) {
+    bool addCoalesce) {
   std::unordered_map<PathCP, logical_plan::ExprPtr> result;
   for (auto& path : paths) {
     auto& steps = path->steps();
@@ -99,23 +99,32 @@ std::unordered_map<PathCP, logical_plan::ExprPtr> makeRowFromMapExplodeGeneric(
     auto nth = steps.front().id;
     auto type = call->type()->childAt(0);
     auto subscriptType = call->inputAt(1)->type()->childAt(0);
-    auto keys = call->inputAt(1)->asUnchecked<lp::ConstantExpr>()->value()->value<TypeKind::ARRAY>();
+    auto keys = call->inputAt(1)
+                    ->asUnchecked<lp::ConstantExpr>()
+                    ->value()
+                    ->value<TypeKind::ARRAY>();
     lp::ExprPtr getter = std::make_shared<lp::CallExpr>(
         type,
         "subscript",
         std::vector<lp::ExprPtr>{
-	  call->inputAt(0),
+            call->inputAt(0),
             std::make_shared<lp::ConstantExpr>(
                 subscriptType, std::make_shared<Variant>(keys[nth]))});
     if (addCoalesce) {
       lp::ConstantExprPtr deflt;
-      switch(type->kind()) {
-      case TypeKind::REAL:
-	deflt = std::make_shared<lp::ConstantExpr>(REAL(), std::make_shared<Variant>(Variant(static_cast<float>(0))));
-	break;
-      default: VELOX_NYI("padded_make_row_from_map type {}", type->toString());
+      switch (type->kind()) {
+        case TypeKind::REAL:
+          deflt = std::make_shared<lp::ConstantExpr>(
+              REAL(),
+              std::make_shared<Variant>(Variant(static_cast<float>(0))));
+          break;
+        default:
+          VELOX_NYI("padded_make_row_from_map type {}", type->toString());
       }
-      getter = std::make_shared<lp::SpecialFormExpr>(type, lp::SpecialForm::kCoalesce, std::vector<lp::ExprPtr>{getter, deflt});
+      getter = std::make_shared<lp::SpecialFormExpr>(
+          type,
+          lp::SpecialForm::kCoalesce,
+          std::vector<lp::ExprPtr>{getter, deflt});
     }
     result[prefixPath] = getter;
   }
@@ -133,8 +142,7 @@ std::unordered_map<PathCP, logical_plan::ExprPtr> paddedMakeRowFromMapExplode(
     std::vector<PathCP>& paths) {
   return makeRowFromMapExplodeGeneric(call, paths, true);
 }
-  
-  
+
 lp::ExprPtr makeRowFromMapHook(
     const std::string& name,
     const std::vector<lp::ExprPtr>& args) {
@@ -172,20 +180,22 @@ lp::ExprPtr makeNamedRowHook(
   return std::make_shared<lp::CallExpr>(
       std::move(rowType), "row_constructor", std::move(values));
 }
-  
+
 void registerDfFunctions() {
   registerFeatureFuncHook("make_row_from_map", makeRowFromMapHook);
   registerFeatureFuncHook("padded_make_row_from_map", makeRowFromMapHook);
   auto meta = std::make_unique<FunctionMetadata>();
   meta->logicalExplode = makeRowFromMapExplode;
   meta->valuePathToArgPath = makeRowFromMapSubfield;
-  FunctionRegistry::instance()->registerFunction("make_row_from_map", std::move(meta));
+  FunctionRegistry::instance()->registerFunction(
+      "make_row_from_map", std::move(meta));
 
   meta = std::make_unique<FunctionMetadata>();
   meta->logicalExplode = paddedMakeRowFromMapExplode;
   meta->valuePathToArgPath = makeRowFromMapSubfield;
-  FunctionRegistry::instance()->registerFunction("padded_make_row_from_map", std::move(meta));
-  
+  FunctionRegistry::instance()->registerFunction(
+      "padded_make_row_from_map", std::move(meta));
+
   registerFeatureFuncHook("make_named_row", makeNamedRowHook);
 }
 

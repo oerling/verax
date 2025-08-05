@@ -258,27 +258,31 @@ class LogicalSubfieldTest : public QueryTestBase,
                 exec::test::kHiveConnectorId,
                 "features",
                 {"float_features", "id_list_features"})
-      .unionAll(
-		lp::PlanBuilder(ctx)
-            .tableScan(
+            .unionAll(lp::PlanBuilder(ctx).tableScan(
                 exec::test::kHiveConnectorId,
                 "features",
                 {"float_features", "id_list_features"}))
 
-      .project(
+            .project(
                 {"make_row_from_map(float_features, array[10010, 10020, 10030], array['f1', 'f2', 'f3']) as r"})
-            .project({"make_named_row('f1b', r.f1 + 1::REAL, 'f2b', r.f2 + 2::REAL) as named"})
-      .filter("named.f1b < 10000::REAL")
-      .project({"make_named_row('rf2', named.f2b * 2::REAL) as fin"})
-      .build();
+            .project(
+                {"make_named_row('f1b', r.f1 + 1::REAL, 'f2b', r.f2 + 2::REAL) as named"})
+            .filter("named.f1b < 10000::REAL")
+            .project({"make_named_row('rf2', named.f2b * 2::REAL) as fin"})
+            .build();
 
     std::string planString;
     auto plan = planVelox(logical, &planString);
-    expectPlan(planString, "(features t4 project 1 columns  union all features t6 project 1 columns ) project 1 columns ");
+    expectPlan(
+        planString,
+        "(features t4 project 1 columns  union all features t6 project 1 columns ) project 1 columns ");
     auto exe = veloxString(plan.plan);
     // Filters should be pushed down to scan.
-    expectRegexp(exe, "remaining filter: .lt.plus.subscript.*float_features.*10010..1..10000");
-    expectRegexp(exe, "requiredSubfields: . float_features.10010. float_features.10020");
+    expectRegexp(
+        exe,
+        "remaining filter: .lt.plus.subscript.*float_features.*10010..1..10000");
+    expectRegexp(
+        exe, "requiredSubfields: . float_features.10010. float_features.10020");
   }
 };
 
@@ -321,7 +325,6 @@ TEST_P(LogicalSubfieldTest, maps) {
   writeToFile(filePath, vectors, config);
   tablesCreated();
   std::string plan;
-
 
   testMakeRowFromMap();
   {

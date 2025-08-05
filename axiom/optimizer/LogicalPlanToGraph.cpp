@@ -1375,7 +1375,7 @@ PlanObjectP Optimization::makeQueryGraph(
   }
 }
 
-  // Debug helper functions. Must be in a namespace to be callable from gdb.
+// Debug helper functions. Must be in a namespace to be callable from gdb.
 std::string leString(const lp::Expr* e) {
   return lp::ExprPrinter::toText(*e);
 }
