@@ -507,18 +507,33 @@ struct LookupKeys {
   bool isAscending{true};
 };
 
-  /// Describes how to shuffle data before a TableWriter.
-  struct WritePartitioning {
-    /// Columns for partitioning,. Names refer to the column names in the insert table handle. Empty if any worker can write any row.
-    std::vector<std::string> columns;
+/// Describes how to shuffle data before a TableWriter.
+struct WritePartitioning {
+  /// Columns for partitioning,. Names refer to the column names in the insert
+  /// table handle. Empty if any worker can write any row.
+  std::vector<std::string> columns;
 
-    /// Specifies the partition function. nullptr if 'columns' is empty.
-    core::PartitionFunctionSpecPtr partitioningSpec;
+  /// Specifies the partition function. nullptr if 'columns' is empty.
+  core::PartitionFunctionSpecPtr partitioningSpec;
 
-    /// Maximum number of workers. For example, having more workers than there are buckets makes no sense.
-    const int32_t maxWorkers;
-  };
-  
+  /// Maximum number of workers. For example, having more workers than there are
+  /// buckets makes no sense.
+  const int32_t maxWorkers;
+};
+
+/// Representts session status for update operations. May for
+/// example encapsulate a transaction state. The minimal
+/// implementation does nothing, which amounts to all write
+/// operations being non-isolated and autocommitting. Connector
+/// specific implementations have specify transaction functions.
+class ConnectorSession {
+  virtual ~ConnectorSession() = default;
+};
+
+/// Specifies what type of write is intended when initiating or concluding a
+/// write operation.
+enum class WriteKind { kInsert, kDelete, kUpdate };
+
 class ConnectorMetadata {
  public:
   virtual ~ConnectorMetadata() = default;
@@ -592,17 +607,53 @@ class ConnectorMetadata {
   /// last in column order. The set of options and their meaning is
   /// connector dependent. A connector is expected to throw an error
   /// if it does not understand all options. 'options'
-  virtual ConnectorInsertTableHandlePtr createInsertTableHandle(const std::string& tableName, const RowTypePtr& rowType, std::unordered_map<std::string, std::string> options) {
+  virtual ConnectorInsertTableHandlePtr createInsertTableHandle(
+      const std::string& tableName,
+      const RowTypePtr& rowType,
+      std::unordered_map<std::string, std::string> options,
+      const ConnectorSessionPtr& session) {
+    VELOX_UNSUPPORTED();
+  }
+
+  /// Creaates a table. The table properties come from the previously created
+  /// handle. If creating a table, the handle is created first, then
+  /// createTable() is called from one process one time and contents are written
+  /// by any number of nodes. The operation is finalized by finishWrite(), again
+  /// called once from one process. Any transaction semanttics are connector
+  /// dependent.
+  void createTable(
+      const std::string& tableName,
+      const ConnectorInsertTableHandlePtr& handle,
+      const ConnectorSessionPtr& session) {
     VELOX_UNSUPPORTED();
   }
 
   /// Returns specification for shuffling data before the table writer stage.
-  virtual WritePartitioning writerShuffleInfo(const ConnectorInsertTableHandlePtr& handle) {
+  virtual WritePartitioning writerShuffleInfo(
+      const ConnectorInsertTableHandlePtr& handle) {
     VELOX_UNSUPPORTED();
   }
 
-  /// Finalizes a table write. This runs once after all the table writers have finished. The result sets from the table writer fragments are passed as 'writerResults'. Their format and meaning is connector specific.
-  virtual void commitMetadata(const ConnectorInsertTableHandlePtr& handle, const std::vector<VectorPtr>& writerResult,  UpdateOperation op);
-};
+  /// Finalizes a table write. This runs once after all the table writers have
+  /// finished. The result sets from the table writer fragments are passed as
+  /// 'writerResults'. Their format and meaning is connector specific.
+  virtual void finishWrite(
+      const ConnectorInsertTableHandlePtr& handle,
+      const std::vector<VectorPtr>& writerResult,
+      WriteKind kind,
+      const ConnectorSessionPtr& session) {
+    VELOX_UNSUPPORTED();
+  }
+
+  /// Returns column handles whose value uniquely identifies a row for creating
+  /// and update or delete record. These may be for example some connector
+  /// specific opaque row id, primary key columns.
+  virtual std::vector<ColumnHandlePtr> rowIdhandles(
+      const ConnectorInsertTableHandlePtr& handle,
+      WriteKind kind)
+} VELOX_UNSUPPORTED();
+}
+}
+;
 
 } // namespace facebook::velox::connector

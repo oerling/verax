@@ -54,11 +54,11 @@ target_link_libraries(
 
 add_executable(
   velox_plan_test
+  PlanMatcher.cpp
   PlanTest.cpp
   Tpch.cpp
   ParquetTpchTest.cpp
   QueryTestBase.cpp
-  SubfieldTest.cpp
   LogicalSubfieldTest.cpp
   FeatureGen.cpp
   Genies.cpp
