@@ -507,6 +507,18 @@ struct LookupKeys {
   bool isAscending{true};
 };
 
+  /// Describes how to shuffle data before a TableWriter.
+  struct WritePartitioning {
+    /// Columns for partitioning,. Names refer to the column names in the insert table handle. Empty if any worker can write any row.
+    std::vector<std::string> columns;
+
+    /// Specifies the partition function. nullptr if 'columns' is empty.
+    core::PartitionFunctionSpecPtr partitioningSpec;
+
+    /// Maximum number of workers. For example, having more workers than there are buckets makes no sense.
+    const int32_t maxWorkers;
+  };
+  
 class ConnectorMetadata {
  public:
   virtual ~ConnectorMetadata() = default;
@@ -570,6 +582,27 @@ class ConnectorMetadata {
       const std::string& queryId) {
     VELOX_UNSUPPORTED();
   }
+
+  /// Creates an insert table handle for use with Velox
+  /// TableWriter. 'tableName' is a name with optional 'schema,.'
+  /// followed by table name. The connector gives the first part of
+  /// the three part name. 'rowType' is the type of one row, including
+  /// any partitioning or bucketing columns. The order may be
+  /// significant, for example Hive needs partitioning columns to be
+  /// last in column order. The set of options and their meaning is
+  /// connector dependent. A connector is expected to throw an error
+  /// if it does not understand all options. 'options'
+  virtual ConnectorInsertTableHandlePtr createInsertTableHandle(const std::string& tableName, const RowTypePtr& rowType, std::unordered_map<std::string, std::string> options) {
+    VELOX_UNSUPPORTED();
+  }
+
+  /// Returns specification for shuffling data before the table writer stage.
+  virtual WritePartitioning writerShuffleInfo(const ConnectorInsertTableHandlePtr& handle) {
+    VELOX_UNSUPPORTED();
+  }
+
+  /// Finalizes a table write. This runs once after all the table writers have finished. The result sets from the table writer fragments are passed as 'writerResults'. Their format and meaning is connector specific.
+  virtual void commitMetadata(const ConnectorInsertTableHandlePtr& handle, const std::vector<VectorPtr>& writerResult,  UpdateOperation op);
 };
 
 } // namespace facebook::velox::connector
