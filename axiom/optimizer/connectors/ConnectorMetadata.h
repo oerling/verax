@@ -602,40 +602,48 @@ class ConnectorMetadata {
     VELOX_UNSUPPORTED();
   }
 
-  /// Creates an insert table handle for use with Velox
-  /// TableWriter. 'tableName' is a name with optional 'schema,.'
-  /// followed by table name. The connector gives the first part of
-  /// the three part name. 'rowType' is the type of one row, including
-  /// any partitioning or bucketing columns. The order may be
-  /// significant, for example Hive needs partitioning columns to be
-  /// last in column order. The set of options and their meaning is
-  /// connector dependent. A connector is expected to throw an error
-  /// if it does not understand all options. if the connector has
-  /// transaction support, sets up a transaction if one does not
-  /// exist. The handle is created in one process, which is considered
-  /// to initiate the transaction. If data is added to the table,
-  /// finishWrite must be called after the last writer is
-  /// finished. Whether this autocommits a transaction depends on the
-  /// connector and session settings.
+  /// Creates an insert table handle for use with Velox TableWriter. '
+  /// 'rowType' is the type of one row, including any partitioning or
+  /// bucketing columns. The order may be significant, for example
+  /// Hive needs partitioning columns to be last in column order. If
+  /// the write is a delete or update the row will reflect this,
+  /// starting with the columns identified by rowIdHandles().  The set
+  /// of options and their meaning is connector dependent. A connector
+  /// is expected to throw an error if it does not understand all
+  /// options. if the connector has transaction support, sets up a
+  /// transaction if one does not exist. The handle is created in one
+  /// process, which is considered to initiate the transaction. If
+  /// data is added to the table, finishWrite must be called after the
+  /// last writer is finished. Whether this autocommits a transaction
+  /// depends on the connector and session settings.
   virtual ConnectorInsertTableHandlePtr createInsertTableHandle(
-      const std::string& tableName,
+      const TableLayout& layout,
       const RowTypePtr& rowType,
       std::unordered_map<std::string, std::string> options,
+      WriteKind kind,
       const ConnectorSessionPtr& session) {
     VELOX_UNSUPPORTED();
   }
 
-  /// Creaates a table. The table properties come from the previously created
-  /// handle. If creating a table, the handle is created first, then
-  /// createTable() is called from one process one time and contents are written
-  /// by any number of nodes. The operation is finalized by finishWrite(), again
-  /// called once from one process. Any transaction semanttics are connector
-  /// dependent. Throws an error if the table exists, unless 'deleteIfExists' is
-  /// true, in which case the table is silently deleted. finishWrite should be
-  /// called to complete the write also if no data is added.
+  /// Creaates a table. tableName' is a name with optional 'schema,.'
+  /// followed by table name. Theconnector gives the first part of the
+  /// three part name. The table properties are in 'options'. All
+  /// opttions must be understood by the connector. To create a table,
+  /// first call createTable, then access the created layout(s) and
+  /// make an insert table handle for writing each. Insert data into
+  /// each layout and then call finishWrite on each. Normally a table
+  /// has one layout but if many exist, as in secondary indices or
+  /// materializations that are not transparently handled by an
+  /// outside system, the optimizer is expected to make plans that
+  /// write to all.
+  /// Any transaction semanttics are connector
+  /// dependent. Throws an error if the table exists, unless
+  /// 'deleteIfExists' is true, in which case the table is silently deleted.
+  /// finishWrite should be called to complete the write also if no data is
+  /// added.
   void createTable(
       const std::string& tableName,
-      const ConnectorInsertTableHandlePtr& handle,
+      const std::unordered_map<std::string, std::string>& options,
       const ConnectorSessionPtr& session,
       bool deleteIfExistts) {
     VELOX_UNSUPPORTED();
@@ -660,9 +668,9 @@ class ConnectorMetadata {
 
   /// Returns column handles whose value uniquely identifies a row for creating
   /// and update or delete record. These may be for example some connector
-  /// specific opaque row id, primary key columns.
-  virtual std::vector<ColumnHandlePtr> rowIdhandles(
-      const ConnectorInsertTableHandlePtr& handle,
+  /// specific opaque row id or primary key columns.
+  virtual std::vector<ColumnHandlePtr> rowIdHandles(
+      const TableLayout& layout,
       WriteKind kind) {
     VELOX_UNSUPPORTED();
   }
