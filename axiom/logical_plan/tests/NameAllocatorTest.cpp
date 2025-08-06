@@ -22,8 +22,8 @@ namespace facebook::velox::logical_plan {
 
 TEST(NameAllocatorTest, basic) {
   NameAllocator allocator;
-  EXPECT_EQ(allocator.newName("f_oo"), "f_oo");
-  EXPECT_EQ(allocator.newName("f_oo"), "f_oo_0");
+  EXPECT_EQ(allocator.newName("foo"), "foo");
+  EXPECT_EQ(allocator.newName("foo"), "foo_0");
 
   EXPECT_EQ(allocator.newName("bar"), "bar");
   EXPECT_EQ(allocator.newName("bar"), "bar_1");
