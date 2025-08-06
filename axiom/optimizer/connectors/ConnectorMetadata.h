@@ -28,6 +28,8 @@ namespace facebook::velox::core {
 // core:: but implementations do.
 class ITypedExpr;
 using TypedExprPtr = std::shared_ptr<const ITypedExpr>;
+
+class PartitionFunctionSpec;
 } // namespace facebook::velox::core
 
 /// Base classes for schema elements used in execution. A
@@ -514,7 +516,7 @@ struct WritePartitioning {
   std::vector<std::string> columns;
 
   /// Specifies the partition function. nullptr if 'columns' is empty.
-  core::PartitionFunctionSpecPtr partitioningSpec;
+  std::shared_ptr<const core::PartitionFunctionSpec> partitionSpec;
 
   /// Maximum number of workers. For example, having more workers than there are
   /// buckets makes no sense.
@@ -529,6 +531,8 @@ struct WritePartitioning {
 class ConnectorSession {
   virtual ~ConnectorSession() = default;
 };
+
+using ConnectorSessionPtr = std::shared_ptr<ConnectorSession>;
 
 /// Specifies what type of write is intended when initiating or concluding a
 /// write operation.
@@ -606,7 +610,13 @@ class ConnectorMetadata {
   /// significant, for example Hive needs partitioning columns to be
   /// last in column order. The set of options and their meaning is
   /// connector dependent. A connector is expected to throw an error
-  /// if it does not understand all options. 'options'
+  /// if it does not understand all options. if the connector has
+  /// transaction support, sets up a transaction if one does not
+  /// exist. The handle is created in one process, which is considered
+  /// to initiate the transaction. If data is added to the table,
+  /// finishWrite must be called after the last writer is
+  /// finished. Whether this autocommits a transaction depends on the
+  /// connector and session settings.
   virtual ConnectorInsertTableHandlePtr createInsertTableHandle(
       const std::string& tableName,
       const RowTypePtr& rowType,
@@ -620,11 +630,14 @@ class ConnectorMetadata {
   /// createTable() is called from one process one time and contents are written
   /// by any number of nodes. The operation is finalized by finishWrite(), again
   /// called once from one process. Any transaction semanttics are connector
-  /// dependent.
+  /// dependent. Throws an error if the table exists, unless 'deleteIfExists' is
+  /// true, in which case the table is silently deleted. finishWrite should be
+  /// called to complete the write also if no data is added.
   void createTable(
       const std::string& tableName,
       const ConnectorInsertTableHandlePtr& handle,
-      const ConnectorSessionPtr& session) {
+      const ConnectorSessionPtr& session,
+      bool deleteIfExistts) {
     VELOX_UNSUPPORTED();
   }
 
@@ -650,10 +663,9 @@ class ConnectorMetadata {
   /// specific opaque row id, primary key columns.
   virtual std::vector<ColumnHandlePtr> rowIdhandles(
       const ConnectorInsertTableHandlePtr& handle,
-      WriteKind kind)
-} VELOX_UNSUPPORTED();
-}
-}
-;
+      WriteKind kind) {
+    VELOX_UNSUPPORTED();
+  }
+};
 
 } // namespace facebook::velox::connector
