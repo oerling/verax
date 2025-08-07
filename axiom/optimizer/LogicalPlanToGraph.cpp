@@ -28,6 +28,30 @@ namespace facebook::velox::optimizer {
 
 namespace lp = facebook::velox::logical_plan;
 
+  struct Frame {
+    const char* message;
+    const lp::Expr* expr;
+    const lp::LogicalPlanNode* node;
+    Frame* parent{nullptr};
+  };
+
+  Frame*& currentFrame() {
+    thread_local Frame* frame;
+    return frame;
+  }
+  class FrameSetter {
+  public:
+    FrameSetter(const char* _message, const lp::Expr* _expr = nullptr, const lp::LogicalPlanNode* _node = nullptr)
+      : frame_{_message, _expr, _node, currentFrame()} {
+      currentFrame() = &frame_;
+    }
+    ~FrameSetter() {
+      currentFrame() = frame_.parent;
+    }
+  private:
+    Frame frame_;
+  };
+  
 void Optimization::setDerivedTableOutput(
     DerivedTableP dt,
     const lp::LogicalPlanNode& planNode) {
@@ -51,6 +75,7 @@ DerivedTableP Optimization::makeQueryGraphFromLogical() {
   root_ = newDt();
   currentSelect_ = root_;
 
+  FrameSetter f("top", nullptr, logicalPlan_);
   makeQueryGraph(*logicalPlan_, kAllAllowedInDt);
   return root_;
 }

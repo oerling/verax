@@ -118,7 +118,21 @@ std::unordered_map<PathCP, logical_plan::ExprPtr> makeRowFromMapExplodeGeneric(
               REAL(),
               std::make_shared<Variant>(Variant(static_cast<float>(0))));
           break;
-        default:
+      case TypeKind::ARRAY: {
+	auto emptyArray = Variant::array({});
+	deflt = std::make_shared<lp::ConstantExpr>(
+						     type,
+              std::make_shared<Variant>(Variant(emptyArray)));
+          break;
+      }
+      case TypeKind::MAP: {
+	auto emptyMap = Variant::map({});
+          deflt = std::make_shared<lp::ConstantExpr>(
+						     type,
+              std::make_shared<Variant>(Variant(emptyMap)));
+          break;
+      }	
+      default:
           VELOX_NYI("padded_make_row_from_map type {}", type->toString());
       }
       getter = std::make_shared<lp::SpecialFormExpr>(

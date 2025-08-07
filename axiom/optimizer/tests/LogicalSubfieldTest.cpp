@@ -266,12 +266,17 @@ class LogicalSubfieldTest : public QueryTestBase,
                 exec::test::kHiveConnectorId,
                 "features",
                 {"float_features", "id_list_features"}))
-            .project(
-                {"make_row_from_map(float_features, array[10010, 10020, 10030], array['f1', 'f2', 'f3']) as r"})
-            .project(
-                {"make_named_row('f1b', r.f1 + 1::REAL, 'f2b', r.f2 + 2::REAL) as named"})
-            .filter("named.f1b < 10000::REAL")
-            .project({"make_named_row('rf2', named.f2b * 2::REAL) as fin"})
+      .project({"float_features as float_features_1"})
+      .project({"float_features_1 as float_features_2"})
+      .project({"make_row_from_map(float_features_2, array[10010, 10020, 10030], array['f1', 'f2', 'f3']) as r"})
+      .project({"r as r1"})
+      .project({"r1 as r2"})
+      .project(
+                {"make_named_row('f1b', r2.f1 + 1::REAL, 'f2b', r2.f2 + 2::REAL) as named"})
+      .project({"named as named1"})
+      .project({"named1 as named2"})
+      .filter("named2.f1b < 10000::REAL")
+            .project({"make_named_row('rf2', named2.f2b * 2::REAL) as fin"})
             .build();
 
     auto fragmentedPlan = planVelox(logicalPlan);
