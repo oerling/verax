@@ -594,6 +594,57 @@ core::PlanNodePtr Optimization::makeOrderBy(
   return merge;
 }
 
+core::PlanNodePtr Optimization::makeLimit(
+    const Limit& op,
+    ExecutableFragment& fragment,
+    std::vector<ExecutableFragment>& stages) {
+  auto input = makeFragment(op.input(), fragment, stages);
+
+  if (isSingle_) {
+    return std::make_shared<core::LimitNode>(
+        idGenerator_.next(),
+        op.offset,
+        op.limit,
+        /* isPartial */ false,
+        input);
+  }
+
+  ExecutableFragment source;
+  source.width = options_.numWorkers;
+  source.taskPrefix = fmt::format("stage{}", ++stageCounter_);
+
+  auto partialLimitNode = std::make_shared<core::LimitNode>(
+      idGenerator_.next(),
+      op.offset,
+      op.limit,
+      /* isPartial */ true,
+      input);
+
+  source.fragment.planNode = core::PartitionedOutputNode::single(
+      idGenerator_.next(),
+      partialLimitNode->outputType(),
+      VectorSerde::Kind::kPresto,
+      partialLimitNode);
+
+  auto exchange = std::make_shared<core::ExchangeNode>(
+      idGenerator_.next(),
+      partialLimitNode->outputType(),
+      VectorSerde::Kind::kPresto);
+
+  auto finalLimitNode = std::make_shared<core::LimitNode>(
+      idGenerator_.next(),
+      op.offset,
+      op.limit,
+      /* isPartial */ false,
+      exchange);
+
+  fragment.width = 1;
+  fragment.inputStages.push_back(InputStage{exchange->id(), source.taskPrefix});
+  stages.push_back(std::move(source));
+
+  return finalLimitNode;
+}
+
 namespace {
 class HashPartitionFunctionSpec : public core::PartitionFunctionSpec {
  public:
@@ -1107,6 +1158,8 @@ core::PlanNodePtr Optimization::makeFragment(
       return makeAggregation(*op->as<Aggregation>(), fragment, stages);
     case RelType::kOrderBy:
       return makeOrderBy(*op->as<OrderBy>(), fragment, stages);
+    case RelType::kLimit:
+      return makeLimit(*op->as<Limit>(), fragment, stages);
     case RelType::kRepartition: {
       std::shared_ptr<core::ExchangeNode> ignore;
       return makeRepartition(*op->as<Repartition>(), fragment, stages, ignore);

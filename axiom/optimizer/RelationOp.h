@@ -491,4 +491,18 @@ struct UnionAll : public RelationOp {
   const RelationOpPtrVector inputs;
 };
 
+struct Limit : public RelationOp {
+  Limit(RelationOpPtr input, int32_t limit, int32_t offset)
+      : RelationOp(
+            RelType::kLimit,
+            input,
+            input->distribution(),
+            input->columns()),
+        limit{limit},
+        offset{offset} {}
+
+  const int32_t limit;
+  const int32_t offset;
+};
+
 } // namespace facebook::velox::optimizer
