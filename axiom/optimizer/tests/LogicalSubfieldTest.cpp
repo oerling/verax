@@ -26,6 +26,7 @@
 #include "velox/vector/tests/utils/VectorMaker.h"
 
 DEFINE_string(subfield_data_path, "", "Data directory for subfield test data");
+DECLARE_int32(optimizer_trace);
 
 using namespace facebook::velox::optimizer::test;
 using namespace facebook::velox::exec::test;
@@ -67,6 +68,7 @@ class LogicalSubfieldTest : public QueryTestBase,
         FAIL();
         break;
     }
+    optimizerOptions_.traceFlags = FLAGS_optimizer_trace;
   }
 
   void TearDown() override {
@@ -272,9 +274,10 @@ class LogicalSubfieldTest : public QueryTestBase,
       .project({"r as r1"})
       .project({"r1 as r2"})
       .project(
-                {"make_named_row('f1b', r2.f1 + 1::REAL, 'f2b', r2.f2 + 2::REAL) as named"})
+                {"make_named_row('f1b', r2.f1 + 1::REAL + cast(rand() as real), 'f2b', r2.f2 + 2::REAL + cast(rand() as real)) as named"})
       .project({"named as named1"})
-      .project({"named1 as named2"})
+      .project({"make_named_row('f1b', named1.f1b + 2::REAL, 'f2b', named1.f2b + 3::REAL) as named3"})
+      .project({"named3 as named2"})
       .filter("named2.f1b < 10000::REAL")
             .project({"make_named_row('rf2', named2.f2b * 2::REAL) as fin"})
             .build();
@@ -508,8 +511,9 @@ TEST_P(LogicalSubfieldTest, maps) {
         lp::PlanBuilder()
             .tableScan(kHiveConnectorId, "features", fields)
             .project(
-                {"genie(uid, float_features, id_list_features, id_score_list_features) as g"})
-            .project(
+                {"genie(uid, float_features, id_list_features, id_score_list_features) as gtemp"})
+      .project({"gtemp as g"})
+      .project(
                 {"g",
                  "g[2][10100::int] as f10",
                  "g[2][10200::int] as f2",
