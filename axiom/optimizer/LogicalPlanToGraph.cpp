@@ -30,36 +30,37 @@ namespace facebook::velox::optimizer {
 
 namespace lp = facebook::velox::logical_plan;
 
-  /// Trace info to add to exception messages.
-  struct ToGraphContext {
-    ToGraphContext(const lp::Expr* e) : expr(e), node(nullptr) {}
+/// Trace info to add to exception messages.
+struct ToGraphContext {
+  ToGraphContext(const lp::Expr* e) : expr(e), node(nullptr) {}
 
-    ToGraphContext(const lp::LogicalPlanNode* n) : expr(nullptr), node(n) {}
-    
-    const lp::Expr* expr{nullptr};
-    const lp::LogicalPlanNode* node{nullptr};
-  };
+  ToGraphContext(const lp::LogicalPlanNode* n) : expr(nullptr), node(n) {}
 
-  std::string toGraphMessage(VeloxException::Type exceptionType, void* arg) {
-    auto ctx = reinterpret_cast<ToGraphContext*>(arg);
-    if (ctx->expr != nullptr) {
-      return fmt::format("Expr: ", lp::ExprPrinter::toText(*ctx->expr));
-    }
-    if (ctx->node != nullptr) {
-      return fmt::format("Node: [{}] {}\n", ctx->node->id(), lp::PlanPrinter::summarizeToText(*ctx->node));
-    }
-    return "";
+  const lp::Expr* expr{nullptr};
+  const lp::LogicalPlanNode* node{nullptr};
+};
+
+std::string toGraphMessage(VeloxException::Type exceptionType, void* arg) {
+  auto ctx = reinterpret_cast<ToGraphContext*>(arg);
+  if (ctx->expr != nullptr) {
+    return fmt::format("Expr: ", lp::ExprPrinter::toText(*ctx->expr));
   }
-  
-
-  
-  ExceptionContext makeExceptionContext(ToGraphContext* ctx) {
-    ExceptionContext e;
-    e.messageFunc = toGraphMessage;
-    e.arg = ctx;
-    return e;
+  if (ctx->node != nullptr) {
+    return fmt::format(
+        "Node: [{}] {}\n",
+        ctx->node->id(),
+        lp::PlanPrinter::summarizeToText(*ctx->node));
   }
-    
+  return "";
+}
+
+ExceptionContext makeExceptionContext(ToGraphContext* ctx) {
+  ExceptionContext e;
+  e.messageFunc = toGraphMessage;
+  e.arg = ctx;
+  return e;
+}
+
 void Optimization::setDerivedTableOutput(
     DerivedTableP dt,
     const lp::LogicalPlanNode& planNode) {
@@ -365,14 +366,14 @@ ExprCP Optimization::makeGettersOverSkyline(
       expr = column;
     } else {
       trace(kPreprocess, [&]() {
-	std::cout << "Complex function with no skyline: steps=" << toPath(steps)->toString() << std::endl;
-      std::cout << "base=" << lp::ExprPrinter::toText(*base) << std::endl;
-      std::cout << "Columns=";
-      for (auto& name : logicalExprSource_->outputType()->names()) {
-	std::cout << name << " ";
-      }
-      std::cout << std::endl;
-
+        std::cout << "Complex function with no skyline: steps="
+                  << toPath(steps)->toString() << std::endl;
+        std::cout << "base=" << lp::ExprPrinter::toText(*base) << std::endl;
+        std::cout << "Columns=";
+        for (auto& name : logicalExprSource_->outputType()->names()) {
+          std::cout << name << " ";
+        }
+        std::cout << std::endl;
       });
       expr = translateExpr(base);
     }
@@ -610,7 +611,7 @@ ExprCP Optimization::translateExpr(const lp::ExprPtr& expr) {
 
   ToGraphContext ctx(expr.get());
   ExceptionContextSetter s(makeExceptionContext(&ctx));
-  
+
   const auto* call = expr->asUnchecked<lp::CallExpr>();
   std::string callName;
   if (call) {
@@ -752,14 +753,15 @@ std::optional<ExprCP> Optimization::translateSubfieldFunction(
       translated[pair.first] = translateExpr(pair.second);
     }
     trace(kPreprocess, [&]() {
-            std::cout << "Explode=" << lp::ExprPrinter::toText(*call) << std::endl;
+      std::cout << "Explode=" << lp::ExprPrinter::toText(*call) << std::endl;
       std::cout << "num paths=" << paths.size() << std::endl;
       std::cout << "translated=" << map.size() << std::endl;
       if (!translated.empty()) {
-	std::cout << "Set function skyline=" << translated.size() << " " << map.size() << std::endl;
+        std::cout << "Set function skyline=" << translated.size() << " "
+                  << map.size() << std::endl;
       }
     });
-	
+
     if (!translated.empty()) {
       logicalFunctionSubfields_[call] =
           SubfieldProjections{.pathToExpr = std::move(translated)};
@@ -1087,11 +1089,13 @@ PlanObjectP Optimization::addProjection(const lp::ProjectNode* project) {
   trace(kPreprocess, [&]() {
     for (auto i = 0; i < exprs.size(); ++i) {
       if (std::find(channels.begin(), channels.end(), i) == channels.end()) {
-	std::cout << "P=" << project->id() << " dropped projection name=" << names[i] << " = " << lp::ExprPrinter::toText(*exprs[i]) << std::endl;
+        std::cout << "P=" << project->id()
+                  << " dropped projection name=" << names[i] << " = "
+                  << lp::ExprPrinter::toText(*exprs[i]) << std::endl;
       }
     }
   });
-    for (auto i : channels) {
+  for (auto i : channels) {
     if (exprs[i]->isInputReference()) {
       const auto& name =
           exprs[i]->asUnchecked<lp::InputReferenceExpr>()->name();

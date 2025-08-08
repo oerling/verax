@@ -118,21 +118,19 @@ std::unordered_map<PathCP, lp::ExprPtr> makeRowFromMapExplodeGeneric(
               REAL(),
               std::make_shared<Variant>(Variant(static_cast<float>(0))));
           break;
-      case TypeKind::ARRAY: {
-	auto emptyArray = Variant::array({});
-	deflt = std::make_shared<lp::ConstantExpr>(
-						     type,
-              std::make_shared<Variant>(Variant(emptyArray)));
-          break;
-      }
-      case TypeKind::MAP: {
-	auto emptyMap = Variant::map({});
+        case TypeKind::ARRAY: {
+          auto emptyArray = Variant::array({});
           deflt = std::make_shared<lp::ConstantExpr>(
-						     type,
-              std::make_shared<Variant>(Variant(emptyMap)));
+              type, std::make_shared<Variant>(Variant(emptyArray)));
           break;
-      }	
-      default:
+        }
+        case TypeKind::MAP: {
+          auto emptyMap = Variant::map({});
+          deflt = std::make_shared<lp::ConstantExpr>(
+              type, std::make_shared<Variant>(Variant(emptyMap)));
+          break;
+        }
+        default:
           VELOX_NYI("padded_make_row_from_map type {}", type->toString());
       }
       getter = std::make_shared<lp::SpecialFormExpr>(
@@ -228,7 +226,6 @@ std::unordered_map<PathCP, lp::ExprPtr> makeNamedRowExplode(
   return result;
 }
 
-  
 void registerDfFunctions() {
   registerFeatureFuncHook("make_row_from_map", makeRowFromMapHook);
   registerFeatureFuncHook("padded_make_row_from_map", makeRowFromMapHook);
@@ -246,14 +243,13 @@ void registerDfFunctions() {
 
   registerFeatureFuncHook("make_named_row", makeNamedRowHook);
 
-    {
+  {
     auto metadata = std::make_unique<FunctionMetadata>();
     metadata->valuePathToArgPath = makeNamedRowSubfield;
     metadata->logicalExplode = makeNamedRowExplode;
     FunctionRegistry::instance()->registerFunction(
         "make_named_row", std::move(metadata));
   }
-
 }
 
 } // namespace facebook::velox::optimizer::test

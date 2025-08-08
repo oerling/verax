@@ -268,17 +268,19 @@ class LogicalSubfieldTest : public QueryTestBase,
                 exec::test::kHiveConnectorId,
                 "features",
                 {"float_features", "id_list_features"}))
-      .project({"float_features as float_features_1"})
-      .project({"float_features_1 as float_features_2"})
-      .project({"make_row_from_map(float_features_2, array[10010, 10020, 10030], array['f1', 'f2', 'f3']) as r"})
-      .project({"r as r1"})
-      .project({"r1 as r2"})
-      .project(
+            .project({"float_features as float_features_1"})
+            .project({"float_features_1 as float_features_2"})
+            .project(
+                {"make_row_from_map(float_features_2, array[10010, 10020, 10030], array['f1', 'f2', 'f3']) as r"})
+            .project({"r as r1"})
+            .project({"r1 as r2"})
+            .project(
                 {"make_named_row('f1b', r2.f1 + 1::REAL + cast(rand() as real), 'f2b', r2.f2 + 2::REAL + cast(rand() as real)) as named"})
-      .project({"named as named1"})
-      .project({"make_named_row('f1b', named1.f1b + 2::REAL, 'f2b', named1.f2b + 3::REAL) as named3"})
-      .project({"named3 as named2"})
-      .filter("named2.f1b < 10000::REAL")
+            .project({"named as named1"})
+            .project(
+                {"make_named_row('f1b', named1.f1b + 2::REAL, 'f2b', named1.f2b + 3::REAL) as named3"})
+            .project({"named3 as named2"})
+            .filter("named2.f1b < 10000::REAL")
             .project({"make_named_row('rf2', named2.f2b * 2::REAL) as fin"})
             .build();
 
@@ -512,8 +514,8 @@ TEST_P(LogicalSubfieldTest, maps) {
             .tableScan(kHiveConnectorId, "features", fields)
             .project(
                 {"genie(uid, float_features, id_list_features, id_score_list_features) as gtemp"})
-      .project({"gtemp as g"})
-      .project(
+            .project({"gtemp as g"})
+            .project(
                 {"g",
                  "g[2][10100::int] as f10",
                  "g[2][10200::int] as f2",

@@ -755,7 +755,7 @@ class Optimization {
       f();
     }
   }
-  
+
  private:
   static constexpr uint64_t kAllAllowedInDt = ~0UL;
 
