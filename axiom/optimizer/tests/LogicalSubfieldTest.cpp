@@ -519,7 +519,8 @@ TEST_P(LogicalSubfieldTest, maps) {
                 {"g",
                  "g[2][10100::int] as f10",
                  "g[2][10200::int] as f2",
-                 "g[3][200600::int] as idl100"})
+                 "g[3][200600::int] as idl100",
+		 "cardinality(g[3][200600::int]) as idl100card"})
             .build();
 
     auto plan = extractPlanNode(planVelox(logicalPlan));

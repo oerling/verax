@@ -522,6 +522,9 @@ struct OptimizerOptions {
   /// columns in table scan.
   bool pushdownSubfields{false};
 
+  /// True if all map columns where a known set of keys is accessed should be extracted as structs.
+  bool allMapsAsStruct{false};
+  
   /// Map from table name to  list of map columns to be read as structs unless
   /// the whole map is accessed as a map.
   std::unordered_map<std::string, std::vector<std::string>> mapAsStruct;

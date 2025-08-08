@@ -43,7 +43,7 @@ struct ToGraphContext {
 std::string toGraphMessage(VeloxException::Type exceptionType, void* arg) {
   auto ctx = reinterpret_cast<ToGraphContext*>(arg);
   if (ctx->expr != nullptr) {
-    return fmt::format("Expr: ", lp::ExprPrinter::toText(*ctx->expr));
+    return fmt::format("Expr: {}", lp::ExprPrinter::toText(*ctx->expr));
   }
   if (ctx->node != nullptr) {
     return fmt::format(
@@ -417,6 +417,14 @@ ExprCP Optimization::makeGettersOverSkyline(
               toName("subscript"),
               Value(type, 1),
               std::move(args),
+              FunctionSet());
+          break;
+        }
+        case StepKind::kCardinality: {
+          expr = make<Call>(
+              toName("cardinality"),
+              Value(toType(INTEGER()), 1),
+              ExprVector{expr},
               FunctionSet());
           break;
         }
@@ -1016,6 +1024,11 @@ PlanObjectP Optimization::makeBaseTable(const lp::TableScanNode* tableScan) {
       if (opts_.pushdownSubfields) {
         Path::subfieldSkyline(allPaths);
         if (!allPaths.empty()) {
+          trace(kPreprocess, [&]() {
+            std::cout << "Subfields: " << baseTable->cname << "."
+                      << baseTable->schemaTable->name << " " << column->name()
+                      << ":" << allPaths.size() << std::endl;
+          });
           makeSubfieldColumns(baseTable, column, allPaths);
         }
       }
