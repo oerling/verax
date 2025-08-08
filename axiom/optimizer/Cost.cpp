@@ -15,13 +15,12 @@
  */
 
 #include "axiom/optimizer/Cost.h"
+#include "axiom/optimizer/FunctionRegistry.h"
 #include "axiom/optimizer/JsonUtil.h"
 #include "axiom/optimizer/Plan.h"
 #include "axiom/optimizer/PlanUtils.h"
 
 namespace facebook::velox::optimizer {
-
-using namespace facebook::velox;
 
 // Collection of per operation costs for a target system.  The base
 // unit is the time to memcpy a cache line in a large memcpy on one

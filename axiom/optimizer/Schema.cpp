@@ -35,7 +35,7 @@ float Value::byteSize() const {
 std::vector<ColumnCP> SchemaTable::toColumns(
     const std::vector<std::string>& names) {
   std::vector<ColumnCP> columns(names.size());
-  assert(!columns.empty()); // lint
+  VELOX_DCHECK(!columns.empty());
   for (auto i = 0; i < names.size(); ++i) {
     columns[i] = findColumn(name);
   }
@@ -130,6 +130,17 @@ void Schema::addTable(SchemaTableCP table) const {
   tables_[table->name] = table;
 }
 
+float tableCardinality(PlanObjectCP table) {
+  if (table->type() == PlanType::kTable) {
+    return table->as<BaseTable>()
+        ->schemaTable->columnGroups[0]
+        ->distribution()
+        .cardinality;
+  }
+  VELOX_CHECK(table->type() == PlanType::kDerivedTable);
+  return table->as<DerivedTable>()->distribution->cardinality;
+}
+
 // The fraction of rows of a base table selected by non-join filters. 0.2
 // means 1 in 5 are selected.
 float baseSelectivity(PlanObjectCP object) {
@@ -139,6 +150,7 @@ float baseSelectivity(PlanObjectCP object) {
   return 1;
 }
 
+namespace {
 template <typename T>
 ColumnCP findColumnByName(const T& columns, Name name) {
   for (auto column : columns) {
@@ -149,6 +161,7 @@ ColumnCP findColumnByName(const T& columns, Name name) {
   }
   return nullptr;
 }
+} // namespace
 
 bool SchemaTable::isUnique(CPSpan<Column> columns) const {
   for (auto& column : columns) {
@@ -176,6 +189,8 @@ bool SchemaTable::isUnique(CPSpan<Column> columns) const {
   return false;
 }
 
+namespace {
+
 float combine(float card, int32_t ith, float otherCard) {
   if (ith == 0) {
     return card / otherCard;
@@ -185,6 +200,7 @@ float combine(float card, int32_t ith, float otherCard) {
   }
   return card / otherCard;
 }
+} // namespace
 
 IndexInfo SchemaTable::indexInfo(ColumnGroupP index, CPSpan<Column> columns)
     const {
@@ -291,7 +307,7 @@ IndexInfo joinCardinality(PlanObjectCP table, CPSpan<Column> keys) {
   VELOX_CHECK(table->type() == PlanType::kDerivedTable);
   auto dt = table->as<DerivedTable>();
   auto distribution = dt->distribution;
-  assert(distribution);
+  VELOX_DCHECK(distribution);
   IndexInfo result;
   result.scanCardinality = distribution->cardinality;
   const ExprVector* groupingKeys = nullptr;
@@ -369,6 +385,19 @@ Distribution Distribution::rename(
   replace(result.order, exprs, names);
   return result;
 }
+
+namespace {
+
+void exprsToString(const ExprVector& exprs, std::stringstream& out) {
+  int32_t size = exprs.size();
+  for (auto i = 0; i < size; ++i) {
+    if (i > 0) {
+      out << ", ";
+    }
+    out << exprs[i]->toString();
+  }
+}
+} // namespace
 
 std::string Distribution::toString() const {
   if (isBroadcast) {
