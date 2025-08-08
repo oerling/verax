@@ -27,6 +27,8 @@
 
 DEFINE_string(subfield_data_path, "", "Data directory for subfield test data");
 
+DECLARE_int32(num_workers);
+
 using namespace facebook::velox::optimizer::test;
 using namespace facebook::velox::exec::test;
 
@@ -74,10 +76,6 @@ class LogicalSubfieldTest : public QueryTestBase,
   }
 
   void declareGenies() {
-    auto genieType = makeGenieType();
-    std::vector<TypePtr> genieArgs = genieType->children();
-    planner().registerScalarFunction("genie", genieArgs, genieType);
-    planner().registerScalarFunction("exploding_genie", genieArgs, genieType);
     registerGenieUdfs();
 
     auto metadata = std::make_unique<FunctionMetadata>();
@@ -255,17 +253,12 @@ class LogicalSubfieldTest : public QueryTestBase,
   };
 
   void testMakeRowFromMap() {
-    lp::PlanBuilder::Context ctx(getQueryCtx(), resolveDfFunction);
+    lp::PlanBuilder::Context ctx(
+        exec::test::kHiveConnectorId, getQueryCtx(), resolveDfFunction);
     auto logicalPlan =
         lp::PlanBuilder(ctx)
-            .tableScan(
-                exec::test::kHiveConnectorId,
-                "features",
-                {"float_features", "id_list_features"})
-            .unionAll(lp::PlanBuilder(ctx).tableScan(
-                exec::test::kHiveConnectorId,
-                "features",
-                {"float_features", "id_list_features"}))
+            .tableScan("features")
+            .unionAll(lp::PlanBuilder(ctx).tableScan("features"))
             .project(
                 {"make_row_from_map(float_features, array[10010, 10020, 10030], array['f1', 'f2', 'f3']) as r"})
             .project(
@@ -274,13 +267,36 @@ class LogicalSubfieldTest : public QueryTestBase,
             .project({"make_named_row('rf2', named.f2b * 2::REAL) as fin"})
             .build();
 
-    auto fragmentedPlan = planVelox(logicalPlan);
+    const auto plan = toSingleNodePlan(logicalPlan);
 
     verifyRequiredSubfields(
-        extractPlanNode(fragmentedPlan),
-        {{"float_features", {subfield("10010"), subfield("10020")}}});
+        plan, {{"float_features", {subfield("10010"), subfield("10020")}}});
 
-    // TODO Verify remaining filter and overall plan shape.
+    auto matcher =
+        core::PlanMatcherBuilder()
+            .hiveScan("features", {}, "float_features[10010] + 1 < 10000")
+            .project()
+            .localPartition(
+                core::PlanMatcherBuilder()
+                    .hiveScan(
+                        "features", {}, "float_features[10010] + 1 < 10000")
+                    .project()
+                    .build())
+            .project()
+            .build();
+
+    ASSERT_TRUE(matcher->match(plan));
+  }
+
+  core::PlanNodePtr toSingleNodePlan(
+      const lp::LogicalPlanNodePtr& logicalPlan) {
+    gflags::FlagSaver saver;
+    FLAGS_num_workers = 1;
+
+    auto plan = planVelox(logicalPlan).plan;
+
+    EXPECT_EQ(1, plan->fragments().size());
+    return plan->fragments().at(0).fragment.planNode;
   }
 
   void createTable(
@@ -297,6 +313,7 @@ class LogicalSubfieldTest : public QueryTestBase,
     tablesCreated();
   }
 
+  // TODO Move to PlanMatcher.
   static void verifyRequiredSubfields(
       const core::PlanNodePtr& plan,
       const std::unordered_map<std::string, std::vector<std::string>>&

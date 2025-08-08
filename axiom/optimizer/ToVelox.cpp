@@ -24,7 +24,6 @@
 
 namespace facebook::velox::optimizer {
 
-using namespace facebook::velox;
 using namespace facebook::velox::exec;
 using namespace facebook::velox::runner;
 
@@ -258,6 +257,68 @@ bool Optimization::isMapAsStruct(Name table, Name column) {
   return (
       std::find(it->second.begin(), it->second.end(), column) !=
       it->second.end());
+}
+
+namespace {
+
+template <typename T>
+core::TypedExprPtr makeKey(const TypePtr& type, T v) {
+  return std::make_shared<core::ConstantTypedExpr>(type, variant(v));
+}
+} // namespace
+
+core::TypedExprPtr stepToGetter(Step step, core::TypedExprPtr arg) {
+  switch (step.kind) {
+    case StepKind::kField: {
+      if (step.field) {
+        auto& type = arg->type()->childAt(
+            arg->type()->as<TypeKind::ROW>().getChildIdx(step.field));
+        return std::make_shared<core::FieldAccessTypedExpr>(
+            type, arg, step.field);
+      } else {
+        auto& type = arg->type()->childAt(step.id);
+        return std::make_shared<core::DereferenceTypedExpr>(type, arg, step.id);
+      }
+    }
+    case StepKind::kSubscript: {
+      auto& type = arg->type();
+      if (type->kind() == TypeKind::MAP) {
+        core::TypedExprPtr key;
+        switch (type->as<TypeKind::MAP>().childAt(0)->kind()) {
+          case TypeKind::VARCHAR:
+            key = makeKey(VARCHAR(), step.field);
+            break;
+          case TypeKind::BIGINT:
+            key = makeKey<int64_t>(BIGINT(), step.id);
+            break;
+          case TypeKind::INTEGER:
+            key = makeKey<int32_t>(INTEGER(), step.id);
+            break;
+          case TypeKind::SMALLINT:
+            key = makeKey<int16_t>(SMALLINT(), step.id);
+            break;
+          case TypeKind::TINYINT:
+            key = makeKey<int8_t>(TINYINT(), step.id);
+            break;
+          default:
+            VELOX_FAIL("Unsupported key type");
+        }
+
+        return std::make_shared<core::CallTypedExpr>(
+            type->as<TypeKind::MAP>().childAt(1),
+            std::vector<core::TypedExprPtr>{arg, key},
+            "subscript");
+      }
+      return std::make_shared<core::CallTypedExpr>(
+          type->childAt(0),
+          std::vector<core::TypedExprPtr>{
+              arg, makeKey<int32_t>(INTEGER(), step.id)},
+          "subscript");
+    }
+
+    default:
+      VELOX_NYI();
+  }
 }
 
 core::TypedExprPtr Optimization::pathToGetter(
@@ -1038,28 +1099,22 @@ core::PlanNodePtr Optimization::makeFragment(
     ExecutableFragment& fragment,
     std::vector<ExecutableFragment>& stages) {
   switch (op->relType()) {
-    case RelType::kProject: {
+    case RelType::kProject:
       return makeProject(*op->as<Project>(), fragment, stages);
-    }
-    case RelType::kFilter: {
+    case RelType::kFilter:
       return makeFilter(*op->as<Filter>(), fragment, stages);
-    }
-    case RelType::kAggregation: {
+    case RelType::kAggregation:
       return makeAggregation(*op->as<Aggregation>(), fragment, stages);
-    }
-    case RelType::kOrderBy: {
+    case RelType::kOrderBy:
       return makeOrderBy(*op->as<OrderBy>(), fragment, stages);
-    }
     case RelType::kRepartition: {
       std::shared_ptr<core::ExchangeNode> ignore;
       return makeRepartition(*op->as<Repartition>(), fragment, stages, ignore);
     }
-    case RelType::kTableScan: {
+    case RelType::kTableScan:
       return makeScan(*op->as<TableScan>(), fragment, stages);
-    }
-    case RelType::kJoin: {
+    case RelType::kJoin:
       return makeJoin(*op->as<Join>(), fragment, stages);
-    }
     case RelType::kHashBuild:
       return makeFragment(op->input(), fragment, stages);
     case RelType::kUnionAll:
