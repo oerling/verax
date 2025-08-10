@@ -257,7 +257,9 @@ class TableLayout {
   }
 
   /// List of columns present in this layout.
-  const std::vector<const Column*>& columns() const;
+  const std::vector<const Column*>& columns() const {
+    return columns_;
+  }
 
   /// Set of partitioning columns. The values in partitioning columns determine
   /// the location of the row. Joins on equality of partitioning columns are
