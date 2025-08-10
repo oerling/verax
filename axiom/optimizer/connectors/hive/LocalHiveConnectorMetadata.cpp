@@ -15,6 +15,12 @@
  */
 
 #include "axiom/optimizer/connectors/hive/LocalHiveConnectorMetadata.h"
+#include <dirent.h>
+#include <folly/Conv.h>
+#include <folly/FileUtil.h>
+#include <folly/json.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include "axiom/optimizer/JsonUtil.h"
 #include "velox/common/base/Fs.h"
 #include "velox/connectors/Connector.h"
@@ -26,14 +32,6 @@
 #include "velox/expression/Expr.h"
 #include "velox/type/fbhive/HiveTypeParser.h"
 #include "velox/type/fbhive/HiveTypeSerializer.h"
-#include <sys/stat.h>
-#include <dirent.h>
-#include <unistd.h>
-#include <folly/FileUtil.h>
-#include <folly/json.h>
-#include <folly/Conv.h>
-
-
 
 namespace facebook::velox::connector::hive {
 
@@ -64,7 +62,10 @@ std::shared_ptr<SplitSource> LocalHiveSplitManager::getSplitSource(
     selectedFiles.push_back(file.get());
   }
   return std::make_shared<LocalHiveSplitSource>(
-						std::move(selectedFiles), layout->fileFormat(), layout->connector()->connectorId(), options);
+      std::move(selectedFiles),
+      layout->fileFormat(),
+      layout->connector()->connectorId(),
+      options);
 }
 
 namespace {
@@ -474,7 +475,7 @@ void listFiles(
   }
 }
 } // namespace
-  
+
 void LocalHiveConnectorMetadata::loadTable(
     const std::string& tableName,
     const fs::path& tablePath) {
@@ -485,13 +486,13 @@ void LocalHiveConnectorMetadata::loadTable(
   if (table) {
     tableType = table->rowType();
   }
-  std::function < int32_t(const std::string&)> parseBucketNumber = nullptr;
+  std::function<int32_t(const std::string&)> parseBucketNumber = nullptr;
   if (table && table->layouts()[0]->partitionColumns().empty()) {
     parseBucketNumber = [](const std::string&) -> int32_t { return 0; };
   }
-    std::vector<std::unique_ptr<const FileInfo>> files;
-    std::string pathString = tablePath;
-    listFiles(pathString, parseBucketNumber, pathString.size(), files);
+  std::vector<std::unique_ptr<const FileInfo>> files;
+  std::string pathString = tablePath;
+  listFiles(pathString, parseBucketNumber, pathString.size(), files);
 
   for (auto& info : files) {
     auto it = tables_.find(tableName);
@@ -684,39 +685,41 @@ const Table* LocalHiveConnectorMetadata::findTable(const std::string& name) {
   return it->second.get();
 }
 
-  // Helper: Recursively delete directory contents
+// Helper: Recursively delete directory contents
 void deleteDirectoryContents(const std::string& path) {
   DIR* dir = opendir(path.c_str());
-    if (!dir) return;
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != nullptr) {
-        std::string name = entry->d_name;
-        if (name == "." || name == "..") continue;
-        std::string fullPath = path + "/" + name;
-        struct stat st;
-        if (stat(fullPath.c_str(), &st) == 0) {
-            if (S_ISDIR(st.st_mode)) {
-                deleteDirectoryContents(fullPath);
-                rmdir(fullPath.c_str());
-            } else {
-                unlink(fullPath.c_str());
-            }
-        }
+  if (!dir)
+    return;
+  struct dirent* entry;
+  while ((entry = readdir(dir)) != nullptr) {
+    std::string name = entry->d_name;
+    if (name == "." || name == "..")
+      continue;
+    std::string fullPath = path + "/" + name;
+    struct stat st;
+    if (stat(fullPath.c_str(), &st) == 0) {
+      if (S_ISDIR(st.st_mode)) {
+        deleteDirectoryContents(fullPath);
+        rmdir(fullPath.c_str());
+      } else {
+        unlink(fullPath.c_str());
+      }
     }
-    closedir(dir);
+  }
+  closedir(dir);
 }
 
 // Helper: Check if directory exists
 bool dirExists(const std::string& path) {
-    struct stat info;
-    return stat(path.c_str(), &info) == 0 && S_ISDIR(info.st_mode);
+  struct stat info;
+  return stat(path.c_str(), &info) == 0 && S_ISDIR(info.st_mode);
 }
 
 // Helper: Create directory (recursively)
 void createDir(const std::string& path) {
-    if (mkdir(path.c_str(), 0755) != 0 && errno != EEXIST) {
-        throw std::runtime_error("Failed to create directory: " + path);
-    }
+  if (mkdir(path.c_str(), 0755) != 0 && errno != EEXIST) {
+    throw std::runtime_error("Failed to create directory: " + path);
+  }
 }
 
 void LocalHiveConnectorMetadata::createTable(
@@ -731,7 +734,7 @@ void LocalHiveConnectorMetadata::createTable(
   if (dirExists(path)) {
     if (!deleteIfExists) {
       VELOX_USER_FAIL("Table {} already exists", tableName);
-    } else if(deleteIfExists) {
+    } else if (deleteIfExists) {
       deleteDirectoryContents(path);
     }
   } else {
@@ -739,8 +742,8 @@ void LocalHiveConnectorMetadata::createTable(
   }
 
   folly::dynamic schema = folly::dynamic::object;
-    folly::dynamic buckets = folly::dynamic::object;
-    auto it = options.find("bucketed_by");
+  folly::dynamic buckets = folly::dynamic::object;
+  auto it = options.find("bucketed_by");
   if (it != options.end()) {
     folly::dynamic columns = folly::dynamic::array;
     std::vector<std::string> tokens;

@@ -19,9 +19,9 @@
 #include "axiom/optimizer/connectors/ConnectorMetadata.h"
 #include "velox/connectors/hive/HiveConfig.h"
 #include "velox/connectors/hive/HiveConnector.h"
+#include "velox/connectors/hive/HiveDataSink.h"
 #include "velox/dwio/common/Options.h"
 #include "velox/dwio/dwrf/writer/StatisticsBuilder.h"
-#include "velox/connectors/hive/HiveDataSink.h"
 
 namespace facebook::velox::connector::hive {
 
@@ -147,7 +147,7 @@ class HiveConnectorMetadata : public ConnectorMetadata {
     VELOX_UNSUPPORTED();
   }
 
-    virtual std::string dataPath() const {
+  virtual std::string dataPath() const {
     VELOX_UNSUPPORTED();
   }
 

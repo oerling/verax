@@ -123,7 +123,8 @@ ConnectorInsertTableHandlePtr HiveConnectorMetadata::createInsertTableHandle(
   const std::shared_ptr<dwio::common::WriterOptions> writerOptions;
 
   for (auto i = 0; i < rowType->size(); ++i) {
-    inputColumns.push_back(std::static_pointer_cast<const HiveColumnHandle>(createColumnHandle(layout, rowType->nameOf(i))));
+    inputColumns.push_back(std::static_pointer_cast<const HiveColumnHandle>(
+        createColumnHandle(layout, rowType->nameOf(i))));
   }
 
   std::shared_ptr<const HiveBucketProperty> bucketProperty;

@@ -27,17 +27,17 @@
 
 namespace facebook::velox::connector::hive {
 
-  /// Describes a file in a table. Input to split enumeration.
-  struct FileInfo {
-    std::string path;
+/// Describes a file in a table. Input to split enumeration.
+struct FileInfo {
+  std::string path;
   std::unordered_map<std::string, std::optional<std::string>> partitionKeys;
   std::optional<int32_t> bucketNumber;
-  };
-  
+};
+
 class LocalHiveSplitSource : public SplitSource {
  public:
   LocalHiveSplitSource(
-		       std::vector<const FileInfo*> files,
+      std::vector<const FileInfo*> files,
       dwio::common::FileFormat format,
       const std::string& connectorId,
       SplitOptions options)
@@ -153,7 +153,7 @@ class LocalTable : public Table {
   }
 
   void makeDefaultLayout(
-			 std::vector<std::unique_ptr<const FileInfo>> files,
+      std::vector<std::unique_ptr<const FileInfo>> files,
       LocalHiveConnectorMetadata& metadata);
 
   uint64_t numRows() const override {
@@ -239,20 +239,19 @@ class LocalHiveConnectorMetadata : public HiveConnectorMetadata {
       TableKind kind = TableKind::kTable) override;
 
   void finishWrite(
-		   const ConnectorInsertTableHandlePtr& /*handle*/,
+      const ConnectorInsertTableHandlePtr& /*handle*/,
       const std::vector<RowVectorPtr>& /*writerResult*/,
       WriteKind /*kind*/,
       const ConnectorSessionPtr& /*session*/) override {
     // No operation.
   }
 
-
-protected:
+ protected:
   std::string dataPath() const override {
     return hiveConfig_->hiveLocalDataPath();
   }
 
-std::shared_ptr<connector::hive::LocationHandle> makeLocationHandle(
+  std::shared_ptr<connector::hive::LocationHandle> makeLocationHandle(
       std::string targetDirectory,
       std::optional<std::string> writeDirectory = std::nullopt,
       connector::hive::LocationHandle::TableType tableType =
@@ -261,12 +260,13 @@ std::shared_ptr<connector::hive::LocationHandle> makeLocationHandle(
         targetDirectory, writeDirectory.value_or(targetDirectory), tableType);
   }
 
-  
  private:
   void ensureInitialized() const;
   void makeQueryCtx();
   void makeConnectorQueryCtx();
-  LocalTable* createTableFromSchema(const std::string& name, const std::string& path);
+  LocalTable* createTableFromSchema(
+      const std::string& name,
+      const std::string& path);
   void readTables(const std::string& path);
   LocalTable* mutableTable(const std::string& name) {
     auto it = tables_.find(name);

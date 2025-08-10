@@ -190,9 +190,8 @@ class Column {
   std::mutex mutex_;
 };
 
-  //// Describes the kind of table, e.g. durable vs. temporary.
-  enum class TableKind { kTable, kTempTable };
-  
+//// Describes the kind of table, e.g. durable vs. temporary.
+enum class TableKind { kTable, kTempTable };
 
 class Table;
 
@@ -388,7 +387,7 @@ class Table {
   TableKind kind() const {
     return kind_;
   }
-  
+
  protected:
   const std::string name_;
 
@@ -397,7 +396,7 @@ class Table {
   RowTypePtr type_;
 
   TableKind kind_{TableKind::kTable};
-  
+
   std::unordered_map<std::string, std::string> options_;
 };
 
@@ -545,7 +544,7 @@ struct WritePartitioning {
 /// operations being non-isolated and autocommitting. Connector
 /// specific implementations have their specific transaction functions.
 class ConnectorSession {
-public:
+ public:
   virtual ~ConnectorSession() = default;
 };
 
@@ -572,7 +571,7 @@ enum class WriteKind {
   kUpdate
 };
 
-  class ConnectorMetadata {
+class ConnectorMetadata {
  public:
   virtual ~ConnectorMetadata() = default;
 

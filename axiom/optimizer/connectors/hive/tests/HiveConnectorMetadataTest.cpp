@@ -15,10 +15,10 @@
  */
 
 #include "axiom/optimizer/connectors/hive/LocalHiveConnectorMetadata.h"
+#include "velox/exec/tests/utils/AssertQueryBuilder.h"
 #include "velox/exec/tests/utils/DistributedPlanBuilder.h"
 #include "velox/exec/tests/utils/LocalRunnerTestBase.h"
 #include "velox/exec/tests/utils/QueryAssertions.h"
-#include "velox/exec/tests/utils/AssertQueryBuilder.h"
 
 using namespace facebook::velox;
 using namespace facebook::velox::exec;
@@ -101,7 +101,8 @@ TEST_F(HiveConnectorMetadataTest, basic) {
 TEST_F(HiveConnectorMetadataTest, createTable) {
   constexpr int32_t kTestSize = 2048;
   auto connector = getConnector(kHiveConnectorId);
-  auto metadata = dynamic_cast<connector::hive::HiveConnectorMetadata*>(connector->metadata());
+  auto metadata = dynamic_cast<connector::hive::HiveConnectorMetadata*>(
+      connector->metadata());
   ASSERT_TRUE(metadata != nullptr);
 
   auto tableType = ROW(
@@ -123,7 +124,8 @@ TEST_F(HiveConnectorMetadataTest, createTable) {
   auto table = metadata->findTable("test");
   auto& layouts = table->layouts();
   ASSERT_EQ(1, layouts.size());
-  auto* layout = dynamic_cast<const connector::hive::HiveTableLayout*>(layouts[0]);
+  auto* layout =
+      dynamic_cast<const connector::hive::HiveTableLayout*>(layouts[0]);
   ASSERT_TRUE(layout != nullptr);
   auto& columns = layout->columns();
   ASSERT_EQ(4, columns.size());
@@ -133,7 +135,7 @@ TEST_F(HiveConnectorMetadataTest, createTable) {
   EXPECT_EQ(columns[0], buckets[0]);
   auto numBuckets = layout->numBuckets();
   EXPECT_EQ(4, numBuckets.value());
-  
+
   auto sorting = layout->orderColumns();
   ASSERT_EQ(2, sorting.size());
   EXPECT_EQ(columns[0], sorting[0]);
@@ -156,8 +158,7 @@ TEST_F(HiveConnectorMetadataTest, createTable) {
       *layouts[0], tableType, {}, WriteKind::kInsert, session);
 
   auto handle = std::make_shared<core::InsertTableHandle>(
-      kHiveConnectorId,
-      connectorHandle);
+      kHiveConnectorId, connectorHandle);
 
   std::vector<std::string> output = {
       "numWrittenRows", "fragment", "tableCommitContext"};
@@ -174,19 +175,19 @@ TEST_F(HiveConnectorMetadataTest, createTable) {
 
   auto resultType = ROW(std::move(output), std::move(types));
 
-  auto idGenerator  = std::make_shared<core::PlanNodeIdGenerator>();
+  auto idGenerator = std::make_shared<core::PlanNodeIdGenerator>();
   auto builder = exec::test::PlanBuilder(idGenerator).values({data});
 
   auto plan = std::make_shared<core::TableWriteNode>(
-						     idGenerator->next(),
-						     tableType,
-                           tableType->names(),
-                           nullptr,
-                           handle,
-                           false,
-                           resultType,
-                           connector::CommitStrategy::kNoCommit,
-                           builder.planNode());
+      idGenerator->next(),
+      tableType,
+      tableType->names(),
+      nullptr,
+      handle,
+      false,
+      resultType,
+      connector::CommitStrategy::kNoCommit,
+      builder.planNode());
   auto result = exec::test::AssertQueryBuilder(plan).copyResults(pool());
   metadata->finishWrite(connectorHandle, {result}, WriteKind::kInsert, session);
 }
