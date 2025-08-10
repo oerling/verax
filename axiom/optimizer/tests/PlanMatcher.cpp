@@ -195,8 +195,8 @@ class LimitMatcher : public PlanMatcherImpl<LimitNode> {
 
   LimitMatcher(
       const std::shared_ptr<PlanMatcher>& matcher,
-      int32_t offset,
-      int32_t count)
+      int64_t offset,
+      int64_t count)
       : PlanMatcherImpl<LimitNode>({matcher}), offset_{offset}, count_{count} {}
 
   bool matchDetails(const LimitNode& plan) const override {
@@ -212,8 +212,8 @@ class LimitMatcher : public PlanMatcherImpl<LimitNode> {
   }
 
  private:
-  const std::optional<int32_t> offset_;
-  const std::optional<int32_t> count_;
+  const std::optional<int64_t> offset_;
+  const std::optional<int64_t> count_;
 };
 
 class AggregationMatcher : public PlanMatcherImpl<AggregationNode> {
@@ -385,7 +385,7 @@ PlanMatcherBuilder& PlanMatcherBuilder::limit() {
   return *this;
 }
 
-PlanMatcherBuilder& PlanMatcherBuilder::limit(int32_t offset, int32_t count) {
+PlanMatcherBuilder& PlanMatcherBuilder::limit(int64_t offset, int64_t count) {
   VELOX_USER_CHECK_NOT_NULL(matcher_);
   matcher_ = std::make_shared<LimitMatcher>(matcher_, offset, count);
   return *this;

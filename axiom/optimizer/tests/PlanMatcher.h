@@ -69,7 +69,7 @@ class PlanMatcherBuilder {
 
   PlanMatcherBuilder& limit();
 
-  PlanMatcherBuilder& limit(int32_t offset, int32_t count);
+  PlanMatcherBuilder& limit(int64_t offset, int64_t count);
 
   std::shared_ptr<PlanMatcher> build() {
     return matcher_;

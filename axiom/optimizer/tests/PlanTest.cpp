@@ -218,6 +218,10 @@ TEST_F(PlanTest, limit) {
     const auto& fragments = distributedPlan.plan->fragments();
     ASSERT_EQ(3, fragments.size());
 
+    EXPECT_EQ(fragments.at(0).scans.size(), 1);
+    EXPECT_EQ(fragments.at(1).scans.size(), 0);
+    EXPECT_EQ(fragments.at(2).scans.size(), 0);
+
     auto matcher = core::PlanMatcherBuilder()
                        .tableScan()
                        .project()
