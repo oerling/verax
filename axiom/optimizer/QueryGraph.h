@@ -16,7 +16,6 @@
 
 #pragma once
 
-#include "axiom/logical_plan/Expr.h"
 #include "axiom/optimizer/Schema.h"
 #include "velox/core/PlanNode.h"
 
@@ -789,8 +788,8 @@ using AggregationP = Aggregation*;
 
 /// Wraps an Aggregation RelationOp. This gives the aggregation a PlanObject id
 struct AggregationPlan : public PlanObject {
-  AggregationPlan(AggregationP agg)
-      : PlanObject(PlanType::kAggregate), aggregation(agg) {}
+  explicit AggregationPlan(AggregationP agg)
+      : PlanObject(PlanType::kAggregation), aggregation(agg) {}
 
   AggregationP aggregation;
 };
