@@ -108,4 +108,74 @@ ConnectorTableHandlePtr HiveConnectorMetadata::createTableHandle(
           dataColumns ? dataColumns : layout.rowType()));
 }
 
+ConnectorInsertTableHandlePtr HiveConnectorMetadata::createInsertTableHandle(
+    const TableLayout& layout,
+    const RowTypePtr& rowType,
+    const std::unordered_map<std::string, std::string>& options,
+    WriteKind kind,
+    const ConnectorSessionPtr& session) {
+  std::vector<std::shared_ptr<const HiveColumnHandle>> inputColumns;
+
+  auto storageFormat = dwio::common::FileFormat::DWRF;
+  std::optional<common::CompressionKind> compressionKind;
+
+  std::unordered_map<std::string, std::string> serdeParameters;
+  const std::shared_ptr<dwio::common::WriterOptions> writerOptions;
+
+  for (auto i = 0; i < rowType->size(); ++i) {
+    inputColumns.push_back(std::static_pointer_cast<const HiveColumnHandle>(createColumnHandle(layout, rowType->nameOf(i))));
+  }
+
+  std::shared_ptr<const HiveBucketProperty> bucketProperty;
+  auto* hiveLayout = reinterpret_cast<const HiveTableLayout*>(&layout);
+  if (hiveLayout->numBuckets().has_value()) {
+    std::vector<std::string> names;
+    std::vector<TypePtr> types;
+    for (auto& c : layout.partitionColumns()) {
+      names.push_back(c->name());
+      types.push_back(c->type());
+    }
+    std::vector<std::shared_ptr<const HiveSortingColumn>> sortedBy;
+    for (auto i = 0; i < layout.orderColumns().size(); ++i) {
+      sortedBy.push_back(std::make_shared<HiveSortingColumn>(
+          layout.orderColumns()[i]->name(),
+          core::SortOrder(
+              layout.sortOrder()[i].isAscending,
+              layout.sortOrder()[i].isNullsFirst)));
+    }
+
+    bucketProperty = std::make_shared<HiveBucketProperty>(
+        HiveBucketProperty::Kind::kHiveCompatible,
+        hiveLayout->numBuckets().value(),
+        std::move(names),
+        std::move(types),
+        std::move(sortedBy));
+  }
+  return std::make_shared<HiveInsertTableHandle>(
+      inputColumns,
+      makeLocationHandle(dataPath()),
+      storageFormat,
+      bucketProperty,
+      compressionKind,
+      serdeParameters,
+      writerOptions,
+      bucketProperty != nullptr);
+}
+
+void HiveConnectorMetadata::validateOptions(
+    const std::unordered_map<std::string, std::string>& options) const {
+  static std::unordered_set<std::string> allowed = {
+      "bucketed_by"
+      "sorted_by",
+      "bucket_count",
+      "partitioned_by",
+      "file_format",
+      "compression_kind"};
+  for (auto& pair : options) {
+    if (allowed.find(pair.first) == allowed.end()) {
+      VELOX_USER_FAIL("Option {} is not supported", pair.first);
+    }
+  }
+}
+
 } // namespace facebook::velox::connector::hive
