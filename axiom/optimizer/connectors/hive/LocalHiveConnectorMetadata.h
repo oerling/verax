@@ -239,12 +239,11 @@ class LocalHiveConnectorMetadata : public HiveConnectorMetadata {
       TableKind kind = TableKind::kTable) override;
 
   void finishWrite(
-      const ConnectorInsertTableHandlePtr& /*handle*/,
+		   const TableLayout& layout,
+		   const ConnectorInsertTableHandlePtr& /*handle*/,
       const std::vector<RowVectorPtr>& /*writerResult*/,
       WriteKind /*kind*/,
-      const ConnectorSessionPtr& /*session*/) override {
-    // No operation.
-  }
+      const ConnectorSessionPtr& /*session*/) override;
 
  protected:
   std::string dataPath() const override {
@@ -261,7 +260,7 @@ class LocalHiveConnectorMetadata : public HiveConnectorMetadata {
   }
 
  private:
-  void ensureInitialized() const;
+  void ensureInitialized() const override;
   void makeQueryCtx();
   void makeConnectorQueryCtx();
   LocalTable* createTableFromSchema(

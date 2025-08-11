@@ -359,7 +359,7 @@ void mergeReaderStats(
 LocalTable* LocalHiveConnectorMetadata::createTableFromSchema(
     const std::string& name,
     const std::string& path) {
-  auto jsons = readConcatenatedDynamicsFromFile(path + "/.prestoSchema");
+  auto jsons = readConcatenatedDynamicsFromFile(path + "/.schema");
   if (jsons.empty()) {
     return nullptr;
   }
@@ -367,10 +367,13 @@ LocalTable* LocalHiveConnectorMetadata::createTableFromSchema(
   auto json = jsons[0];
   auto* table = mutableTable(name);
   if (table != nullptr) {
-    auto tableUnique = std::make_unique<LocalTable>(name, format_);
-    table = tableUnique.get();
-    tables_[table->name()] = std::move(tableUnique);
+    auto name = table->name();
+    tables_.erase(name);
+    table = nullptr;
   }
+  auto tableUnique = std::make_unique<LocalTable>(name, format_);
+  table = tableUnique.get();
+  tables_[table->name()] = std::move(tableUnique);
   std::vector<std::string> names;
   std::vector<TypePtr> types;
   std::vector<std::unique_ptr<Column>> columns;
@@ -387,7 +390,11 @@ LocalTable* LocalHiveConnectorMetadata::createTableFromSchema(
     columns.push_back(std::make_unique<Column>(names.back(), types.back()));
     partition.push_back(columns.back().get());
   }
+  table->type_ = ROW(std::move(names), std::move(types));
+  
+  std::vector<const Column*> columnOrder;
   for (auto& column : columns) {
+    columnOrder.push_back(column.get());
     auto& name = column->name();
     table->exportedColumns_[name] = column.get();
     table->columns_[name] = std::move(column);
@@ -414,12 +421,8 @@ LocalTable* LocalHiveConnectorMetadata::createTableFromSchema(
       numBuckets = atoi(buckets["bucketCount"].asString().c_str());
     }
   }
-  std::vector<const Column*> columnOrder;
-  for (auto& column : columns) {
-    columnOrder.push_back(column.get());
-  }
   std::vector<const Column*> empty;
-  auto layout = std::make_unique<HiveTableLayout>(
+  auto layout = std::make_unique<LocalHiveTableLayout>(
       table->name(),
       table,
       hiveConnector(),
@@ -472,6 +475,7 @@ void listFiles(
         file->partitionKeys[parts[0]] = parts[1];
       }
     }
+    result.push_back(std::move(file));
   }
 }
 } // namespace
@@ -487,7 +491,7 @@ void LocalHiveConnectorMetadata::loadTable(
     tableType = table->rowType();
   }
   std::function<int32_t(const std::string&)> parseBucketNumber = nullptr;
-  if (table && table->layouts()[0]->partitionColumns().empty()) {
+  if (table && !table->layouts()[0]->partitionColumns().empty()) {
     parseBucketNumber = [](const std::string&) -> int32_t { return 0; };
   }
   std::vector<std::unique_ptr<const FileInfo>> files;
@@ -730,6 +734,7 @@ void LocalHiveConnectorMetadata::createTable(
     bool deleteIfExists,
     TableKind kind) {
   validateOptions(options);
+  ensureInitialized();
   auto path = dataPath() + "/" + tableName;
   if (dirExists(path)) {
     if (!deleteIfExists) {
@@ -748,7 +753,8 @@ void LocalHiveConnectorMetadata::createTable(
     folly::dynamic columns = folly::dynamic::array;
     std::vector<std::string> tokens;
     folly::split(",", it->second, tokens);
-    for (const auto& token : tokens) {
+    for (auto& token : tokens) {
+      token = folly::trimWhitespace(token);
       columns.push_back(token);
     }
     it = options.find("bucket_count");
@@ -760,9 +766,14 @@ void LocalHiveConnectorMetadata::createTable(
     buckets["bucketCount"] = fmt::format("{}", numBuckets);
     buckets["bucketedBy"] = columns;
     folly::dynamic sorted = folly::dynamic::array;
-    folly::split(",", it->second, tokens);
-    for (const auto& token : tokens) {
-      sorted.push_back(token);
+    it = options.find("sorted_by");
+    if (it != options.end()) {
+      tokens.clear();
+      folly::split(",", it->second, tokens);
+      for (auto& token : tokens) {
+	      token = folly::trimWhitespace(token);
+	      sorted.push_back(token);
+      }
     }
     buckets["sortedBy"] = sorted;
   }
@@ -772,6 +783,10 @@ void LocalHiveConnectorMetadata::createTable(
   it = options.find("partitioned_by");
   std::vector<std::string> tokens;
   folly::split(",", it->second, tokens);
+  for (auto& token : tokens) {
+    token = folly::trimWhitespace(token);
+  }
+
   bool isPartition = false;
   for (auto i = 0; i < rowType->size(); ++i) {
     auto& name = rowType->nameOf(i);
@@ -793,10 +808,26 @@ void LocalHiveConnectorMetadata::createTable(
   schema["dataColumns"] = dataColumns;
   schema["partitionColumns"] = hivePartitionColumns;
   std::string jsonStr = folly::toPrettyJson(schema);
-  std::string filePath = path + "/.prestoSchema";
-  folly::writeFileAtomic(filePath, jsonStr.data(), jsonStr.size());
-}
+  std::string filePath = path + "/.schema";
 
+  std::lock_guard<std::mutex> l(mutex_);
+  folly::writeFileAtomic(filePath, jsonStr.data(), jsonStr.size());
+  tables_.erase(tableName);
+  loadTable(tableName, path);
+}
+  
+  void LocalHiveConnectorMetadata::finishWrite(
+					       const TableLayout& layout,
+					       const ConnectorInsertTableHandlePtr& handle,
+      const std::vector<RowVectorPtr>& /*writerResult*/,
+      WriteKind /*kind*/,
+      const ConnectorSessionPtr& /*session*/) {
+    std::lock_guard<std::mutex> l(mutex_);
+    auto localHandle = dynamic_cast<const HiveInsertTableHandle*>(handle.get());
+    loadTable(layout.table()->name(), localHandle->locationHandle()->targetPath());
+  }
+
+  
 namespace {
 class LocalHiveConnectorMetadataFactory : public HiveConnectorMetadataFactory {
  public:

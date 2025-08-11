@@ -15,6 +15,7 @@
  */
 
 #include "axiom/optimizer/connectors/hive/LocalHiveConnectorMetadata.h"
+#include "axiom/optimizer/connectors/ConnectorSplitSource.h"
 #include "velox/exec/tests/utils/AssertQueryBuilder.h"
 #include "velox/exec/tests/utils/DistributedPlanBuilder.h"
 #include "velox/exec/tests/utils/LocalRunnerTestBase.h"
@@ -112,7 +113,7 @@ TEST_F(HiveConnectorMetadataTest, createTable) {
        {"ds", VARCHAR()}});
 
   std::unordered_map<std::string, std::string> options = {
-      {"bucketed_by", "key1, key2"},
+      {"bucketed_by", "key1"},
       {"sorted_by", "key1, key2"},
       {"bucket_count", "4"},
       {"partitioned_by", "ds"}};
@@ -189,5 +190,22 @@ TEST_F(HiveConnectorMetadataTest, createTable) {
       connector::CommitStrategy::kNoCommit,
       builder.planNode());
   auto result = exec::test::AssertQueryBuilder(plan).copyResults(pool());
-  metadata->finishWrite(connectorHandle, {result}, WriteKind::kInsert, session);
+  metadata->finishWrite(*layout, connectorHandle, {result}, WriteKind::kInsert, session);
+
+  std::string id = "readQ";
+  runner::MultiFragmentPlan::Options runnerOptions = {
+    .queryId = id, .numWorkers = 1, .numDrivers = 1};
+
+  DistributedPlanBuilder rootBuilder(runnerOptions, idGenerator, pool_.get());
+  rootBuilder.tableScan("test", tableType);
+  auto readPlan = std::make_shared<runner::MultiFragmentPlan>(
+							      rootBuilder.fragments(), std::move(runnerOptions));
+  auto rootPool = memory::memoryManager()->addRootPool(
+						       "readQ");
+
+  auto splitSourceFactory = std::make_shared<connector::ConnectorSplitSourceFactory>();
+  auto localRunner = std::make_shared<runner::LocalRunner>(
+							   std::move(readPlan), makeQueryCtx(id, rootPool.get()), splitSourceFactory);
+  auto results = readCursor(localRunner);
+  exec::test::assertEqualResults({data}, results);
 }

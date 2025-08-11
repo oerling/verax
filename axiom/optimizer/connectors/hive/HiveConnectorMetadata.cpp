@@ -114,8 +114,10 @@ ConnectorInsertTableHandlePtr HiveConnectorMetadata::createInsertTableHandle(
     const std::unordered_map<std::string, std::string>& options,
     WriteKind kind,
     const ConnectorSessionPtr& session) {
-  std::vector<std::shared_ptr<const HiveColumnHandle>> inputColumns;
+  ensureInitialized();
+  VELOX_CHECK(kind == WriteKind::kInsert, "Only insert supported");
 
+  std::vector<std::shared_ptr<const HiveColumnHandle>> inputColumns;
   auto storageFormat = dwio::common::FileFormat::DWRF;
   std::optional<common::CompressionKind> compressionKind;
 
@@ -160,15 +162,15 @@ ConnectorInsertTableHandlePtr HiveConnectorMetadata::createInsertTableHandle(
       compressionKind,
       serdeParameters,
       writerOptions,
-      bucketProperty != nullptr);
+      false);
 }
 
 void HiveConnectorMetadata::validateOptions(
     const std::unordered_map<std::string, std::string>& options) const {
   static std::unordered_set<std::string> allowed = {
-      "bucketed_by"
-      "sorted_by",
-      "bucket_count",
+    "bucketed_by",
+    "sorted_by",
+    "bucket_count",
       "partitioned_by",
       "file_format",
       "compression_kind"};

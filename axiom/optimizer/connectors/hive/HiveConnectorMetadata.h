@@ -136,6 +136,8 @@ class HiveConnectorMetadata : public ConnectorMetadata {
       const ConnectorSessionPtr& session) override;
 
  protected:
+  virtual void ensureInitialized() const {}
+
   virtual void validateOptions(
       const std::unordered_map<std::string, std::string>& options) const;
 
