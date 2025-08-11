@@ -392,7 +392,7 @@ struct PlanState {
 
   /// Returns the  set of columns referenced in unplaced joins/filters union
   /// targetColumns. Gets smaller as more tables are placed.
-  PlanObjectSet downstreamColumns() const;
+  const PlanObjectSet& downstreamColumns() const;
 
   // Adds a placed join to the set of partial queries to be developed. No op if
   // cost exceeds best so far and cutoff is enabled.
@@ -487,9 +487,6 @@ struct hash<::facebook::velox::optimizer::MemoKey> {
 namespace facebook::velox::optimizer {
 
 struct OptimizerOptions {
-  /// Do not make shuffles or final gather stage.
-  bool singleStage{false};
-
   /// Parallelizes independent projections over this many threads. 1 means no
   /// parallel projection.
   int32_t parallelProjectWidth = 1;
@@ -751,6 +748,8 @@ class Optimization {
   PlanObjectP makeBaseTable(const core::TableScanNode* tableScan);
 
   PlanObjectP makeBaseTable(const logical_plan::TableScanNode& tableScan);
+
+  PlanObjectP makeValuesTable(const logical_plan::ValuesNode& values);
 
   // Decomposes complex type columns into parts projected out as top
   // level if subfield pushdown is on.
@@ -1167,6 +1166,12 @@ class Optimization {
       velox::runner::ExecutableFragment& fragment,
       std::vector<velox::runner::ExecutableFragment>& stages);
 
+  // @pre op.sNoLimit() is true.
+  velox::core::PlanNodePtr makeOffset(
+      const Limit& op,
+      velox::runner::ExecutableFragment& fragment,
+      std::vector<velox::runner::ExecutableFragment>& stages);
+
   velox::core::PlanNodePtr makeScan(
       const TableScan& scan,
       velox::runner::ExecutableFragment& fragment,
@@ -1199,6 +1204,10 @@ class Optimization {
       const UnionAll& unionAll,
       velox::runner::ExecutableFragment& fragment,
       std::vector<velox::runner::ExecutableFragment>& stages);
+
+  core::PlanNodePtr makeValues(
+      const Values& values,
+      runner::ExecutableFragment& fragment);
 
   // Makes a tree of PlanNode for a tree of
   // RelationOp. 'fragment' is the fragment that 'op'
@@ -1382,7 +1391,12 @@ class Optimization {
   };
 
   velox::runner::MultiFragmentPlan::Options options_;
+
+  // TODO Move this into MultiFragmentPlan::Options.
+  const VectorSerde::Kind exchangeSerdeKind_{VectorSerde::Kind::kPresto};
+
   PlanNodeIdGenerator idGenerator_;
+
   // Limit for a possible limit/top k order by for while making a Velox plan. -1
   // means no limit.
   int32_t toVeloxLimit_{-1};
