@@ -153,7 +153,7 @@ class RelationOp : public Relation {
   ///     - HashJoin
   ///       - Scan(region as t3)
   ///       - Scan(nation as t2)
-  virtual std::string toString(bool recursive, bool detail) const;
+  virtual std::string toString(bool recursive, bool detail) const = 0;
 
  protected:
   // adds a line of cost information to 'out'
@@ -259,6 +259,29 @@ struct TableScan : public RelationOp {
 
   // If this is a non-inner join,  extra filter for the join.
   const ExprVector joinFilter;
+};
+
+/// Represents a values.
+struct Values : RelationOp {
+  Values(
+      const ValuesTable& valuesTable,
+      ColumnVector columns)
+      : RelationOp{
+          RelType::kValues,
+          nullptr,
+          Distribution{DistributionType{}, valuesTable.cardinality(), {}},
+          std::move(columns)},
+        valuesTable{valuesTable} {
+    cost_.fanout = valuesTable.cardinality();
+  }
+
+  void setCost(const PlanState& input) override;
+
+  const QGstring& historyKey() const override;
+
+  std::string toString(bool recursive, bool detail) const override;
+
+  const ValuesTable& valuesTable;
 };
 
 /// Represents a repartition, i.e. query fragment boundary. The distribution of
@@ -470,6 +493,8 @@ struct OrderBy : public RelationOp {
   // another key or keys. These can be late materialized or converted
   // to payload.
   PlanObjectSet dependentKeys;
+
+  std::string toString(bool recursive, bool detail) const override;
 };
 
 /// Represents a union all.
@@ -489,6 +514,29 @@ struct UnionAll : public RelationOp {
   std::string toString(bool recursive, bool detail) const override;
 
   const RelationOpPtrVector inputs;
+};
+
+struct Limit : public RelationOp {
+  Limit(RelationOpPtr input, int64_t limit, int64_t offset)
+      : RelationOp(
+            RelType::kLimit,
+            input,
+            input->distribution(),
+            input->columns()),
+        limit{limit},
+        offset{offset} {}
+
+  void setCost(const PlanState& input) override;
+
+  const int64_t limit;
+  const int64_t offset;
+
+  bool isNoLimit() const {
+    static const auto kMax = std::numeric_limits<int64_t>::max();
+    return limit >= (kMax - offset);
+  }
+
+  std::string toString(bool recursive, bool detail) const override;
 };
 
 } // namespace facebook::velox::optimizer

@@ -188,6 +188,63 @@ class FilterMatcher : public PlanMatcherImpl<FilterNode> {
   const std::optional<std::string> predicate_;
 };
 
+class LimitMatcher : public PlanMatcherImpl<LimitNode> {
+ public:
+  explicit LimitMatcher(const std::shared_ptr<PlanMatcher>& matcher)
+      : PlanMatcherImpl<LimitNode>({matcher}) {}
+
+  LimitMatcher(
+      const std::shared_ptr<PlanMatcher>& matcher,
+      int64_t offset,
+      int64_t count,
+      bool partial)
+      : PlanMatcherImpl<LimitNode>({matcher}),
+        offset_{offset},
+        count_{count},
+        partial_{partial} {}
+
+  bool matchDetails(const LimitNode& plan) const override {
+    if (count_.has_value()) {
+      EXPECT_EQ(plan.offset(), offset_.value());
+      EXPECT_EQ(plan.count(), count_.value());
+      EXPECT_EQ(plan.isPartial(), partial_.value());
+      if (::testing::Test::HasNonfatalFailure()) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+ private:
+  const std::optional<int64_t> offset_;
+  const std::optional<int64_t> count_;
+  const std::optional<bool> partial_;
+};
+
+class TopNMatcher : public PlanMatcherImpl<TopNNode> {
+ public:
+  explicit TopNMatcher(const std::shared_ptr<PlanMatcher>& matcher)
+      : PlanMatcherImpl<TopNNode>({matcher}) {}
+
+  TopNMatcher(const std::shared_ptr<PlanMatcher>& matcher, int64_t count)
+      : PlanMatcherImpl<TopNNode>({matcher}), count_{count} {}
+
+  bool matchDetails(const TopNNode& plan) const override {
+    if (count_.has_value()) {
+      EXPECT_EQ(plan.count(), count_.value());
+      if (::testing::Test::HasNonfatalFailure()) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+ private:
+  const std::optional<int64_t> count_;
+};
+
 class AggregationMatcher : public PlanMatcherImpl<AggregationNode> {
  public:
   explicit AggregationMatcher(const std::shared_ptr<PlanMatcher>& matcher)
@@ -335,6 +392,66 @@ PlanMatcherBuilder& PlanMatcherBuilder::localPartition(
   VELOX_USER_CHECK_NOT_NULL(matcher_);
   matcher_ = std::make_shared<PlanMatcherImpl<LocalPartitionNode>>(
       std::vector<std::shared_ptr<PlanMatcher>>{matcher_, matcher});
+  return *this;
+}
+
+PlanMatcherBuilder& PlanMatcherBuilder::localMerge() {
+  VELOX_USER_CHECK_NOT_NULL(matcher_);
+  matcher_ = std::make_shared<PlanMatcherImpl<LocalMergeNode>>(
+      std::vector<std::shared_ptr<PlanMatcher>>{matcher_});
+  return *this;
+}
+
+PlanMatcherBuilder& PlanMatcherBuilder::partitionedOutput() {
+  VELOX_USER_CHECK_NOT_NULL(matcher_);
+  matcher_ = std::make_shared<PlanMatcherImpl<PartitionedOutputNode>>(
+      std::vector<std::shared_ptr<PlanMatcher>>{matcher_});
+  return *this;
+}
+
+PlanMatcherBuilder& PlanMatcherBuilder::exchange() {
+  VELOX_USER_CHECK_NULL(matcher_);
+  matcher_ = std::make_shared<PlanMatcherImpl<ExchangeNode>>();
+  return *this;
+}
+
+PlanMatcherBuilder& PlanMatcherBuilder::mergeExchange() {
+  VELOX_USER_CHECK_NULL(matcher_);
+  matcher_ = std::make_shared<PlanMatcherImpl<MergeExchangeNode>>();
+  return *this;
+}
+
+PlanMatcherBuilder& PlanMatcherBuilder::limit() {
+  VELOX_USER_CHECK_NOT_NULL(matcher_);
+  matcher_ = std::make_shared<LimitMatcher>(matcher_);
+  return *this;
+}
+
+PlanMatcherBuilder& PlanMatcherBuilder::partialLimit(
+    int64_t offset,
+    int64_t count) {
+  VELOX_USER_CHECK_NOT_NULL(matcher_);
+  matcher_ = std::make_shared<LimitMatcher>(matcher_, offset, count, true);
+  return *this;
+}
+
+PlanMatcherBuilder& PlanMatcherBuilder::finalLimit(
+    int64_t offset,
+    int64_t count) {
+  VELOX_USER_CHECK_NOT_NULL(matcher_);
+  matcher_ = std::make_shared<LimitMatcher>(matcher_, offset, count, false);
+  return *this;
+}
+
+PlanMatcherBuilder& PlanMatcherBuilder::topN() {
+  VELOX_USER_CHECK_NOT_NULL(matcher_);
+  matcher_ = std::make_shared<TopNMatcher>(matcher_);
+  return *this;
+}
+
+PlanMatcherBuilder& PlanMatcherBuilder::topN(int64_t count) {
+  VELOX_USER_CHECK_NOT_NULL(matcher_);
+  matcher_ = std::make_shared<TopNMatcher>(matcher_, count);
   return *this;
 }
 
