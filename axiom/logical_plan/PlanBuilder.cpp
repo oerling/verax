@@ -20,9 +20,11 @@
 #include "velox/connectors/Connector.h"
 #include "velox/exec/Aggregate.h"
 #include "velox/exec/AggregateFunctionRegistry.h"
+#include "velox/expression/Expr.h"
 #include "velox/expression/SignatureBinder.h"
 #include "velox/functions/FunctionRegistry.h"
 #include "velox/parse/Expressions.h"
+#include "velox/vector/VariantToVector.h"
 
 namespace facebook::velox::logical_plan {
 
@@ -42,9 +44,116 @@ PlanBuilder& PlanBuilder::values(
   }
 
   node_ = std::make_shared<ValuesNode>(
-      nextId(), ROW(outputNames, rowType->children()), std::move(rows));
+      nextId(),
+      ROW(std::move(outputNames), rowType->children()),
+      std::move(rows));
 
   return *this;
+}
+
+PlanBuilder& PlanBuilder::values(const std::vector<RowVectorPtr>& values) {
+  VELOX_USER_CHECK_NULL(node_, "Values node must be the leaf node");
+
+  outputMapping_ = std::make_shared<NameMappings>();
+
+  auto rowType = values.empty() ? ROW({}) : values.front()->rowType();
+  const auto numColumns = rowType->size();
+  std::vector<std::string> outputNames;
+  outputNames.reserve(numColumns);
+  for (const auto& name : rowType->names()) {
+    outputNames.push_back(newName(name));
+    outputMapping_->add(name, outputNames.back());
+  }
+  rowType = ROW(std::move(outputNames), rowType->children());
+
+  std::vector<RowVectorPtr> newValues;
+  newValues.reserve(values.size());
+  for (const auto& value : values) {
+    VELOX_USER_CHECK_NOT_NULL(value);
+    VELOX_USER_CHECK(
+        value->rowType()->equivalent(*rowType),
+        "All values must have the equilent type: {} vs. {}",
+        value->rowType()->toString(),
+        rowType->toString());
+    auto newValue = std::make_shared<RowVector>(
+        value->pool(),
+        rowType,
+        value->nulls(),
+        static_cast<size_t>(value->size()),
+        value->children(),
+        value->getNullCount());
+    newValues.emplace_back(std::move(newValue));
+  }
+
+  node_ = std::make_shared<ValuesNode>(nextId(), std::move(newValues));
+
+  return *this;
+}
+
+PlanBuilder& PlanBuilder::tableScan(const std::string& tableName) {
+  VELOX_USER_CHECK(defaultConnectorId_.has_value());
+  return tableScan(defaultConnectorId_.value(), tableName);
+}
+
+PlanBuilder& PlanBuilder::from(const std::vector<std::string>& tableNames) {
+  VELOX_USER_CHECK_NULL(node_, "Table scan node must be the leaf node");
+  VELOX_USER_CHECK(!tableNames.empty());
+
+  tableScan(tableNames.front());
+
+  Context context{defaultConnectorId_};
+  context.planNodeIdGenerator = planNodeIdGenerator_;
+  context.nameAllocator = nameAllocator_;
+
+  for (auto i = 1; i < tableNames.size(); ++i) {
+    crossJoin(PlanBuilder(context).tableScan(tableNames.at(i)));
+  }
+
+  return *this;
+}
+
+PlanBuilder& PlanBuilder::tableScan(
+    const std::string& connectorId,
+    const std::string& tableName) {
+  VELOX_USER_CHECK_NULL(node_, "Table scan node must be the leaf node");
+
+  auto* metadata = connector::getConnector(connectorId)->metadata();
+  auto* table = metadata->findTable(tableName);
+  VELOX_USER_CHECK_NOT_NULL(table, "Table not found: {}", tableName);
+  const auto& schema = table->rowType();
+
+  const auto numColumns = schema->size();
+
+  std::vector<TypePtr> columnTypes;
+  columnTypes.reserve(numColumns);
+
+  std::vector<std::string> outputNames;
+  outputNames.reserve(numColumns);
+
+  outputMapping_ = std::make_shared<NameMappings>();
+
+  for (auto i = 0; i < schema->size(); ++i) {
+    columnTypes.push_back(schema->childAt(i));
+
+    outputNames.push_back(newName(schema->nameOf(i)));
+    outputMapping_->add(schema->nameOf(i), outputNames.back());
+  }
+
+  node_ = std::make_shared<TableScanNode>(
+      nextId(),
+      ROW(outputNames, columnTypes),
+      connectorId,
+      tableName,
+      schema->names());
+
+  return *this;
+}
+
+PlanBuilder& PlanBuilder::tableScan(
+    const std::string& tableName,
+    const std::vector<std::string>& columnNames) {
+  VELOX_USER_CHECK(defaultConnectorId_.has_value());
+  return tableScan(defaultConnectorId_.value(), tableName, columnNames);
 }
 
 PlanBuilder& PlanBuilder::tableScan(
@@ -55,6 +164,7 @@ PlanBuilder& PlanBuilder::tableScan(
 
   auto* metadata = connector::getConnector(connectorId)->metadata();
   auto* table = metadata->findTable(tableName);
+  VELOX_USER_CHECK_NOT_NULL(table, "Table not found: {}", tableName);
   const auto& schema = table->rowType();
 
   const auto numColumns = columnNames.size();
@@ -394,19 +504,12 @@ ExprPtr tryResolveSpecialForm(
 
   return nullptr;
 }
+} // namespace
 
-using InputNameResolver = std::function<ExprPtr(
-    const std::optional<std::string>& alias,
-    const std::string& fieldName)>;
-
-ExprPtr resolveScalarTypesImpl(
-    const core::ExprPtr& expr,
-    const InputNameResolver& inputNameResolver);
-
-ExprPtr resolveLambdaExpr(
+ExprPtr ExprResolver::resolveLambdaExpr(
     const core::LambdaExpr* lambdaExpr,
     const std::vector<TypePtr>& lambdaInputTypes,
-    const InputNameResolver& inputNameResolver) {
+    const InputNameResolver& inputNameResolver) const {
   const auto& names = lambdaExpr->arguments();
   const auto& body = lambdaExpr->body();
 
@@ -433,9 +536,10 @@ ExprPtr resolveLambdaExpr(
   };
 
   return std::make_shared<LambdaExpr>(
-      signature, resolveScalarTypesImpl(body, lambdaResolver));
+      signature, resolveScalarTypes(body, lambdaResolver));
 }
 
+namespace {
 bool isLambdaArgument(const exec::TypeSignature& typeSignature) {
   return typeSignature.baseName() == "function";
 }
@@ -535,10 +639,11 @@ const exec::FunctionSignature* findLambdaSignature(
 
   return nullptr;
 }
+} // namespace
 
-ExprPtr tryResolveCallWithLambdas(
+ExprPtr ExprResolver::tryResolveCallWithLambdas(
     const std::shared_ptr<const core::CallExpr>& callExpr,
-    const InputNameResolver& inputNameResolver) {
+    const InputNameResolver& inputNameResolver) const {
   if (callExpr == nullptr) {
     return nullptr;
   }
@@ -554,8 +659,7 @@ ExprPtr tryResolveCallWithLambdas(
   std::vector<TypePtr> childTypes(numArgs);
   for (auto i = 0; i < numArgs; ++i) {
     if (!isLambdaArgument(signature->argumentTypes()[i])) {
-      children[i] =
-          resolveScalarTypesImpl(callExpr->inputAt(i), inputNameResolver);
+      children[i] = resolveScalarTypes(callExpr->inputAt(i), inputNameResolver);
       childTypes[i] = children[i]->type();
     }
   }
@@ -593,9 +697,65 @@ ExprPtr tryResolveCallWithLambdas(
   return std::make_shared<CallExpr>(returnType, callExpr->name(), children);
 }
 
-ExprPtr resolveScalarTypesImpl(
+core::TypedExprPtr ExprResolver::makeConstantTypedExpr(
+    const ExprPtr& expr) const {
+  auto vector = variantToVector(
+      expr->type(), *expr->asUnchecked<ConstantExpr>()->value(), pool_.get());
+  return std::make_shared<core::ConstantTypedExpr>(vector);
+}
+
+ExprPtr ExprResolver::makeConstant(const VectorPtr& vector) const {
+  auto variant = std::make_shared<Variant>(vectorToVariant(vector, 0));
+  return std::make_shared<ConstantExpr>(vector->type(), std::move(variant));
+}
+
+ExprPtr ExprResolver::tryFoldCall(
+    const TypePtr& type,
+    const std::string& name,
+    const std::vector<ExprPtr>& inputs) const {
+  if (!queryCtx_) {
+    return nullptr;
+  }
+  for (const auto& arg : inputs) {
+    if (arg->kind() != ExprKind::kConstant) {
+      return nullptr;
+    }
+  }
+  std::vector<core::TypedExprPtr> args;
+  for (const auto& arg : inputs) {
+    args.push_back(makeConstantTypedExpr(arg));
+  }
+  auto vector = exec::tryEvaluateConstantExpression(
+      std::make_shared<core::CallTypedExpr>(type, std::move(args), name),
+      pool_.get(),
+      queryCtx_,
+      true);
+  if (vector) {
+    return makeConstant(vector);
+  }
+  return nullptr;
+}
+
+ExprPtr ExprResolver::tryFoldCast(const TypePtr& type, const ExprPtr& input)
+    const {
+  if (!queryCtx_ || input->kind() != ExprKind::kConstant) {
+    return nullptr;
+  }
+  auto vector = exec::tryEvaluateConstantExpression(
+      std::make_shared<core::CastTypedExpr>(
+          type, makeConstantTypedExpr(input), false),
+      pool_.get(),
+      queryCtx_,
+      true);
+  if (vector) {
+    return makeConstant(vector);
+  }
+  return nullptr;
+}
+
+ExprPtr ExprResolver::resolveScalarTypes(
     const core::ExprPtr& expr,
-    const InputNameResolver& inputNameResolver) {
+    const InputNameResolver& inputNameResolver) const {
   if (const auto* fieldAccess =
           dynamic_cast<const core::FieldAccessExpr*>(expr.get())) {
     const auto& name = fieldAccess->name();
@@ -610,8 +770,7 @@ ExprPtr resolveScalarTypesImpl(
       }
     }
 
-    auto input =
-        resolveScalarTypesImpl(fieldAccess->input(), inputNameResolver);
+    auto input = resolveScalarTypes(fieldAccess->input(), inputNameResolver);
 
     return std::make_shared<SpecialFormExpr>(
         input->type()->asRow().findChild(name),
@@ -637,11 +796,18 @@ ExprPtr resolveScalarTypesImpl(
   std::vector<ExprPtr> inputs;
   inputs.reserve(expr->inputs().size());
   for (const auto& input : expr->inputs()) {
-    inputs.push_back(resolveScalarTypesImpl(input, inputNameResolver));
+    inputs.push_back(resolveScalarTypes(input, inputNameResolver));
   }
 
   if (const auto* call = dynamic_cast<const core::CallExpr*>(expr.get())) {
     const auto& name = call->name();
+
+    if (hook_ != nullptr) {
+      auto result = hook_(name, inputs);
+      if (result != nullptr) {
+        return result;
+      }
+    }
 
     if (auto specialForm = tryResolveSpecialForm(name, inputs)) {
       return specialForm;
@@ -654,11 +820,19 @@ ExprPtr resolveScalarTypesImpl(
     }
 
     auto type = resolveScalarFunction(name, inputTypes);
+    auto folded = tryFoldCall(type, name, inputs);
+    if (folded != nullptr) {
+      return folded;
+    }
 
     return std::make_shared<CallExpr>(type, name, inputs);
   }
 
   if (const auto* cast = dynamic_cast<const core::CastExpr*>(expr.get())) {
+    auto folded = tryFoldCast(cast->type(), inputs[0]);
+    if (folded != nullptr) {
+      return folded;
+    }
     return std::make_shared<SpecialFormExpr>(
         cast->type(),
         cast->isTryCast() ? SpecialForm::kTryCast : SpecialForm::kCast,
@@ -673,9 +847,9 @@ ExprPtr resolveScalarTypesImpl(
   VELOX_NYI("Can't resolve {}", expr->toString());
 }
 
-AggregateExprPtr resolveAggregateTypesImpl(
+AggregateExprPtr ExprResolver::resolveAggregateTypes(
     const core::ExprPtr& expr,
-    const InputNameResolver& inputNameResolver) {
+    const InputNameResolver& inputNameResolver) const {
   const auto* call = dynamic_cast<const core::CallExpr*>(expr.get());
   VELOX_USER_CHECK_NOT_NULL(call, "Aggregate must be a call expression");
 
@@ -684,7 +858,7 @@ AggregateExprPtr resolveAggregateTypesImpl(
   std::vector<ExprPtr> inputs;
   inputs.reserve(expr->inputs().size());
   for (const auto& input : expr->inputs()) {
-    inputs.push_back(resolveScalarTypesImpl(input, inputNameResolver));
+    inputs.push_back(resolveScalarTypes(input, inputNameResolver));
   }
 
   std::vector<TypePtr> inputTypes;
@@ -710,8 +884,6 @@ AggregateExprPtr resolveAggregateTypesImpl(
   }
 }
 
-} // namespace
-
 PlanBuilder& PlanBuilder::join(
     const PlanBuilder& right,
     const std::string& condition,
@@ -729,7 +901,7 @@ PlanBuilder& PlanBuilder::join(
   ExprPtr expr;
   if (!condition.empty()) {
     auto untypedExpr = parse::parseExpr(condition, parseOptions_);
-    expr = resolveScalarTypesImpl(
+    expr = resolver_.resolveScalarTypes(
         untypedExpr, [&](const auto& alias, const auto& name) {
           return resolveJoinInputName(
               alias, name, *outputMapping_, inputRowType);
@@ -812,10 +984,19 @@ PlanBuilder& PlanBuilder::sort(const std::vector<std::string>& sortingKeys) {
   return *this;
 }
 
-PlanBuilder& PlanBuilder::limit(int32_t offset, int32_t count) {
+PlanBuilder& PlanBuilder::limit(int64_t offset, int64_t count) {
   VELOX_USER_CHECK_NOT_NULL(node_, "Limit node cannot be a leaf node");
 
   node_ = std::make_shared<LimitNode>(nextId(), node_, offset, count);
+
+  return *this;
+}
+
+PlanBuilder& PlanBuilder::offset(int64_t offset) {
+  VELOX_USER_CHECK_NOT_NULL(node_, "Offset node cannot be a leaf node");
+
+  node_ = std::make_shared<LimitNode>(
+      nextId(), node_, offset, std::numeric_limits<int64_t>::max());
 
   return *this;
 }
@@ -853,14 +1034,15 @@ ExprPtr PlanBuilder::resolveInputName(
 }
 
 ExprPtr PlanBuilder::resolveScalarTypes(const core::ExprPtr& expr) const {
-  return resolveScalarTypesImpl(expr, [&](const auto& alias, const auto& name) {
-    return resolveInputName(alias, name);
-  });
+  return resolver_.resolveScalarTypes(
+      expr, [&](const auto& alias, const auto& name) {
+        return resolveInputName(alias, name);
+      });
 }
 
 AggregateExprPtr PlanBuilder::resolveAggregateTypes(
     const core::ExprPtr& expr) const {
-  return resolveAggregateTypesImpl(
+  return resolver_.resolveAggregateTypes(
       expr, [&](const auto& alias, const auto& name) {
         return resolveInputName(alias, name);
       });

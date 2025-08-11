@@ -21,8 +21,6 @@
 
 namespace facebook::velox::optimizer {
 
-using namespace facebook::velox;
-
 namespace lp = facebook::velox::logical_plan;
 
 namespace {
@@ -53,14 +51,19 @@ void Optimization::markFieldAccessed(
       isControl ? &logicalControlSubfields_ : &logicalPayloadSubfields_;
   if (source.planNode) {
     const auto* path = stepsToPath(steps);
-    fields->nodeFields[source.planNode].resultPaths[ordinal].add(path->id());
+    auto& paths = fields->nodeFields[source.planNode].resultPaths[ordinal];
+    if (paths.contains(path->id())) {
+      // Already marked.
+      return;
+    }
+    paths.add(path->id());
 
     const auto kind = source.planNode->kind();
     if (kind == lp::NodeKind::kProject) {
       const auto* project = source.planNode->asUnchecked<lp::ProjectNode>();
       const auto& input = project->onlyInput();
       markSubfields(
-          project->expressions()[ordinal],
+          project->expressionAt(ordinal),
           steps,
           isControl,
           {input->outputType().get()},
@@ -87,8 +90,8 @@ void Optimization::markFieldAccessed(
         return;
       }
 
-      const auto& aggregate = agg->aggregates()[ordinal - keys.size()];
-      for (auto& aggregateInput : aggregate->inputs()) {
+      const auto& aggregate = agg->aggregateAt(ordinal - keys.size());
+      for (const auto& aggregateInput : aggregate->inputs()) {
         mark(aggregateInput);
       }
 
@@ -143,8 +146,7 @@ void Optimization::markFieldAccessed(
 
   // The source is a lambda arg. We apply the path to the corresponding
   // container arg of the 2nd order function call that has the lambda.
-  auto* md =
-      FunctionRegistry::instance()->metadata(toName(source.call->name()));
+  auto* md = functionMetadata(toName(source.call->name()));
   const auto* lambdaInfo = md->lambdaInfo(source.lambdaOrdinal);
   const auto nth = lambdaInfo->argOrdinal[ordinal];
 
@@ -278,7 +280,7 @@ void Optimization::markSubfields(
       return;
     }
 
-    const auto* metadata = FunctionRegistry::instance()->metadata(toName(name));
+    const auto* metadata = functionMetadata(toName(name));
     if (!metadata || !metadata->processSubfields()) {
       for (const auto& input : expr->inputs()) {
         std::vector<Step> steps;
@@ -292,7 +294,23 @@ void Optimization::markSubfields(
     const auto* path = stepsToPath(steps);
     auto* fields =
         isControl ? &logicalControlSubfields_ : &logicalPayloadSubfields_;
+    if (fields->argFields[call].resultPaths[ResultAccess::kSelf].contains(
+            path->id())) {
+      // Already marked.
+      return;
+    }
     fields->argFields[call].resultPaths[ResultAccess::kSelf].add(path->id());
+
+    // If the function is some kind of constructor, like
+    // make_row_from_map or make_named_row, then a path over it
+    // selects one argument. If there is no path, all arguments are
+    // implicitly accessed.
+    if (metadata->valuePathToArgPath && !steps.empty()) {
+      auto pair = metadata->valuePathToArgPath(steps, *call);
+      markSubfields(
+          expr->inputAt(pair.second), pair.first, isControl, context, sources);
+      return;
+    }
     for (auto i = 0; i < expr->inputs().size(); ++i) {
       if (metadata->subfieldArg == i) {
         // A subfield of func is a subfield of one arg.

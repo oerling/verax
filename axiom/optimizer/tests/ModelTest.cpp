@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "optimizer/Model.h" //@manual
+#include "axiom/optimizer/Model.h"
 #include "velox/common/base/Exceptions.h"
 
 #include <gtest/gtest.h>

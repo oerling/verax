@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "optimizer/Model.h" //@manual
+#include "axiom/optimizer/Model.h"
 #include <algorithm>
 #include <cmath>
 #include <unordered_set>

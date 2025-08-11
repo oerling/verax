@@ -14,12 +14,17 @@
  * limitations under the License.
  */
 
-#include "velox/type/Type.h"
+#pragma once
+
+#include "axiom/logical_plan/PlanBuilder.h"
 
 namespace facebook::velox::optimizer::test {
 
-RowTypePtr makeGenieType();
+void registerDfFunctions();
+logical_plan::ExprPtr resolveDfFunction(
+    const std::string& name,
+    const std::vector<logical_plan::ExprPtr>& args);
 
-void registerGenieUdfs();
+void registerRowUdfs();
 
 } // namespace facebook::velox::optimizer::test

@@ -22,22 +22,12 @@
 #include "velox/exec/AggregateFunctionRegistry.h"
 #include "velox/expression/ConstantExpr.h"
 #include "velox/expression/FunctionSignature.h"
+#include "velox/functions/FunctionRegistry.h"
 #include "velox/vector/VariantToVector.h"
 
 namespace facebook::velox::optimizer {
 
 namespace lp = facebook::velox::logical_plan;
-
-namespace {
-std::string leString(const lp::Expr* e) {
-  return lp::ExprPrinter::toText(*e);
-}
-
-std::string pString(const lp::LogicalPlanNode* p) {
-  return lp::PlanPrinter::toText(*p);
-}
-
-} // namespace
 
 void Optimization::setDerivedTableOutput(
     DerivedTableP dt,
@@ -210,9 +200,11 @@ void Optimization::getExprForField(
       resultColumn = maybeColumn->as<Column>();
       resultExpr = nullptr;
       context = nullptr;
-      VELOX_CHECK_NOT_NULL(resultColumn->relation());
-      if (resultColumn->relation()->type() == PlanType::kTable) {
-        VELOX_CHECK(leaf == resultColumn->relation());
+      const auto* relation = resultColumn->relation();
+      VELOX_CHECK_NOT_NULL(relation);
+      if (relation->type() == PlanType::kTable ||
+          relation->type() == PlanType::kValuesTable) {
+        VELOX_CHECK(leaf == relation);
       }
       return;
     }
@@ -348,6 +340,7 @@ ExprCP Optimization::makeGettersOverSkyline(
     }
     last = steps.size();
   }
+
   std::vector<Step> reverse;
   for (int32_t i = last - 1; i >= 0; --i) {
     // We make a getter over expr made so far with 'steps[i]' as first.
@@ -438,8 +431,7 @@ BitSet Optimization::functionSubfields(
 
 void Optimization::ensureFunctionSubfields(const lp::ExprPtr& expr) {
   if (const auto* call = expr->asUnchecked<lp::CallExpr>()) {
-    auto metadata = FunctionRegistry::instance()->metadata(
-        exec::sanitizeName(call->name()));
+    auto metadata = functionMetadata(exec::sanitizeName(call->name()));
     if (!metadata) {
       return;
     }
@@ -493,15 +485,38 @@ BuiltinNames& Optimization::builtinNames() {
   return *builtinNames_;
 }
 
+namespace {
+
+/// If we should reverse the sides of a binary expression to canonicalize it. We
+/// invert in two cases:
+///
+///  #1. If there is a literal in the left and something else in the right:
+///    f("literal", col) => f(col, "literal")
+///
+///  #2. If none are literal, but the id on the left is higher.
+bool shouldInvert(ExprCP left, ExprCP right) {
+  if (left->type() == PlanType::kLiteral &&
+      right->type() != PlanType::kLiteral) {
+    return true;
+  } else if (
+      (left->type() != PlanType::kLiteral) &&
+      (right->type() != PlanType::kLiteral) && (left->id() > right->id())) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+} // namespace
+
 void Optimization::canonicalizeCall(Name& name, ExprVector& args) {
   auto& names = builtinNames();
   if (!names.isCanonicalizable(name)) {
     return;
   }
   VELOX_CHECK_EQ(args.size(), 2, "Expecting binary op {}", name);
-  if ((args[0]->type() == PlanType::kLiteral &&
-       args[1]->type() != PlanType::kLiteral) ||
-      args[0]->id() > args[1]->id()) {
+
+  if (shouldInvert(args[0], args[1])) {
     std::swap(args[0], args[1]);
     name = names.reverse(name);
   }
@@ -563,6 +578,21 @@ const char* specialFormCallName(const lp::SpecialFormExpr* form) {
       VELOX_UNREACHABLE(lp::SpecialFormName::toName(form->form()));
   }
 }
+
+// Returns bits describing function 'name'.
+FunctionSet functionBits(Name name) {
+  if (auto* md = functionMetadata(name)) {
+    return md->functionSet;
+  }
+
+  const auto deterministic = velox::isDeterministic(name);
+  if (deterministic.has_value() && !deterministic.value()) {
+    return FunctionSet(FunctionSet::kNonDeterministic);
+  }
+
+  return FunctionSet(0);
+}
+
 } // namespace
 
 ExprCP Optimization::translateExpr(const lp::ExprPtr& expr) {
@@ -582,7 +612,7 @@ ExprCP Optimization::translateExpr(const lp::ExprPtr& expr) {
   std::string callName;
   if (call) {
     callName = exec::sanitizeName(call->name());
-    auto* metadata = FunctionRegistry::instance()->metadata(callName);
+    auto* metadata = functionMetadata(callName);
     if (metadata && metadata->processSubfields()) {
       auto translated = translateSubfieldFunction(call, metadata);
       if (translated.has_value()) {
@@ -838,6 +868,50 @@ PlanObjectP Optimization::addOrderBy(const lp::SortNode& order) {
   return currentSelect_;
 }
 
+namespace {
+
+// Fills 'leftKeys' and 'rightKeys's from 'conjuncts' so that
+// equalities with one side only depending on 'right' go to
+// 'rightKeys' and the other side not depending on 'right' goes to
+// 'leftKeys'. The left side may depend on more than one table. The
+// tables 'leftKeys' depend on are returned in 'allLeft'. The
+// conjuncts that are not equalities or have both sides depending
+// on right and something else are left in 'conjuncts'.
+void extractNonInnerJoinEqualities(
+    ExprVector& conjuncts,
+    PlanObjectCP right,
+    ExprVector& leftKeys,
+    ExprVector& rightKeys,
+    PlanObjectSet& allLeft) {
+  const auto* eq = toName("eq");
+
+  for (auto i = 0; i < conjuncts.size(); ++i) {
+    const auto* conjunct = conjuncts[i];
+    if (isCallExpr(conjunct, eq)) {
+      const auto* eq = conjunct->as<Call>();
+      const auto leftTables = eq->argAt(0)->allTables();
+      const auto rightTables = eq->argAt(1)->allTables();
+      if (rightTables.size() == 1 && rightTables.contains(right) &&
+          !leftTables.contains(right)) {
+        allLeft.unionSet(leftTables);
+        leftKeys.push_back(eq->argAt(0));
+        rightKeys.push_back(eq->argAt(1));
+        conjuncts.erase(conjuncts.begin() + i);
+        --i;
+      } else if (
+          leftTables.size() == 1 && leftTables.contains(right) &&
+          !rightTables.contains(right)) {
+        allLeft.unionSet(rightTables);
+        leftKeys.push_back(eq->argAt(1));
+        rightKeys.push_back(eq->argAt(0));
+        conjuncts.erase(conjuncts.begin() + i);
+        --i;
+      }
+    }
+  }
+}
+} // namespace
+
 void Optimization::translateJoin(const lp::JoinNode& join) {
   const auto& joinLeft = join.left();
   const auto& joinRight = join.right();
@@ -895,7 +969,7 @@ void Optimization::translateJoin(const lp::JoinNode& join) {
 
 DerivedTableP Optimization::newDt() {
   auto* dt = make<DerivedTable>();
-  dt->cname = toName(fmt::format("dt{}", ++nameCounter_));
+  dt->cname = newCName("dt");
   return dt;
 }
 
@@ -927,23 +1001,21 @@ PlanObjectP Optimization::wrapInDt(const lp::LogicalPlanNode& node) {
   return dt;
 }
 
-PlanObjectP Optimization::makeBaseTable(const lp::TableScanNode* tableScan) {
-  const auto* schemaTable = schema_.findTable(tableScan->tableName());
+PlanObjectP Optimization::makeBaseTable(const lp::TableScanNode& tableScan) {
+  const auto* schemaTable = schema_.findTable(tableScan.tableName());
   VELOX_CHECK_NOT_NULL(
-      schemaTable, "Table not found: {}", tableScan->tableName());
+      schemaTable, "Table not found: {}", tableScan.tableName());
 
   auto* baseTable = make<BaseTable>();
-  baseTable->cname = toName(fmt::format("t{}", ++nameCounter_));
+  baseTable->cname = newCName("t");
   baseTable->schemaTable = schemaTable;
-  logicalPlanLeaves_[tableScan] = baseTable;
+  logicalPlanLeaves_[&tableScan] = baseTable;
 
-  auto channels = usedChannels(tableScan);
-  const auto& type = tableScan->outputType();
-  const auto& names = tableScan->columnNames();
-  for (auto i = 0; i < type->size(); ++i) {
-    if (std::find(channels.begin(), channels.end(), i) == channels.end()) {
-      continue;
-    }
+  auto channels = usedChannels(&tableScan);
+  const auto& type = tableScan.outputType();
+  const auto& names = tableScan.columnNames();
+  for (auto i : channels) {
+    VELOX_DCHECK_LT(i, type->size());
 
     const auto& name = names[i];
     auto schemaColumn = schemaTable->findColumn(name);
@@ -956,16 +1028,16 @@ PlanObjectP Optimization::makeBaseTable(const lp::TableScanNode* tableScan) {
     if (kind == TypeKind::ARRAY || kind == TypeKind::ROW ||
         kind == TypeKind::MAP) {
       BitSet allPaths;
-      if (logicalControlSubfields_.hasColumn(tableScan, i)) {
+      if (logicalControlSubfields_.hasColumn(&tableScan, i)) {
         baseTable->controlSubfields.ids.push_back(column->id());
         allPaths =
-            logicalControlSubfields_.nodeFields[tableScan].resultPaths[i];
+            logicalControlSubfields_.nodeFields[&tableScan].resultPaths[i];
         baseTable->controlSubfields.subfields.push_back(allPaths);
       }
-      if (logicalPayloadSubfields_.hasColumn(tableScan, i)) {
+      if (logicalPayloadSubfields_.hasColumn(&tableScan, i)) {
         baseTable->payloadSubfields.ids.push_back(column->id());
         auto payloadPaths =
-            logicalPayloadSubfields_.nodeFields[tableScan].resultPaths[i];
+            logicalPayloadSubfields_.nodeFields[&tableScan].resultPaths[i];
         baseTable->payloadSubfields.subfields.push_back(payloadPaths);
         allPaths.unionSet(payloadPaths);
       }
@@ -989,6 +1061,31 @@ PlanObjectP Optimization::makeBaseTable(const lp::TableScanNode* tableScan) {
   currentSelect_->tables.push_back(baseTable);
   currentSelect_->tableSet.add(baseTable);
   return baseTable;
+}
+
+PlanObjectP Optimization::makeValuesTable(const lp::ValuesNode& values) {
+  auto* valuesTable = make<ValuesTable>(values);
+  valuesTable->cname = newCName("vt");
+  logicalPlanLeaves_[&values] = valuesTable;
+
+  auto channels = usedChannels(&values);
+  const auto& type = values.outputType();
+  const auto& names = values.outputType()->names();
+  const auto cardinality = valuesTable->cardinality();
+  for (auto i : channels) {
+    VELOX_DCHECK_LT(i, type->size());
+
+    const auto& name = names[i];
+    Value value{type->childAt(i).get(), cardinality};
+    auto* column = make<Column>(toName(name), valuesTable, value);
+    valuesTable->columns.push_back(column);
+
+    renames_[name] = column;
+  }
+
+  currentSelect_->tables.push_back(valuesTable);
+  currentSelect_->tableSet.add(valuesTable);
+  return valuesTable;
 }
 
 namespace {
@@ -1086,7 +1183,7 @@ PlanObjectP Optimization::addAggregation(const lp::AggregateNode& aggNode) {
   return currentSelect_;
 }
 
-PlanObjectP Optimization::addLimit(const logical_plan::LimitNode& limitNode) {
+PlanObjectP Optimization::addLimit(const lp::LimitNode& limitNode) {
   currentSelect_->limit = limitNode.count();
   currentSelect_->offset = limitNode.offset();
   return currentSelect_;
@@ -1297,12 +1394,10 @@ PlanObjectP Optimization::makeQueryGraph(
     uint64_t allowedInDt) {
   switch (node.kind()) {
     case lp::NodeKind::kValues:
-      VELOX_NYI(
-          "Unsupported PlanNode {}",
-          logical_plan::NodeKindName::toName(node.kind()));
+      return makeValuesTable(*node.asUnchecked<lp::ValuesNode>());
 
     case lp::NodeKind::kTableScan:
-      return makeBaseTable(node.asUnchecked<lp::TableScanNode>());
+      return makeBaseTable(*node.asUnchecked<lp::TableScanNode>());
 
     case lp::NodeKind::kFilter: {
       if (!contains(allowedInDt, PlanType::kFilter)) {
@@ -1354,6 +1449,11 @@ PlanObjectP Optimization::makeQueryGraph(
       return addOrderBy(*node.asUnchecked<lp::SortNode>());
 
     case lp::NodeKind::kLimit: {
+      // TODO Allow multiple limits.
+      //
+      // SELECT * FROM (SELECT * FROM t LIMIT 10 OFFSET 5) LIMIT 10 OFFSET 5
+      // is equivalent to
+      //    SELECT * FROM t LIMIT 5 OFFSET 10
       if (!contains(allowedInDt, PlanType::kLimit)) {
         return wrapInDt(node);
       }
@@ -1384,6 +1484,15 @@ PlanObjectP Optimization::makeQueryGraph(
           "Unsupported PlanNode {}",
           logical_plan::NodeKindName::toName(node.kind()));
   }
+}
+
+// Debug helper functions. Must be in a namespace to be callable from gdb.
+std::string leString(const lp::Expr* e) {
+  return lp::ExprPrinter::toText(*e);
+}
+
+std::string pString(const lp::LogicalPlanNode* p) {
+  return lp::PlanPrinter::toText(*p);
 }
 
 } // namespace facebook::velox::optimizer

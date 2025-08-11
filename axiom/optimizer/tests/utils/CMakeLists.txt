@@ -12,15 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-add_executable(velox_fe_logical_plan_tests
-               PlanPrinterTest.cpp NameAllocatorTest.cpp NameMappingsTest.cpp)
+add_library(velox_optimizer_test_utils DfFunctions.cpp RowFunctions.cpp)
 
-add_test(velox_fe_logical_plan_tests velox_fe_logical_plan_tests)
-
-target_link_libraries(velox_fe_logical_plan_tests
-                      velox_fe_logical_plan_builder
-                      velox_fe_logical_plan
-                      velox_test_connector
-                      GTest::gtest
-                      GTest::gtest_main
-                      GTest::gmock)
+target_link_libraries(
+  velox_optimizer_test_utils
+  velox_verax
+  velox_fe_logical_plan_builder
+  velox_test_connector
+  velox_schema_resolver
+  velox_tpch_gen
+  velox_connector_split_source
+  velox_hive_connector_metadata
+  velox_exec_runner_test_util
+  velox_exec_test_lib
+  velox_dwio_parquet_reader
+  velox_dwio_native_parquet_reader)

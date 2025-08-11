@@ -15,7 +15,6 @@
  */
 
 #include "axiom/optimizer/QueryGraph.h"
-#include "velox/common/base/SimdUtil.h"
 
 namespace facebook::velox::optimizer {
 
@@ -58,8 +57,7 @@ void PlanObjectSet::unionColumns(ExprCP expr) {
         unionColumns(condition);
       }
     }
-      // Fall through.
-      FMT_FALLTHROUGH;
+      [[fallthrough]];
     case PlanType::kCall: {
       auto call = reinterpret_cast<const Call*>(expr);
       unionSet(call->columns());

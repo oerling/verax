@@ -14,21 +14,13 @@
  * limitations under the License.
  */
 
-#include "axiom/optimizer/tests/Genies.h"
+#include "axiom/optimizer/tests/utils/DfFunctions.h"
 #include "velox/expression/VectorFunction.h"
+#include "velox/functions/FunctionRegistry.h"
 
 namespace facebook::velox::optimizer::test {
 
-RowTypePtr makeGenieType() {
-  return ROW(
-      {"uid", "ff", "idlf", "idslf"},
-      {BIGINT(),
-       MAP(INTEGER(), REAL()),
-       MAP(INTEGER(), ARRAY(BIGINT())),
-       MAP(INTEGER(), MAP(BIGINT(), REAL()))});
-}
-
-class GenieFunction : public exec::VectorFunction {
+class MakeRowFromMapFunction : public exec::VectorFunction {
  public:
   void apply(
       const SelectivityVector& rows,
@@ -40,28 +32,32 @@ class GenieFunction : public exec::VectorFunction {
   }
 
   static std::vector<std::shared_ptr<exec::FunctionSignature>> signatures() {
-    auto type = makeGenieType();
     return {
         exec::FunctionSignatureBuilder()
-            .returnType(
-                "row(userid bigint, ff map(integer, real), idlf map(integer, array(bigint)), idsf map(integer, map(bigint, real)))")
-            .argumentType("bigint")
+            .returnType("row(real)")
             .argumentType("map(integer, real)")
+            .build(),
+        exec::FunctionSignatureBuilder()
+            .returnType("row(real)")
             .argumentType("map(integer, array(bigint))")
+            .build(),
+        exec::FunctionSignatureBuilder()
+
+            .returnType("ROW(real)")
             .argumentType("map(integer, map(bigint, real))")
             .build()};
   }
 };
 
 VELOX_DECLARE_VECTOR_FUNCTION_WITH_METADATA(
-    udf_genie,
-    GenieFunction::signatures(),
+    udf_makeRowFromMap,
+    MakeRowFromMapFunction::signatures(),
     exec::VectorFunctionMetadataBuilder().defaultNullBehavior(false).build(),
-    std::make_unique<GenieFunction>());
+    std::make_unique<MakeRowFromMapFunction>());
 
-void registerGenieUdfs() {
-  VELOX_REGISTER_VECTOR_FUNCTION(udf_genie, "genie");
-  VELOX_REGISTER_VECTOR_FUNCTION(udf_genie, "exploding_genie");
+void registerRowUdfs() {
+  VELOX_REGISTER_VECTOR_FUNCTION(udf_makeRowFromMap, "makeRowFromMap");
+  VELOX_REGISTER_VECTOR_FUNCTION(udf_makeRowFromMap, "padded_makeRowFromMap");
 }
 
 } // namespace facebook::velox::optimizer::test

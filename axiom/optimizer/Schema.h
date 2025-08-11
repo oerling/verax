@@ -259,7 +259,9 @@ enum class RelType {
   kHashBuild,
   kAggregation,
   kOrderBy,
-  kUnionAll
+  kUnionAll,
+  kLimit,
+  kValues,
 };
 
 /// Represents a relation (table) that is either physically stored or is the
@@ -376,6 +378,8 @@ struct IndexInfo {
 };
 
 IndexInfo joinCardinality(PlanObjectCP table, CPSpan<Column> keys);
+
+float tableCardinality(PlanObjectCP table);
 
 float baseSelectivity(PlanObjectCP object);
 
