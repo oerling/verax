@@ -239,8 +239,8 @@ class LocalHiveConnectorMetadata : public HiveConnectorMetadata {
       TableKind kind = TableKind::kTable) override;
 
   void finishWrite(
-		   const TableLayout& layout,
-		   const ConnectorInsertTableHandlePtr& /*handle*/,
+      const TableLayout& layout,
+      const ConnectorInsertTableHandlePtr& /*handle*/,
       const std::vector<RowVectorPtr>& /*writerResult*/,
       WriteKind /*kind*/,
       const ConnectorSessionPtr& /*session*/) override;

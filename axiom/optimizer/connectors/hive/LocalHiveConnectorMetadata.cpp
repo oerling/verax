@@ -112,20 +112,20 @@ std::vector<SplitSource::SplitAndGroup> LocalHiveSplitSource::getSplits(
       // Take the upper bound.
       const int64_t splitSize = ceil2<uint64_t>(fileSize, splitsPerFile);
       for (int i = 0; i < splitsPerFile; ++i) {
-	auto builder = connector::hive::HiveConnectorSplitBuilder(filePath)
-	  .connectorId(connectorId_)
-	  .fileFormat(format_)
-	  .start(i * splitSize)
-	  .length(splitSize);
-	
-	auto* info = files_[currentFile_];
-	if (info->bucketNumber.has_value()) {
-	  builder.tableBucketNumber(info->bucketNumber.value());
-	}
-	    for (auto& pair : info->partitionKeys) {
-	      builder.partitionKey(pair.first, pair.second);
-	    }
-	    fileSplits_.push_back(builder.build());
+        auto builder = connector::hive::HiveConnectorSplitBuilder(filePath)
+                           .connectorId(connectorId_)
+                           .fileFormat(format_)
+                           .start(i * splitSize)
+                           .length(splitSize);
+
+        auto* info = files_[currentFile_];
+        if (info->bucketNumber.has_value()) {
+          builder.tableBucketNumber(info->bucketNumber.value());
+        }
+        for (auto& pair : info->partitionKeys) {
+          builder.partitionKey(pair.first, pair.second);
+        }
+        fileSplits_.push_back(builder.build());
       }
     }
     result.push_back(SplitAndGroup{std::move(fileSplits_[currentSplit_++]), 0});
@@ -398,7 +398,7 @@ LocalTable* LocalHiveConnectorMetadata::createTableFromSchema(
     partition.push_back(columns.back().get());
   }
   table->type_ = ROW(std::move(names), std::move(types));
-  
+
   std::vector<const Column*> columnOrder;
   for (auto& column : columns) {
     columnOrder.push_back(column.get());
@@ -448,24 +448,27 @@ LocalTable* LocalHiveConnectorMetadata::createTableFromSchema(
 
 namespace {
 
-  // Extracts the digits after the last / in the file path and returns them as an integer.
+// Extracts the digits after the last / in the file path and returns them as an
+// integer.
 int32_t extractDigitsAfterLastSlash(const std::string& path) {
-    size_t lastSlashPos = path.find_last_of('/');
-    VELOX_CHECK(lastSlashPos != std::string::npos, 
-		"No slash found in {}", path);
-    std::string digits;
-    for (size_t i = lastSlashPos + 1; i < path.size(); ++i) {
-        char c = path[i];
-        if (std::isdigit(c)) {
-            digits += c;
-        } else {
-            break;
-        }
+  size_t lastSlashPos = path.find_last_of('/');
+  VELOX_CHECK(lastSlashPos != std::string::npos, "No slash found in {}", path);
+  std::string digits;
+  for (size_t i = lastSlashPos + 1; i < path.size(); ++i) {
+    char c = path[i];
+    if (std::isdigit(c)) {
+      digits += c;
+    } else {
+      break;
     }
-    VELOX_CHECK(!digits.empty(), "Bad bucketed file name: No digits at start of name {}", path);
-    return std::stoi(digits);
+  }
+  VELOX_CHECK(
+      !digits.empty(),
+      "Bad bucketed file name: No digits at start of name {}",
+      path);
+  return std::stoi(digits);
 }
-  
+
 void listFiles(
     const std::string& path,
     std::function<int32_t(const std::string&)> parseBucketNumber,
@@ -797,8 +800,8 @@ void LocalHiveConnectorMetadata::createTable(
       tokens.clear();
       folly::split(",", it->second, tokens);
       for (auto& token : tokens) {
-	      token = folly::trimWhitespace(token);
-	      sorted.push_back(token);
+        token = folly::trimWhitespace(token);
+        sorted.push_back(token);
       }
     }
     buckets["sortedBy"] = sorted;
@@ -841,19 +844,19 @@ void LocalHiveConnectorMetadata::createTable(
   tables_.erase(tableName);
   loadTable(tableName, path);
 }
-  
-  void LocalHiveConnectorMetadata::finishWrite(
-					       const TableLayout& layout,
-					       const ConnectorInsertTableHandlePtr& handle,
-      const std::vector<RowVectorPtr>& /*writerResult*/,
-      WriteKind /*kind*/,
-      const ConnectorSessionPtr& /*session*/) {
-    std::lock_guard<std::mutex> l(mutex_);
-    auto localHandle = dynamic_cast<const HiveInsertTableHandle*>(handle.get());
-    loadTable(layout.table()->name(), localHandle->locationHandle()->targetPath());
-  }
 
-  
+void LocalHiveConnectorMetadata::finishWrite(
+    const TableLayout& layout,
+    const ConnectorInsertTableHandlePtr& handle,
+    const std::vector<RowVectorPtr>& /*writerResult*/,
+    WriteKind /*kind*/,
+    const ConnectorSessionPtr& /*session*/) {
+  std::lock_guard<std::mutex> l(mutex_);
+  auto localHandle = dynamic_cast<const HiveInsertTableHandle*>(handle.get());
+  loadTable(
+      layout.table()->name(), localHandle->locationHandle()->targetPath());
+}
+
 namespace {
 class LocalHiveConnectorMetadataFactory : public HiveConnectorMetadataFactory {
  public:

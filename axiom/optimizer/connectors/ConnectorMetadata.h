@@ -704,8 +704,8 @@ class ConnectorMetadata {
   /// 'writerResults'. Their format and meaning is connector specific. the
   /// RowType is given by the outputType() of the TableWriter.
   virtual void finishWrite(
-			   const TableLayout& layout,
-			   const ConnectorInsertTableHandlePtr& handle,
+      const TableLayout& layout,
+      const ConnectorInsertTableHandlePtr& handle,
       const std::vector<RowVectorPtr>& writerResult,
       WriteKind kind,
       const ConnectorSessionPtr& session) {

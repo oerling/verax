@@ -156,7 +156,8 @@ ConnectorInsertTableHandlePtr HiveConnectorMetadata::createInsertTableHandle(
   }
   return std::make_shared<HiveInsertTableHandle>(
       inputColumns,
-      makeLocationHandle(fmt::format("{}/{}", dataPath(), layout.table()->name())),
+      makeLocationHandle(
+          fmt::format("{}/{}", dataPath(), layout.table()->name())),
       storageFormat,
       bucketProperty,
       compressionKind,
@@ -168,9 +169,9 @@ ConnectorInsertTableHandlePtr HiveConnectorMetadata::createInsertTableHandle(
 void HiveConnectorMetadata::validateOptions(
     const std::unordered_map<std::string, std::string>& options) const {
   static std::unordered_set<std::string> allowed = {
-    "bucketed_by",
-    "sorted_by",
-    "bucket_count",
+      "bucketed_by",
+      "sorted_by",
+      "bucket_count",
       "partitioned_by",
       "file_format",
       "compression_kind"};
