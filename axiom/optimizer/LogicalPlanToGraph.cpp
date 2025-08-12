@@ -864,7 +864,9 @@ PlanObjectP Optimization::addOrderBy(const lp::SortNode& order) {
     keys.push_back(translateExpr(field.expression));
   }
 
-  currentSelect_->orderBy = make<OrderBy>(nullptr, keys, orderType);
+  currentSelect_->orderByKeys = keys;
+  currentSelect_->orderByTypes = orderType;
+
   return currentSelect_;
 }
 

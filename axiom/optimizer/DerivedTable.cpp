@@ -524,7 +524,7 @@ void DerivedTable::importJoinsIntoFirstDt(const DerivedTable* firstDt) {
     return;
   }
   auto initialTables = tables;
-  if (firstDt->limit != -1 || firstDt->orderBy) {
+  if (firstDt->hasLimit() || firstDt->hasOrderBy()) {
     // tables can't be imported but are marked as used so not tried again.
     for (auto i = 1; i < tables.size(); ++i) {
       importedExistences.add(tables[i]);

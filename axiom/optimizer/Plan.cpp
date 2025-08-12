@@ -159,7 +159,7 @@ void PlanState::addCost(RelationOp& op) {
 void PlanState::addNextJoin(
     const JoinCandidate* candidate,
     RelationOpPtr plan,
-    BuildSet builds,
+    HashBuildVector builds,
     std::vector<NextJoin>& toTry) const {
   if (!isOverBest()) {
     toTry.emplace_back(candidate, plan, cost, placed, columns, builds);
@@ -168,7 +168,7 @@ void PlanState::addNextJoin(
   }
 }
 
-void PlanState::addBuilds(const BuildSet& added) {
+void PlanState::addBuilds(const HashBuildVector& added) {
   for (auto build : added) {
     if (std::find(builds.begin(), builds.end(), build) == builds.end()) {
       builds.push_back(build);
@@ -752,7 +752,7 @@ uint32_t position(const V& exprs, Getter getter, const Expr& expr) {
 
 RelationOpPtr repartitionForAgg(const RelationOpPtr& plan, PlanState& state) {
   // No shuffle if all grouping keys are in partitioning.
-  if (isSingleWorker()) {
+  if (isSingleWorker() || plan->distribution().distributionType.isGather) {
     return plan;
   }
 
@@ -762,10 +762,8 @@ RelationOpPtr repartitionForAgg(const RelationOpPtr& plan, PlanState& state) {
   // final agg.
   if (agg->grouping.empty() &&
       !plan->distribution().distributionType.isGather) {
-    auto* gather = make<Repartition>(
-        plan,
-        Distribution::gather(plan->distribution().distributionType),
-        plan->columns());
+    auto* gather =
+        make<Repartition>(plan, Distribution::gather(), plan->columns());
     state.addCost(*gather);
     return gather;
   }
@@ -825,11 +823,8 @@ void Optimization::addPostprocess(
     state.addCost(*filter);
     plan = filter;
   }
-  if (dt->orderBy) {
-    auto* orderBy = make<OrderBy>(
-        plan,
-        dt->orderBy->distribution().order,
-        dt->orderBy->distribution().orderType);
+  if (dt->hasOrderBy()) {
+    auto* orderBy = make<OrderBy>(plan, dt->orderByKeys, dt->orderByTypes);
     state.addCost(*orderBy);
     plan = orderBy;
   }
@@ -837,7 +832,7 @@ void Optimization::addPostprocess(
     auto* project = make<Project>(plan, dt->exprs, dt->columns);
     plan = project;
   }
-  if (dt->orderBy == nullptr && dt->limit >= 0) {
+  if (!dt->hasOrderBy() && dt->hasLimit()) {
     auto limit = make<Limit>(plan, dt->limit, dt->offset);
     state.addCost(*limit);
     plan = limit;
@@ -1143,15 +1138,18 @@ void Optimization::joinByHash(
   auto memoKey = MemoKey{
       candidate.tables[0], buildColumns, buildTables, candidate.existences};
 
+  Distribution forBuild;
+  if (plan->distribution().distributionType.isGather) {
+    forBuild = Distribution::gather();
+  } else {
+    forBuild =
+        Distribution(plan->distribution().distributionType, 0, copartition);
+  }
+
   PlanObjectSet empty;
   bool needsShuffle = false;
   auto buildPlan = makePlan(
-      memoKey,
-      Distribution(plan->distribution().distributionType, 0, copartition),
-      empty,
-      candidate.existsFanout,
-      state,
-      needsShuffle);
+      memoKey, forBuild, empty, candidate.existsFanout, state, needsShuffle);
 
   // The build side tables are all joined if the first build is a
   // table but if it is a derived table (most often with aggregation),
@@ -1781,10 +1779,7 @@ Distribution somePartition(const RelationOpPtrVector& inputs) {
       queryCtx()->optimization()->options().numWorkers;
   distributionType.locus = firstInput->distribution().distributionType.locus;
 
-  Distribution result;
-  result.partition = columns;
-  result.distributionType = distributionType;
-  return result;
+  return Distribution(distributionType, 0.0, columns);
 }
 
 // Adds the costs in the input states to the first state and if 'distinct' is

@@ -410,6 +410,11 @@ std::string Distribution::toString() const {
   if (isBroadcast) {
     return "broadcast";
   }
+
+  if (distributionType.isGather) {
+    return "gather";
+  }
+
   std::stringstream out;
   if (!partition.empty()) {
     out << "P ";
