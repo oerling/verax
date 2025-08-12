@@ -190,6 +190,9 @@ class Column {
   std::mutex mutex_;
 };
 
+//// Describes the kind of table, e.g. durable vs. temporary.
+enum class TableKind { kTable, kTempTable };
+
 class Table;
 
 /// Represents sorting order. Duplicate of core::SortOrder. Connectors
@@ -254,7 +257,9 @@ class TableLayout {
   }
 
   /// List of columns present in this layout.
-  const std::vector<const Column*>& columns() const;
+  const std::vector<const Column*>& columns() const {
+    return columns_;
+  }
 
   /// Set of partitioning columns. The values in partitioning columns determine
   /// the location of the row. Joins on equality of partitioning columns are
@@ -377,12 +382,24 @@ class Table {
   /// Returns an estimate of the number of rows in 'this'.
   virtual uint64_t numRows() const = 0;
 
+  virtual const std::unordered_map<std::string, std::string>& options() {
+    return options_;
+  }
+
+  TableKind kind() const {
+    return kind_;
+  }
+
  protected:
   const std::string name_;
 
   // Discovered from data. In the event of different types, we take the
   // latest (i.e. widest) table type.
   RowTypePtr type_;
+
+  TableKind kind_{TableKind::kTable};
+
+  std::unordered_map<std::string, std::string> options_;
 };
 
 /// Describes a single partition of a TableLayout. A TableLayout has at least
@@ -529,6 +546,7 @@ struct WritePartitioning {
 /// operations being non-isolated and autocommitting. Connector
 /// specific implementations have their specific transaction functions.
 class ConnectorSession {
+ public:
   virtual ~ConnectorSession() = default;
 };
 
@@ -641,11 +659,13 @@ class ConnectorMetadata {
   /// insert into all materializations, call finishWrite on each and
   /// then commit the whole transaction if the connector requires
   /// that.
-  void createTable(
+  virtual void createTable(
       const std::string& tableName,
+      const RowTypePtr& rowType,
       const std::unordered_map<std::string, std::string>& options,
       const ConnectorSessionPtr& session,
-      bool deleteIfExistts) {
+      bool deleteIfExists,
+      TableKind tableKind = TableKind::kTable) {
     VELOX_UNSUPPORTED();
   }
 
@@ -684,8 +704,9 @@ class ConnectorMetadata {
   /// 'writerResults'. Their format and meaning is connector specific. the
   /// RowType is given by the outputType() of the TableWriter.
   virtual void finishWrite(
+      const TableLayout& layout,
       const ConnectorInsertTableHandlePtr& handle,
-      const std::vector<VectorPtr>& writerResult,
+      const std::vector<RowVectorPtr>& writerResult,
       WriteKind kind,
       const ConnectorSessionPtr& session) {
     VELOX_UNSUPPORTED();
