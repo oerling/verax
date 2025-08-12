@@ -14,11 +14,13 @@
  * limitations under the License.
  */
 
-#include "axiom/optimizer/connectors/hive/LocalHiveConnectorMetadata.h"
 #include "axiom/optimizer/connectors/ConnectorSplitSource.h"
+#include "axiom/optimizer/connectors/hive/LocalHiveConnectorMetadata.h"
 #include "velox/exec/tests/utils/AssertQueryBuilder.h"
 #include "velox/exec/tests/utils/DistributedPlanBuilder.h"
 #include "velox/exec/tests/utils/LocalRunnerTestBase.h"
+
+#include <folly/init/Init.h>
 
 using namespace facebook::velox;
 using namespace facebook::velox::exec;
@@ -147,7 +149,7 @@ TEST_F(HiveConnectorMetadataTest, createTable) {
 
   auto data = makeRowVector({
       makeFlatVector<int64_t>(kTestSize, [](auto row) { return row; }),
-      makeFlatVector<int64_t>(kTestSize, [](auto row) { return row % 10; }),
+      makeFlatVector<int32_t>(kTestSize, [](auto row) { return row % 10; }),
       makeFlatVector<int64_t>(kTestSize, [](auto row) { return row + 2; }),
       makeFlatVector<StringView>(
           kTestSize,
@@ -159,28 +161,16 @@ TEST_F(HiveConnectorMetadataTest, createTable) {
 
   auto handle = std::make_shared<core::InsertTableHandle>(
       kHiveConnectorId, connectorHandle);
-
-  std::vector<std::string> output = {
-      "numWrittenRows", "fragment", "tableCommitContext"};
-  std::vector<TypePtr> types = {BIGINT(), VARBINARY(), VARBINARY()};
-  std::vector<core::FieldAccessTypedExprPtr> groupingKeys;
-  // 2. partition columns
-  for (auto i = 0; i < partition.size(); i++) {
-    groupingKeys.emplace_back(
-        std::make_shared<const core::FieldAccessTypedExpr>(
-            partition[i]->type(), partition[i]->name()));
-    output.emplace_back(partition[i]->name());
-    types.emplace_back(partition[i]->type());
-  }
-
-  auto resultType = ROW(std::move(output), std::move(types));
+  auto resultType =
+      ROW({"numWrittenRows", "fragment", "tableCommitContext"},
+          {BIGINT(), VARBINARY(), VARBINARY()});
 
   auto idGenerator = std::make_shared<core::PlanNodeIdGenerator>();
   auto builder = exec::test::PlanBuilder(idGenerator).values({data});
 
   auto plan = std::make_shared<core::TableWriteNode>(
       idGenerator->next(),
-      tableType,
+      builder.planNode()->outputType(),
       tableType->names(),
       nullptr,
       handle,
@@ -189,22 +179,37 @@ TEST_F(HiveConnectorMetadataTest, createTable) {
       connector::CommitStrategy::kNoCommit,
       builder.planNode());
   auto result = exec::test::AssertQueryBuilder(plan).copyResults(pool());
-  metadata->finishWrite(*layout, connectorHandle, {result}, WriteKind::kInsert, session);
+  metadata->finishWrite(
+      *layout, connectorHandle, {result}, WriteKind::kInsert, session);
 
   std::string id = "readQ";
   runner::MultiFragmentPlan::Options runnerOptions = {
-    .queryId = id, .numWorkers = 1, .numDrivers = 1};
+      .queryId = id, .numWorkers = 1, .numDrivers = 1};
+
+  connector::ColumnHandleMap assignments;
+  for (auto i = 0; i < tableType->size(); ++i) {
+    assignments[tableType->nameOf(i)] =
+        metadata->createColumnHandle(*layout, tableType->nameOf(i));
+  }
 
   DistributedPlanBuilder rootBuilder(runnerOptions, idGenerator, pool_.get());
-  rootBuilder.tableScan("test", tableType);
+  rootBuilder.tableScan("test", tableType, {}, {}, "", tableType, assignments);
   auto readPlan = std::make_shared<runner::MultiFragmentPlan>(
-							      rootBuilder.fragments(), std::move(runnerOptions));
-  auto rootPool = memory::memoryManager()->addRootPool(
-						       "readQ");
+      rootBuilder.fragments(), std::move(runnerOptions));
+  auto rootPool = memory::memoryManager()->addRootPool("readQ");
 
-  auto splitSourceFactory = std::make_shared<connector::ConnectorSplitSourceFactory>();
+  auto splitSourceFactory =
+      std::make_shared<connector::ConnectorSplitSourceFactory>();
   auto localRunner = std::make_shared<runner::LocalRunner>(
-							   std::move(readPlan), makeQueryCtx(id, rootPool.get()), splitSourceFactory);
+      std::move(readPlan),
+      makeQueryCtx(id, rootPool.get()),
+      splitSourceFactory);
   auto results = readCursor(localRunner);
   exec::test::assertEqualResults({data}, results);
+}
+
+int main(int argc, char** argv) {
+  testing::InitGoogleTest(&argc, argv);
+  folly::Init init(&argc, &argv, false);
+  return RUN_ALL_TESTS();
 }

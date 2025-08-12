@@ -112,13 +112,20 @@ std::vector<SplitSource::SplitAndGroup> LocalHiveSplitSource::getSplits(
       // Take the upper bound.
       const int64_t splitSize = ceil2<uint64_t>(fileSize, splitsPerFile);
       for (int i = 0; i < splitsPerFile; ++i) {
-        fileSplits_.push_back(
-            connector::hive::HiveConnectorSplitBuilder(filePath)
-                .connectorId(connectorId_)
-                .fileFormat(format_)
-                .start(i * splitSize)
-                .length(splitSize)
-                .build());
+	auto builder = connector::hive::HiveConnectorSplitBuilder(filePath)
+	  .connectorId(connectorId_)
+	  .fileFormat(format_)
+	  .start(i * splitSize)
+	  .length(splitSize);
+	
+	auto* info = files_[currentFile_];
+	if (info->bucketNumber.has_value()) {
+	  builder.tableBucketNumber(info->bucketNumber.value());
+	}
+	    for (auto& pair : info->partitionKeys) {
+	      builder.partitionKey(pair.first, pair.second);
+	    }
+	    fileSplits_.push_back(builder.build());
       }
     }
     result.push_back(SplitAndGroup{std::move(fileSplits_[currentSplit_++]), 0});
@@ -440,6 +447,25 @@ LocalTable* LocalHiveConnectorMetadata::createTableFromSchema(
 }
 
 namespace {
+
+  // Extracts the digits after the last / in the file path and returns them as an integer.
+int32_t extractDigitsAfterLastSlash(const std::string& path) {
+    size_t lastSlashPos = path.find_last_of('/');
+    VELOX_CHECK(lastSlashPos != std::string::npos, 
+		"No slash found in {}", path);
+    std::string digits;
+    for (size_t i = lastSlashPos + 1; i < path.size(); ++i) {
+        char c = path[i];
+        if (std::isdigit(c)) {
+            digits += c;
+        } else {
+            break;
+        }
+    }
+    VELOX_CHECK(!digits.empty(), "Bad bucketed file name: No digits at start of name {}", path);
+    return std::stoi(digits);
+}
+  
 void listFiles(
     const std::string& path,
     std::function<int32_t(const std::string&)> parseBucketNumber,
@@ -492,7 +518,7 @@ void LocalHiveConnectorMetadata::loadTable(
   }
   std::function<int32_t(const std::string&)> parseBucketNumber = nullptr;
   if (table && !table->layouts()[0]->partitionColumns().empty()) {
-    parseBucketNumber = [](const std::string&) -> int32_t { return 0; };
+    parseBucketNumber = extractDigitsAfterLastSlash;
   }
   std::vector<std::unique_ptr<const FileInfo>> files;
   std::string pathString = tablePath;
