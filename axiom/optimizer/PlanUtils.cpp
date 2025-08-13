@@ -15,8 +15,8 @@
  */
 
 #include "axiom/optimizer/PlanUtils.h"
-#include "axiom/optimizer/QueryGraph.h"
 #include "axiom/optimizer/DerivedTable.h"
+#include "axiom/optimizer/QueryGraph.h"
 
 namespace facebook::velox::optimizer {
 
@@ -83,7 +83,6 @@ int32_t findTableByCNum(int32_t cnum) {
         return i;
       }
     }
-
   }
   VELOX_USER_FAIL(
       "{} is not the number part of a correlation name of a table or derived table",
@@ -108,7 +107,7 @@ std::vector<int32_t> parseDottedNumbers(std::string_view strDotted) {
   return numbers;
 }
 
-  namespace {
+namespace {
 template <typename T>
 int64_t integerValueInner(const variant* variant) {
   return variant->value<T>();

@@ -133,7 +133,7 @@ struct DerivedTable : public PlanObject {
   /// placed. If the table's id is not mentioned there is no
   /// restriction.
   std::vector<int32_t, QGAllocator<int32_t>> joinOrder;
-  
+
   /// Adds an equijoin edge between 'left' and 'right'.
   void addJoinEquality(ExprCP left, ExprCP right);
 

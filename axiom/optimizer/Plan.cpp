@@ -41,15 +41,15 @@ int32_t debugNumPlaced = 0;
 /// right before evaluating the cost for the tables in 'debugPlacedTables'.
 int32_t debugPlaced[10];
 
-  /// Sets up a call to planBreakpoint() whenevr a specified partial
-  /// plan is made in a dt. The dt cnum is the firstt number. The
-  /// following numbers are cnums of placed tables in order of
-  /// placing. The cnum is the numeric part of cname.
+/// Sets up a call to planBreakpoint() whenevr a specified partial
+/// plan is made in a dt. The dt cnum is the firstt number. The
+/// following numbers are cnums of placed tables in order of
+/// placing. The cnum is the numeric part of cname.
 void setPlanBreakpoint(const std::string& strDotted) {
   auto numbers = parseDottedNumbers(strDotted);
   if (numbers.empty()) {
-      debugDt = -1;
-    } else {
+    debugDt = -1;
+  } else {
     debugDt = numbers[0];
     for (auto i = 1; i < numbers.size() && i < 10; ++i) {
       debugPlaced[i - 1] = findTableByCNum(numbers[i]);

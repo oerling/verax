@@ -1052,7 +1052,6 @@ void DerivedTable::addJoinedBy(JoinEdgeP join) {
   pushBackUnique(joinedBy, join);
 }
 
-
 void DerivedTable::setJoinOrderHint(std::string_view str) {
   if (str.empty()) {
     return;
@@ -1069,8 +1068,8 @@ void DerivedTable::setJoinOrderHint(std::string_view str) {
       std::string_view(str.data() + start, str.size() - start));
   joinOrder.insert(joinOrder.end(), order.begin(), order.end());
   for (auto& id : joinOrder) {
-    id = findByCNum(id);
+    id = findTableByCNum(id);
   }
 }
-  
+
 } // namespace facebook::velox::optimizer
