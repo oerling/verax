@@ -53,6 +53,25 @@ velox_link_libraries(
   velox_parse_parser
   velox_vector)
 
+velox_add_library(velox_optimizer_tests_plan_matcher PlanMatcher.cpp)
+
+velox_link_libraries(
+  velox_optimizer_tests_plan_matcher
+  velox_hive_connector
+  velox_parse_parser
+)
+
+velox_add_library(
+  velox_optimizer_tests_hive_queries_test_base
+  HiveQueriesTestBase.cpp)
+
+velox_link_libraries(
+  velox_optimizer_tests_hive_queries_test_base
+  velox_optimizer_tests_parquet_tpch
+  velox_optimizer_tests_plan_matcher
+  velox_optimizer_tests_query_sql_parser
+  velox_optimizer_tests_query_test_base)
+
 add_executable(velox_optimizer_tests_tpch_plan TpchPlanTest.cpp)
 
 add_test(velox_optimizer_tests_tpch_plan velox_optimizer_tests_tpch_plan)
@@ -67,9 +86,8 @@ target_link_libraries(
 add_executable(
   velox_plan_test
   HiveLimitQueriesTest.cpp
-  PlanMatcher.cpp
+  HiveQueriesTest.cpp
   PlanTest.cpp
-  Tpch.cpp
   ParquetTpchTest.cpp
   QueryTestBase.cpp
   LogicalSubfieldTest.cpp
@@ -84,7 +102,9 @@ target_link_libraries(
   velox_optimizer_test_utils
   velox_verax
   velox_fe_logical_plan_builder
+  velox_optimizer_tests_hive_queries_test_base
   velox_optimizer_tests_parquet_tpch
+  velox_optimizer_tests_plan_matcher
   velox_optimizer_tests_query_test_base
   velox_test_connector
   GTest::gmock

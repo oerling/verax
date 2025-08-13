@@ -1037,13 +1037,38 @@ std::string DerivedTable::toString() const {
   for (auto& table : tables) {
     out << table->toString() << " ";
   }
-  out << " where ";
-  for (auto& join : joins) {
-    out << join->toString();
+
+  if (!joins.empty()) {
+    out << " joins ";
+    for (auto& join : joins) {
+      out << join->toString();
+    }
   }
+
   if (!conjuncts.empty()) {
     out << " where " << conjunctsToString(conjuncts);
   }
+
+  if (hasAggregation()) {
+    out << " group by " << aggregation->groupingKeys().size() << " keys, "
+        << aggregation->aggregates().size() << " aggregates ";
+
+    if (!having.empty()) {
+      out << " having " << conjunctsToString(having);
+    }
+  }
+
+  if (hasOrderBy()) {
+    out << " order by ";
+  }
+
+  if (hasLimit()) {
+    if (offset > 0) {
+      out << " offset " << offset << " ";
+    }
+    out << " limit " << limit;
+  }
+
   out << "}";
   return out.str();
 }

@@ -47,8 +47,7 @@ void ToGraph::markFieldAccessed(
     bool isControl,
     const std::vector<const RowType*>& context,
     const std::vector<LogicalContextSource>& sources) {
-  const auto fields =
-      isControl ? &logicalControlSubfields_ : &logicalPayloadSubfields_;
+  const auto fields = isControl ? &controlSubfields_ : &payloadSubfields_;
   if (source.planNode) {
     const auto* path = stepsToPath(steps);
     auto& paths = fields->nodeFields[source.planNode].resultPaths[ordinal];
@@ -189,7 +188,7 @@ bool looksConstant(const lp::ExprPtr& expr) {
 }
 } // namespace
 
-lp::ConstantExprPtr ToGraph::maybeFoldLogicalConstant(const lp::ExprPtr expr) {
+lp::ConstantExprPtr ToGraph::tryFoldConstant(const lp::ExprPtr expr) {
   if (expr->isConstant()) {
     return std::static_pointer_cast<const lp::ConstantExpr>(expr);
   }
@@ -255,7 +254,7 @@ void ToGraph::markSubfields(
     }
 
     if (name == "subscript" || name == "element_at") {
-      auto constant = maybeFoldLogicalConstant(expr->inputAt(1));
+      auto constant = tryFoldConstant(expr->inputAt(1));
       if (!constant) {
         std::vector<Step> subSteps;
         markSubfields(expr->inputAt(1), subSteps, isControl, context, sources);
@@ -291,8 +290,7 @@ void ToGraph::markSubfields(
     // The function has non-default metadata. Record subfields.
     const auto* call = expr->asUnchecked<lp::CallExpr>();
     const auto* path = stepsToPath(steps);
-    auto* fields =
-        isControl ? &logicalControlSubfields_ : &logicalPayloadSubfields_;
+    auto* fields = isControl ? &controlSubfields_ : &payloadSubfields_;
     if (fields->argFields[call].resultPaths[ResultAccess::kSelf].contains(
             path->id())) {
       // Already marked.
@@ -457,8 +455,8 @@ void ToGraph::markAllSubfields(
 }
 
 std::vector<int32_t> ToGraph::usedChannels(const lp::LogicalPlanNode& node) {
-  const auto& control = logicalControlSubfields_.nodeFields[&node];
-  const auto& payload = logicalPayloadSubfields_.nodeFields[&node];
+  const auto& control = controlSubfields_.nodeFields[&node];
+  const auto& payload = payloadSubfields_.nodeFields[&node];
 
   BitSet unique;
   std::vector<int32_t> result;
@@ -547,7 +545,7 @@ lp::ExprPtr ToGraph::stepToLogicalPlanGetter(
   }
 }
 
-std::string LogicalPlanSubfields::toString() const {
+std::string PlanSubfields::toString() const {
   std::stringstream out;
 
   auto appendPaths = [&](const auto& resultPaths) {

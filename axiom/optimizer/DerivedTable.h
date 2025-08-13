@@ -39,6 +39,19 @@ using OrderTypeVector = std::vector<OrderType, QGAllocator<OrderType>>;
 /// derived table is likewise a reorderable unit inside its parent derived
 /// table. Joins can move between derived tables within limits, considering the
 /// semantics of e.g. group by.
+///
+/// A derived table represets an ordered list of operations that matches SQL
+/// semantics. Some operations might be missing. The logical order of operations
+/// is:
+///
+///   1. FROM (scans, joins)
+///   2. WHERE (filters)
+///   3. GROUP BY (aggregation)
+///   4. HAVING (more filters)
+///   5. SELECT (projections)
+///   6. ORDER BY (sort)
+///   7. OFFSET and LIMIT (limit)
+///
 struct DerivedTable : public PlanObject {
   DerivedTable() : PlanObject(PlanType::kDerivedTableNode) {}
 
@@ -168,6 +181,10 @@ struct DerivedTable : public PlanObject {
   /// inside the current dt when planning.
   bool hasJoin(JoinEdgeP join) const {
     return std::find(joins.begin(), joins.end(), join) != joins.end();
+  }
+
+  bool hasAggregation() const {
+    return aggregation != nullptr;
   }
 
   bool hasOrderBy() const {

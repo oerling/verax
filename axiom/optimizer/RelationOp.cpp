@@ -189,10 +189,10 @@ std::string Cost::toString(bool /*detail*/, bool isUnit) const {
   if (setupCost > 0) {
     out << ", setup " << succinctNumber(setupCost) << "CU";
   }
-  if (static_cast<bool>(totalBytes)) {
+  if (totalBytes > 0) {
     out << " build= " << velox::succinctBytes(totalBytes);
   }
-  if (static_cast<bool>(transferBytes)) {
+  if (transferBytes > 0) {
     out << " network= " << velox::succinctBytes(transferBytes);
   }
   return out.str();

@@ -95,7 +95,7 @@ Optimization::Optimization(
   for (auto* join : root_->joins) {
     join->guessFanout();
   }
-  toGraph_.setDerivedTableOutput(root_, *logicalPlan_);
+  toGraph_.setDtOutput(root_, *logicalPlan_);
 }
 
 void Optimization::trace(

@@ -340,7 +340,6 @@ TEST_F(PlanTest, filterToJoinEdge) {
             // TODO Fix this plan. There should be only one project node.
             .project()
             .project()
-            .project()
             .hashJoin(core::PlanMatcherBuilder()
                           .tableScan("region")
                           .filter("rand() < 3.0")

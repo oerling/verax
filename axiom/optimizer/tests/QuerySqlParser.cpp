@@ -470,6 +470,34 @@ lp::LogicalPlanNodePtr toPlanNode(
 }
 
 lp::LogicalPlanNodePtr toPlanNode(
+    ::duckdb::LogicalDistinct& logicalDistinct,
+    memory::MemoryPool* pool,
+    std::vector<lp::LogicalPlanNodePtr> sources,
+    QueryContext& queryContext) {
+  std::vector<std::string> outputNames;
+  outputNames.reserve(logicalDistinct.distinct_targets.size());
+
+  auto groupingKeys =
+      toExprs(logicalDistinct.distinct_targets, sources[0]->outputType());
+
+  for (const auto& key : groupingKeys) {
+    if (auto* inputReference = key->asUnchecked<lp::InputReferenceExpr>()) {
+      outputNames.push_back(inputReference->name());
+    } else {
+      queryContext.nextColumnName("_gk");
+    }
+  }
+
+  return std::make_shared<lp::AggregateNode>(
+      queryContext.nextNodeId(),
+      sources[0],
+      groupingKeys,
+      std::vector<lp::AggregateNode::GroupingSet>{},
+      std::vector<lp::AggregateExprPtr>{},
+      outputNames);
+}
+
+lp::LogicalPlanNodePtr toPlanNode(
     ::duckdb::LogicalOrder& logicalOrder,
     memory::MemoryPool* pool,
     std::vector<lp::LogicalPlanNodePtr> sources,
@@ -608,6 +636,13 @@ lp::LogicalPlanNodePtr toPlanNode(
           pool,
           std::move(sources),
           queryContext);
+    case ::duckdb::LogicalOperatorType::LOGICAL_DISTINCT: {
+      return toPlanNode(
+          dynamic_cast<::duckdb::LogicalDistinct&>(plan),
+          pool,
+          std::move(sources),
+          queryContext);
+    }
     case ::duckdb::LogicalOperatorType::LOGICAL_CROSS_PRODUCT:
       return toPlanNode(
           dynamic_cast<::duckdb::LogicalCrossProduct&>(plan),

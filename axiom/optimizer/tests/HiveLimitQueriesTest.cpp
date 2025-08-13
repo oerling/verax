@@ -15,9 +15,7 @@
  */
 
 #include "axiom/logical_plan/PlanBuilder.h"
-#include "axiom/optimizer/tests/ParquetTpchTest.h"
-#include "axiom/optimizer/tests/PlanMatcher.h"
-#include "axiom/optimizer/tests/QueryTestBase.h"
+#include "axiom/optimizer/tests/HiveQueriesTestBase.h"
 #include "velox/exec/tests/utils/PlanBuilder.h"
 
 namespace lp = facebook::velox::logical_plan;
@@ -25,68 +23,7 @@ namespace lp = facebook::velox::logical_plan;
 namespace facebook::velox::optimizer {
 namespace {
 
-class HiveLimitQueriesTest : public test::QueryTestBase {
- protected:
-  static void SetUpTestCase() {
-    test::ParquetTpchTest::createTables();
-
-    LocalRunnerTestBase::testDataPath_ = FLAGS_data_path;
-    LocalRunnerTestBase::localFileFormat_ = "parquet";
-    LocalRunnerTestBase::SetUpTestCase();
-  }
-
-  static void TearDownTestCase() {
-    LocalRunnerTestBase::TearDownTestCase();
-  }
-
-  RowTypePtr getSchema(const std::string& tableName) {
-    return connector::getConnector(exec::test::kHiveConnectorId)
-        ->metadata()
-        ->findTable("nation")
-        ->rowType();
-  }
-
-  void checkResults(
-      const lp::LogicalPlanNodePtr& logicalPlan,
-      const core::PlanNodePtr& referencePlan) {
-    VELOX_CHECK_NOT_NULL(logicalPlan);
-    VELOX_CHECK_NOT_NULL(referencePlan);
-
-    auto referenceResults = runVelox(referencePlan);
-
-    // Distributed.
-    {
-      auto plan = planVelox(logicalPlan, {.numWorkers = 4, .numDrivers = 4});
-      checkResults(plan, referenceResults);
-    }
-
-    // Single node.
-    for (auto numDrivers : {1, 4}) {
-      SCOPED_TRACE(fmt::format("numWorkers: 1, numDrivers: {}", numDrivers));
-      auto plan =
-          planVelox(logicalPlan, {.numWorkers = 1, .numDrivers = numDrivers});
-      checkResults(plan, referenceResults);
-    }
-  }
-
-  void checkResults(
-      const PlanAndStats& plan,
-      const test::TestResult& expected) {
-    auto results = runFragmentedPlan(plan);
-    exec::test::assertEqualResults(expected.results, results.results);
-  }
-
-  void checkSingleNodePlan(
-      const PlanAndStats& plan,
-      const std::shared_ptr<core::PlanMatcher>& matcher) {
-    SCOPED_TRACE(plan.plan->toString());
-
-    const auto& fragments = plan.plan->fragments();
-    ASSERT_EQ(1, fragments.size());
-
-    ASSERT_TRUE(matcher->match(fragments.at(0).fragment.planNode));
-  }
-};
+class HiveLimitQueriesTest : public test::HiveQueriesTestBase {};
 
 // LIMIT 10
 TEST_F(HiveLimitQueriesTest, limit) {

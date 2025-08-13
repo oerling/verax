@@ -34,6 +34,13 @@ class PlanMatcherImpl : public PlanMatcher {
   bool match(const PlanNodePtr& plan) const override {
     const auto* specificNode = dynamic_cast<const T*>(plan.get());
 
+    // Ignore project nodes until optimizer is fixed to avoid adding redundant
+    // ones.
+    if (specificNode == nullptr &&
+        dynamic_cast<const ProjectNode*>(plan.get())) {
+      return match(plan->sources()[0]);
+    }
+
     EXPECT_TRUE(specificNode != nullptr)
         << "Expected " << folly::demangle(typeid(T).name()) << ", but got "
         << plan->toString(false, false);
@@ -245,6 +252,42 @@ class TopNMatcher : public PlanMatcherImpl<TopNNode> {
   const std::optional<int64_t> count_;
 };
 
+class OrderByMatcher : public PlanMatcherImpl<OrderByNode> {
+ public:
+  explicit OrderByMatcher(const std::shared_ptr<PlanMatcher>& matcher)
+      : PlanMatcherImpl<OrderByNode>({matcher}) {}
+
+  OrderByMatcher(
+      const std::shared_ptr<PlanMatcher>& matcher,
+      const std::vector<std::string>& ordering)
+      : PlanMatcherImpl<OrderByNode>({matcher}), ordering_{ordering} {}
+
+  bool matchDetails(const OrderByNode& plan) const override {
+    if (!ordering_.empty()) {
+      EXPECT_EQ(plan.sortingOrders().size(), ordering_.size());
+      if (::testing::Test::HasNonfatalFailure()) {
+        return false;
+      }
+
+      for (auto i = 0; i < ordering_.size(); ++i) {
+        const auto expected = parse::parseOrderByExpr(ordering_[i]);
+
+        EXPECT_EQ(plan.sortingKeys()[i]->toString(), expected.expr->toString());
+        EXPECT_EQ(plan.sortingOrders()[i].isAscending(), expected.ascending);
+        EXPECT_EQ(plan.sortingOrders()[i].isNullsFirst(), expected.nullsFirst);
+        if (::testing::Test::HasNonfatalFailure()) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+ private:
+  const std::vector<std::string> ordering_;
+};
+
 class AggregationMatcher : public PlanMatcherImpl<AggregationNode> {
  public:
   explicit AggregationMatcher(const std::shared_ptr<PlanMatcher>& matcher)
@@ -452,6 +495,19 @@ PlanMatcherBuilder& PlanMatcherBuilder::topN() {
 PlanMatcherBuilder& PlanMatcherBuilder::topN(int64_t count) {
   VELOX_USER_CHECK_NOT_NULL(matcher_);
   matcher_ = std::make_shared<TopNMatcher>(matcher_, count);
+  return *this;
+}
+
+PlanMatcherBuilder& PlanMatcherBuilder::orderBy() {
+  VELOX_USER_CHECK_NOT_NULL(matcher_);
+  matcher_ = std::make_shared<OrderByMatcher>(matcher_);
+  return *this;
+}
+
+PlanMatcherBuilder& PlanMatcherBuilder::orderBy(
+    const std::vector<std::string>& ordering) {
+  VELOX_USER_CHECK_NOT_NULL(matcher_);
+  matcher_ = std::make_shared<OrderByMatcher>(matcher_, ordering);
   return *this;
 }
 

@@ -81,6 +81,10 @@ class PlanMatcherBuilder {
 
   PlanMatcherBuilder& topN(int64_t count);
 
+  PlanMatcherBuilder& orderBy();
+
+  PlanMatcherBuilder& orderBy(const std::vector<std::string>& ordering);
+
   std::shared_ptr<PlanMatcher> build() {
     return matcher_;
   }

@@ -74,28 +74,12 @@ class ToVelox {
 
   // Returns a new PlanNodeId.
   velox::core::PlanNodeId nextId() {
-    return idGenerator_.next();
+    return fmt::format("{}", nodeCounter_++);
   }
 
   void filterUpdated(BaseTableCP baseTable, bool updateSelectivity = true);
 
  private:
-  class PlanNodeIdGenerator {
-   public:
-    explicit PlanNodeIdGenerator(int startId = 0) : nextId_{startId} {}
-
-    core::PlanNodeId next() {
-      return fmt::format("{}", nextId_++);
-    }
-
-    void reset(int startId = 0) {
-      nextId_ = startId;
-    }
-
-   private:
-    int nextId_;
-  };
-
   void setLeafHandle(
       int32_t id,
       const connector::ConnectorTableHandlePtr& handle,
@@ -278,7 +262,8 @@ class ToVelox {
           std::vector<core::TypedExprPtr>>>
       leafHandles_;
 
-  PlanNodeIdGenerator idGenerator_;
+  // Serial number for plan nodes in executable plan.
+  int32_t nodeCounter_{0};
 
   // Serial number for stages in executable plan.
   int32_t stageCounter_{0};

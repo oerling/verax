@@ -193,6 +193,7 @@ PlanAndStats ToVelox::toVeloxPlan(
   if (options_.numWorkers > 1) {
     plan = addGather(plan);
   }
+
   ExecutableFragment top;
   top.fragment.planNode = makeFragment(std::move(plan), top, stages);
   stages.push_back(std::move(top));
