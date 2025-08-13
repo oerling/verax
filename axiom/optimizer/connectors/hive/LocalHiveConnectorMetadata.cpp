@@ -372,9 +372,11 @@ LocalTable* LocalHiveConnectorMetadata::createTableFromSchema(
   }
   VELOX_CHECK_EQ(jsons.size(), 1);
   auto json = jsons[0];
-  auto* table = mutableTable(name);
+  auto* table = findTableLocked(name);
   if (table != nullptr) {
     auto name = table->name();
+    auto oldTable = std::move(tables_[name]);
+    oldTables_.push_back(std::move(oldTable));
     tables_.erase(name);
     table = nullptr;
   }
@@ -482,7 +484,7 @@ void listFiles(
 
     if (dirEntry.is_directory()) {
       listFiles(
-          fmt::format("{}/{}", path, dirEntry.path().filename()),
+          fmt::format("{}/{}", path, dirEntry.path().filename().c_str()),
           parseBucketNumber,
           prefixSize,
           result);
@@ -491,7 +493,7 @@ void listFiles(
       continue;
     }
     auto file = std::make_unique<FileInfo>();
-    file->path = fmt::format("{}/{}", path, dirEntry.path().filename());
+    file->path = fmt::format("{}/{}", path, dirEntry.path().filename().c_str());
     if (parseBucketNumber) {
       file->bucketNumber = parseBucketNumber(file->path);
     }
@@ -711,6 +713,12 @@ const std::unordered_map<std::string, const Column*>& LocalTable::columnMap()
 
 const Table* LocalHiveConnectorMetadata::findTable(const std::string& name) {
   ensureInitialized();
+  std::lock_guard<std::mutex> l(mutex_);
+  return findTableLocked(name);
+}
+
+LocalTable* LocalHiveConnectorMetadata::findTableLocked(
+    const std::string& name) const {
   auto it = tables_.find(name);
   if (it == tables_.end()) {
     return nullptr;
@@ -841,6 +849,10 @@ void LocalHiveConnectorMetadata::createTable(
 
   std::lock_guard<std::mutex> l(mutex_);
   folly::writeFileAtomic(filePath, jsonStr.data(), jsonStr.size());
+  std::unique_ptr<LocalTable> oldTable = std::move(tables_[tableName]);
+  if (oldTable) {
+    oldTables_.push_back(std::move(oldTable));
+  }
   tables_.erase(tableName);
   loadTable(tableName, path);
 }

@@ -266,15 +266,10 @@ class LocalHiveConnectorMetadata : public HiveConnectorMetadata {
       const std::string& name,
       const std::string& path);
   void readTables(const std::string& path);
-  LocalTable* mutableTable(const std::string& name) {
-    auto it = tables_.find(name);
-    if (it == tables_.end()) {
-      return nullptr;
-    }
-    return it->second.get();
-  }
 
   void loadTable(const std::string& tableName, const fs::path& tablePath);
+
+  LocalTable* findTableLocked(const std::string& name) const;
 
   mutable std::mutex mutex_;
   mutable bool initialized_{false};
@@ -286,6 +281,10 @@ class LocalHiveConnectorMetadata : public HiveConnectorMetadata {
   std::shared_ptr<ConnectorQueryCtx> connectorQueryCtx_;
   dwio::common::FileFormat format_;
   std::unordered_map<std::string, std::unique_ptr<LocalTable>> tables_;
+
+  // Superseded versions of tables. Need to stay live because pending
+  // optimization may reference a table that has been updated since.
+  std::vector<std::unique_ptr<LocalTable>> oldTables_;
   LocalHiveSplitManager splitManager_;
 };
 
