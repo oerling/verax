@@ -309,25 +309,6 @@ std::string Repartition::toString(bool recursive, bool detail) const {
   return out.str();
 }
 
-Aggregation::Aggregation(
-    const Aggregation& other,
-    RelationOpPtr input,
-    velox::core::AggregationNode::Step _step)
-    : Aggregation(other) {
-  *const_cast<Distribution*>(&distribution_) = input->distribution();
-  input_ = std::move(input);
-  step = _step;
-  using velox::core::AggregationNode;
-  if (step == AggregationNode::Step::kPartial ||
-      step == AggregationNode::Step::kIntermediate) {
-    *const_cast<ColumnVector*>(&columns_) = intermediateColumns;
-  } else if (step == AggregationNode::Step::kFinal) {
-    for (auto i = 0; i < grouping.size(); ++i) {
-      grouping[i] = intermediateColumns[i];
-    }
-  }
-}
-
 const QGstring& Aggregation::historyKey() const {
   using velox::core::AggregationNode;
   if (step == AggregationNode::Step::kPartial ||
@@ -343,7 +324,7 @@ const QGstring& Aggregation::historyKey() const {
   auto* opt = queryCtx()->optimization();
   ScopedVarSetter cnames(&opt->cnamesInExpr(), false);
   std::vector<std::string> strings;
-  for (auto& key : grouping) {
+  for (auto& key : groupingKeys) {
     strings.push_back(key->toString());
   }
   std::sort(strings.begin(), strings.end());
@@ -362,10 +343,10 @@ std::string Aggregation::toString(bool recursive, bool detail) const {
   out << velox::core::AggregationNode::toName(step) << " agg";
   printCost(detail, out);
   if (detail) {
-    if (grouping.empty()) {
+    if (groupingKeys.empty()) {
       out << "global";
     } else {
-      out << itemsToString(grouping.data(), grouping.size());
+      out << itemsToString(groupingKeys.data(), groupingKeys.size());
     }
     out << aggregates.size() << " aggregates" << std::endl;
   }
@@ -443,6 +424,34 @@ std::string Project::toString(bool recursive, bool detail) const {
   return out.str();
 }
 
+namespace {
+Distribution makeOrderByDistribution(
+    const RelationOpPtr& input,
+    ExprVector keys,
+    OrderTypeVector orderType) {
+  Distribution distribution = input->distribution();
+
+  distribution.distributionType = DistributionType::gather();
+  distribution.partition.clear();
+  distribution.order = std::move(keys);
+  distribution.orderType = std::move(orderType);
+
+  return distribution;
+}
+} // namespace
+
+OrderBy::OrderBy(
+    RelationOpPtr input,
+    ExprVector keys,
+    OrderTypeVector orderType)
+    : RelationOp(
+          RelType::kOrderBy,
+          input,
+          makeOrderByDistribution(
+              input,
+              std::move(keys),
+              std::move(orderType))) {}
+
 std::string OrderBy::toString(bool recursive, bool detail) const {
   std::stringstream out;
   if (recursive) {
@@ -456,6 +465,28 @@ std::string OrderBy::toString(bool recursive, bool detail) const {
   }
   return out.str();
 }
+
+namespace {
+Distribution makeLimitDistribution(const RelationOpPtr& input, int64_t limit) {
+  Distribution distribution = input->distribution();
+
+  distribution.distributionType = DistributionType::gather();
+  distribution.partition.clear();
+  distribution.cardinality =
+      std::min<float>(input->distribution().cardinality, limit);
+
+  return distribution;
+}
+} // namespace
+
+Limit::Limit(RelationOpPtr input, int64_t limit, int64_t offset)
+    : RelationOp(
+          RelType::kLimit,
+          input,
+          makeLimitDistribution(input, limit),
+          input->columns()),
+      limit{limit},
+      offset{offset} {}
 
 std::string Limit::toString(bool recursive, bool detail) const {
   std::stringstream out;

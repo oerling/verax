@@ -86,16 +86,12 @@ RelationOpPtr addGather(const RelationOpPtr& op) {
   }
   if (op->relType() == RelType::kOrderBy) {
     auto order = op->distribution();
-    Distribution final = Distribution::gather(
-        op->distribution().distributionType, order.order, order.orderType);
+    Distribution final = Distribution::gather(order.order, order.orderType);
     auto* gather = make<Repartition>(op, final, op->columns());
     auto* orderBy = make<OrderBy>(gather, order.order, order.orderType);
     return orderBy;
   }
-  auto* gather = make<Repartition>(
-      op,
-      Distribution::gather(op->distribution().distributionType),
-      op->columns());
+  auto* gather = make<Repartition>(op, Distribution::gather(), op->columns());
   return gather;
 }
 
@@ -132,7 +128,7 @@ void filterUpdated(BaseTableCP table, bool updateSelectivity) {
         continue;
       }
       pushdownConjuncts.push_back(typedExpr);
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
       remainingConjuncts.push_back(std::move(typedExpr));
     }
   }
@@ -213,7 +209,7 @@ RowTypePtr Optimization::makeOutputType(const ColumnVector& columns) {
   for (auto i = 0; i < columns.size(); ++i) {
     auto* column = columns[i];
     auto relation = column->relation();
-    if (relation && relation->type() == PlanType::kTable) {
+    if (relation && relation->type() == PlanType::kTableNode) {
       auto* schemaTable = relation->as<BaseTable>()->schemaTable;
       if (!schemaTable) {
         continue;
@@ -267,6 +263,28 @@ namespace {
 template <typename T>
 core::TypedExprPtr makeKey(const TypePtr& type, T v) {
   return std::make_shared<core::ConstantTypedExpr>(type, variant(v));
+}
+
+core::TypedExprPtr createArrayForInList(
+    const Call& call,
+    const TypePtr& elementType) {
+  std::vector<variant> arrayElements;
+  arrayElements.reserve(call.args().size() - 1);
+  for (size_t i = 1; i < call.args().size(); ++i) {
+    auto arg = call.args().at(i);
+    VELOX_USER_CHECK(
+        elementType->equivalent(*arg->value().type),
+        "All elements of the IN list must have the same type got {} and {}",
+        elementType->toString(),
+        arg->value().type->toString());
+    VELOX_USER_CHECK(arg->type() == PlanType::kLiteralExpr);
+    arrayElements.push_back(arg->as<Literal>()->literal());
+  }
+  auto arrayVector = variantToVector(
+      ARRAY(elementType),
+      variant::array(arrayElements),
+      queryCtx()->optimization()->evaluator()->pool());
+  return std::make_shared<core::ConstantTypedExpr>(arrayVector);
 }
 } // namespace
 
@@ -333,7 +351,7 @@ core::TypedExprPtr Optimization::pathToGetter(
   // becomes a struct getter.
   auto alterStep = [&](ColumnCP, const Step& step, Step& newStep) {
     auto* rel = column->relation();
-    if (rel->type() == PlanType::kTable &&
+    if (rel->type() == PlanType::kTableNode &&
         isMapAsStruct(
             rel->as<BaseTable>()->schemaTable->name, column->name())) {
       // This column is a map to project out as struct.
@@ -368,7 +386,7 @@ core::TypedExprPtr Optimization::toTypedExpr(ExprCP expr) {
   }
 
   switch (expr->type()) {
-    case PlanType::kColumn: {
+    case PlanType::kColumnExpr: {
       auto column = expr->as<Column>();
       if (column->topColumn() && getterForPushdownSubfield_) {
         auto field = toTypedExpr(column->topColumn());
@@ -384,20 +402,29 @@ core::TypedExprPtr Optimization::toTypedExpr(ExprCP expr) {
       return std::make_shared<core::FieldAccessTypedExpr>(
           toTypePtr(expr->value().type), name);
     }
-    case PlanType::kCall: {
+    case PlanType::kCallExpr: {
       std::vector<core::TypedExprPtr> inputs;
       auto call = expr->as<Call>();
-      for (auto arg : call->args()) {
-        inputs.push_back(toTypedExpr(arg));
+
+      if (call->name() == toName("in")) {
+        VELOX_USER_CHECK_GE(call->args().size(), 2);
+        inputs.push_back(toTypedExpr(call->args().at(0)));
+        inputs.push_back(createArrayForInList(*call, inputs.back()->type()));
+      } else {
+        for (auto arg : call->args()) {
+          inputs.push_back(toTypedExpr(arg));
+        }
       }
+
       if (call->name() == toName("cast")) {
         return std::make_shared<core::CastTypedExpr>(
             toTypePtr(expr->value().type), std::move(inputs), false);
       }
+
       return std::make_shared<core::CallTypedExpr>(
           toTypePtr(expr->value().type), std::move(inputs), call->name());
     }
-    case PlanType::kField: {
+    case PlanType::kFieldExpr: {
       auto* field = expr->as<Field>()->field();
       if (field) {
         return std::make_shared<core::FieldAccessTypedExpr>(
@@ -411,7 +438,7 @@ core::TypedExprPtr Optimization::toTypedExpr(ExprCP expr) {
           expr->as<Field>()->index());
       break;
     }
-    case PlanType::kLiteral: {
+    case PlanType::kLiteralExpr: {
       auto literal = expr->as<Literal>();
       if (literal->vector()) {
         return std::make_shared<core::ConstantTypedExpr>(
@@ -427,7 +454,7 @@ core::TypedExprPtr Optimization::toTypedExpr(ExprCP expr) {
       return std::make_shared<core::ConstantTypedExpr>(
           toTypePtr(literal->value().type), literal->literal());
     }
-    case PlanType::kLambda: {
+    case PlanType::kLambdaExpr: {
       auto* lambda = expr->as<Lambda>();
       std::vector<std::string> names;
       std::vector<TypePtr> types;
@@ -467,7 +494,7 @@ class TempProjections {
       const std::string* optName = nullptr) {
     auto it = exprChannel_.find(expr);
     if (it == exprChannel_.end()) {
-      VELOX_CHECK(expr->type() != PlanType::kColumn);
+      VELOX_CHECK(expr->type() != PlanType::kColumnExpr);
       exprChannel_[expr] = nextChannel_++;
       exprs_.push_back(optimization_.toTypedExpr(expr));
       names_.push_back(
@@ -1106,7 +1133,7 @@ core::PlanNodePtr Optimization::makeAggregation(
 
   const bool isRawInput = op.step == core::AggregationNode::Step::kPartial ||
       op.step == core::AggregationNode::Step::kSingle;
-  const int32_t numKeys = op.grouping.size();
+  const int32_t numKeys = op.groupingKeys.size();
 
   TempProjections projections(*this, *op.input());
   std::vector<std::string> aggregateNames;
@@ -1148,12 +1175,12 @@ core::PlanNodePtr Optimization::makeAggregation(
   }
 
   std::vector<std::string> keyNames;
-  keyNames.reserve(op.grouping.size());
-  for (auto i = 0; i < op.grouping.size(); ++i) {
-    keyNames.push_back(op.intermediateColumns[i]->toString());
+  keyNames.reserve(op.groupingKeys.size());
+  for (auto i = 0; i < op.groupingKeys.size(); ++i) {
+    keyNames.push_back(op.columns()[i]->toString());
   }
 
-  auto keys = projections.toFieldRefs(op.grouping, &keyNames);
+  auto keys = projections.toFieldRefs(op.groupingKeys, &keyNames);
   auto project = projections.maybeProject(input);
   if (options_.numDrivers > 1 &&
       (op.step == core::AggregationNode::Step::kFinal ||

@@ -269,7 +269,7 @@ struct Values : RelationOp {
       : RelationOp{
           RelType::kValues,
           nullptr,
-          Distribution{DistributionType{}, valuesTable.cardinality(), {}},
+          Distribution{DistributionType::gather(), valuesTable.cardinality(), {}},
           std::move(columns)},
         valuesTable{valuesTable} {
     cost_.fanout = valuesTable.cardinality();
@@ -299,10 +299,11 @@ class Repartition : public RelationOp {
             std::move(columns)) {}
 
   void setCost(const PlanState& input) override;
+
   std::string toString(bool recursive, bool detail) const override;
 };
 
-using RepartitionPtr = const Repartition*;
+using RepartitionCP = const Repartition*;
 
 /// Represents a usually multitable filter not associated with any non-inner
 /// join. Non-equality constraints over inner joins become Filters.
@@ -402,7 +403,7 @@ struct Join : public RelationOp {
   std::string toString(bool recursive, bool detail) const override;
 };
 
-using JoinPtr = Join*;
+using JoinCP = const Join*;
 
 /// Occurs as right input of JoinOp with type kHash. Contains the
 /// cost and memory specific to building the table. Can be
@@ -430,38 +431,28 @@ struct HashBuild : public RelationOp {
   std::string toString(bool recursive, bool detail) const override;
 };
 
-using HashBuildPtr = HashBuild*;
+using HashBuildCP = const HashBuild*;
 
 /// Represents aggregation with or without grouping.
 struct Aggregation : public RelationOp {
   Aggregation(
-      const Aggregation& other,
       RelationOpPtr input,
-      velox::core::AggregationNode::Step _step);
-
-  Aggregation(RelationOpPtr input, ExprVector _grouping)
+      ExprVector groupingKeys,
+      AggregateVector aggregates,
+      velox::core::AggregationNode::Step step,
+      ColumnVector columns)
       : RelationOp(
             RelType::kAggregation,
             input,
-            input ? input->distribution() : Distribution()),
-        grouping(std::move(_grouping)) {}
+            input->distribution(),
+            columns),
+        groupingKeys(std::move(groupingKeys)),
+        aggregates(std::move(aggregates)),
+        step{step} {}
 
-  // Grouping keys.
-  ExprVector grouping;
-
-  // Keys where the key expression is functionally dependent on
-  // another key or keys. These can be late materialized or converted
-  // to any() aggregates.
-  PlanObjectSet dependentKeys;
-
-  std::vector<AggregateCP, QGAllocator<AggregateCP>> aggregates;
-
-  velox::core::AggregationNode::Step step{
-      velox::core::AggregationNode::Step::kSingle};
-
-  // 'columns' of RelationOp is the final columns. 'intermediateColumns is the
-  // output of the corresponding partial aggregation.
-  ColumnVector intermediateColumns;
+  const ExprVector groupingKeys;
+  const AggregateVector aggregates;
+  const velox::core::AggregationNode::Step step;
 
   void setCost(const PlanState& input) override;
 
@@ -472,30 +463,12 @@ struct Aggregation : public RelationOp {
 
 /// Represents an order by. The order is given by the distribution.
 struct OrderBy : public RelationOp {
-  OrderBy(
-      RelationOpPtr input,
-      ExprVector keys,
-      OrderTypeVector orderType,
-      PlanObjectSet dependentKeys = {})
-      : RelationOp(
-            RelType::kOrderBy,
-            input,
-            input ? input->distribution().copyWithOrder(keys, orderType)
-                  : Distribution(
-                        DistributionType(),
-                        1,
-                        {},
-                        std::move(keys),
-                        std::move(orderType))),
-        dependentKeys(std::move(dependentKeys)) {}
-
-  // Keys where the key expression is functionally dependent on
-  // another key or keys. These can be late materialized or converted
-  // to payload.
-  PlanObjectSet dependentKeys;
+  OrderBy(RelationOpPtr input, ExprVector keys, OrderTypeVector orderType);
 
   std::string toString(bool recursive, bool detail) const override;
 };
+
+using OrderByCP = const OrderBy*;
 
 /// Represents a union all.
 struct UnionAll : public RelationOp {
@@ -516,15 +489,10 @@ struct UnionAll : public RelationOp {
   const RelationOpPtrVector inputs;
 };
 
+using UnionAllCP = const UnionAll*;
+
 struct Limit : public RelationOp {
-  Limit(RelationOpPtr input, int64_t limit, int64_t offset)
-      : RelationOp(
-            RelType::kLimit,
-            input,
-            input->distribution(),
-            input->columns()),
-        limit{limit},
-        offset{offset} {}
+  Limit(RelationOpPtr input, int64_t limit, int64_t offset);
 
   void setCost(const PlanState& input) override;
 
@@ -538,5 +506,7 @@ struct Limit : public RelationOp {
 
   std::string toString(bool recursive, bool detail) const override;
 };
+
+using LimitCP = const Limit*;
 
 } // namespace facebook::velox::optimizer

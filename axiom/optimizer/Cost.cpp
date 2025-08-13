@@ -150,7 +150,7 @@ void Values::setCost(const PlanState& input) {
 void Aggregation::setCost(const PlanState& input) {
   RelationOp::setCost(input);
   float cardinality = 1;
-  for (auto key : grouping) {
+  for (auto key : groupingKeys) {
     cardinality *= key->value().cardinality;
   }
   // The estimated output is input minus the times an input is a
@@ -162,8 +162,8 @@ void Aggregation::setCost(const PlanState& input) {
   auto nOut = cardinality -
       cardinality * pow(1.0 - (1.0 / cardinality), cost_.inputCardinality);
   cost_.fanout = nOut / cost_.inputCardinality;
-  cost_.unitCost = grouping.size() * Costs::hashProbeCost(nOut);
-  float rowBytes = byteSize(grouping) + byteSize(aggregates);
+  cost_.unitCost = groupingKeys.size() * Costs::hashProbeCost(nOut);
+  float rowBytes = byteSize(groupingKeys) + byteSize(aggregates);
   cost_.totalBytes = nOut * rowBytes;
 }
 
@@ -235,14 +235,14 @@ void Limit::setCost(const PlanState& input) {
 
 float selfCost(ExprCP expr) {
   switch (expr->type()) {
-    case PlanType::kColumn: {
+    case PlanType::kColumnExpr: {
       auto kind = expr->value().type->kind();
       if (kind == TypeKind::ARRAY || kind == TypeKind::MAP) {
         return 200;
       }
       return 10;
     }
-    case PlanType::kCall: {
+    case PlanType::kCallExpr: {
       auto metadata = expr->as<Call>()->metadata();
       if (metadata) {
         if (metadata->costFunc) {
@@ -262,9 +262,9 @@ float costWithChildren(ExprCP expr, const PlanObjectSet& notCounting) {
     return 0;
   }
   switch (expr->type()) {
-    case PlanType::kColumn:
+    case PlanType::kColumnExpr:
       return selfCost(expr);
-    case PlanType::kCall: {
+    case PlanType::kCallExpr: {
       float cost = selfCost(expr);
       for (auto arg : expr->as<Call>()->args()) {
         cost += costWithChildren(arg, notCounting);
