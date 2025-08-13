@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "axiom/optimizer/Plan.h"
+#include "axiom/optimizer/ToVelox.h"
 #include "velox/core/Expressions.h"
 #include "velox/core/PlanNode.h"
 
@@ -47,7 +47,7 @@ void makeExprLevels(
     int32_t levelIdx = levelData.size() - 1;
     exprs.forEach([&](PlanObjectCP o) {
       auto* expr = o->as<Expr>();
-      if (expr->type() == PlanType::kLiteral) {
+      if (expr->type() == PlanType::kLiteralExpr) {
         return;
       }
       float self = selfCost(expr);
@@ -59,9 +59,9 @@ void makeExprLevels(
       levelData[levelIdx].exprs.add(expr);
       levelData[levelIdx].levelCost += self;
       counted.add(expr);
-      if (expr->type() == PlanType::kCall) {
+      if (expr->type() == PlanType::kCallExpr) {
         for (auto& input : expr->as<Call>()->args()) {
-          if (input->type() == PlanType::kLiteral) {
+          if (input->type() == PlanType::kLiteralExpr) {
             continue;
           }
           ++refCount[input];
@@ -104,7 +104,7 @@ PlanObjectSet makeCseBorder(
 
 } // namespace
 
-core::PlanNodePtr Optimization::makeParallelProject(
+core::PlanNodePtr ToVelox::makeParallelProject(
     const core::PlanNodePtr& input,
     const PlanObjectSet& topExprs,
     const PlanObjectSet& placed,
@@ -125,7 +125,7 @@ core::PlanNodePtr Optimization::makeParallelProject(
   });
 
   // Sorted lowest cost first. Make even size groups.
-  float targetCost = totalCost / opts_.parallelProjectWidth;
+  float targetCost = totalCost / optimizerOptions_.parallelProjectWidth;
   float groupCost = 0;
   std::vector<std::vector<core::TypedExprPtr>> groups;
   groups.emplace_back();
@@ -169,7 +169,7 @@ void columnBorder(
     ExprCP expr,
     const PlanObjectSet& placed,
     PlanObjectSet& result) {
-  if (expr->type() == PlanType::kLiteral) {
+  if (expr->type() == PlanType::kLiteralExpr) {
     return;
   }
   if (placed.contains(expr)) {
@@ -177,16 +177,16 @@ void columnBorder(
     return;
   }
   switch (expr->type()) {
-    case PlanType::kColumn:
+    case PlanType::kColumnExpr:
       result.add(expr);
       return;
-    case PlanType::kCall: {
+    case PlanType::kCallExpr: {
       for (auto& in : expr->as<Call>()->args()) {
         columnBorder(in, placed, result);
       }
       return;
     }
-    case PlanType::kAggregate:
+    case PlanType::kAggregateExpr:
       VELOX_UNREACHABLE();
     default:
       return;
@@ -215,9 +215,9 @@ float parallelBorder(
     return 0;
   }
   switch (expr->type()) {
-    case PlanType::kColumn:
+    case PlanType::kColumnExpr:
       return selfCost(expr);
-    case PlanType::kCall: {
+    case PlanType::kCallExpr: {
       float cost = selfCost(expr);
       auto call = expr->as<Call>();
       BitSet splitArgs;
@@ -256,7 +256,7 @@ float parallelBorder(
       return cost + allArgsCost;
     }
 
-    case PlanType::kAggregate:
+    case PlanType::kAggregateExpr:
       VELOX_UNREACHABLE();
     default:
       return 0;
@@ -264,7 +264,7 @@ float parallelBorder(
 }
 } // namespace
 
-core::PlanNodePtr Optimization::maybeParallelProject(
+core::PlanNodePtr ToVelox::maybeParallelProject(
     const Project* project,
     core::PlanNodePtr input) {
   PlanObjectSet top;

@@ -18,6 +18,7 @@
 #include "axiom/optimizer/PlanUtils.h"
 
 namespace facebook::velox::optimizer {
+namespace lp = facebook::velox::logical_plan;
 
 namespace {
 /// If 'object' is an Expr, returns Expr::singleTable, else nullptr.
@@ -29,34 +30,22 @@ PlanObjectCP singleTable(PlanObjectCP object) {
 }
 } // namespace
 
-void DerivedTable::addJoinEquality(
-    ExprCP left,
-    ExprCP right,
-    const ExprVector& filter,
-    bool leftOptional,
-    bool rightOptional,
-    bool rightExists,
-    bool rightNotExists) {
+void DerivedTable::addJoinEquality(ExprCP left, ExprCP right) {
   auto leftTable = singleTable(left);
   auto rightTable = singleTable(right);
   for (auto& join : joins) {
     if (join->leftTable() == leftTable && join->rightTable() == rightTable) {
       join->addEquality(left, right);
       return;
-    } else if (
-        join->rightTable() == leftTable && join->leftTable() == rightTable) {
+    }
+
+    if (join->rightTable() == leftTable && join->leftTable() == rightTable) {
       join->addEquality(right, left);
       return;
     }
   }
-  auto* join = make<JoinEdge>(
-      leftTable,
-      rightTable,
-      filter,
-      leftOptional,
-      rightOptional,
-      rightExists,
-      rightNotExists);
+
+  auto* join = JoinEdge::makeInner(leftTable, rightTable);
   join->addEquality(left, right);
   joins.push_back(join);
 }
@@ -91,14 +80,7 @@ void fillJoins(
   for (auto& other : equivalence.columns) {
     if (!hasEdge(edges, column->id(), other->id())) {
       addEdge(edges, column->id(), other->id());
-      dt->addJoinEquality(
-          column->as<Column>(),
-          other->as<Column>(),
-          {},
-          false,
-          false,
-          false,
-          false);
+      dt->addJoinEquality(column->as<Column>(), other->as<Column>());
     }
   }
 }
@@ -163,8 +145,7 @@ JoinEdgeP makeExists(PlanObjectCP table, const PlanObjectSet& tables) {
       if (!tables.contains(join->rightTable())) {
         continue;
       }
-      auto* exists = make<JoinEdge>(
-          table, join->rightTable(), ExprVector{}, false, false, true, false);
+      auto* exists = JoinEdge::makeExists(table, join->rightTable());
       for (auto i = 0; i < join->leftKeys().size(); ++i) {
         exists->addEquality(join->leftKeys()[i], join->rightKeys()[i]);
       }
@@ -176,8 +157,7 @@ JoinEdgeP makeExists(PlanObjectCP table, const PlanObjectSet& tables) {
         continue;
       }
 
-      auto* exists = make<JoinEdge>(
-          table, join->leftTable(), ExprVector{}, false, false, true, false);
+      auto* exists = JoinEdge::makeExists(table, join->leftTable());
       for (auto i = 0; i < join->leftKeys().size(); ++i) {
         exists->addEquality(join->rightKeys()[i], join->leftKeys()[i]);
       }
@@ -188,10 +168,10 @@ JoinEdgeP makeExists(PlanObjectCP table, const PlanObjectSet& tables) {
 }
 
 bool isSingleRowDt(PlanObjectCP object) {
-  if (object->type() == PlanType::kDerivedTable) {
+  if (object->type() == PlanType::kDerivedTableNode) {
     auto dt = object->as<DerivedTable>();
     return dt->limit == 1 ||
-        (dt->aggregation && dt->aggregation->aggregation->grouping.empty());
+        (dt->aggregation && dt->aggregation->groupingKeys().empty());
   }
   return false;
 }
@@ -243,12 +223,12 @@ void DerivedTable::linkTablesToJoins() {
       }
     }
     tables.forEachMutable([&](PlanObjectP table) {
-      if (table->type() == PlanType::kTable) {
+      if (table->type() == PlanType::kTableNode) {
         table->as<BaseTable>()->addJoinedBy(join);
-      } else if (table->type() == PlanType::kValuesTable) {
+      } else if (table->type() == PlanType::kValuesTableNode) {
         table->as<ValuesTable>()->addJoinedBy(join);
       } else {
-        VELOX_CHECK(table->type() == PlanType::kDerivedTable);
+        VELOX_CHECK(table->type() == PlanType::kDerivedTableNode);
         table->as<DerivedTable>()->addJoinedBy(join);
       }
     });
@@ -264,13 +244,15 @@ std::pair<DerivedTableP, JoinEdgeP> makeExistsDtAndJoin(
     JoinEdgeP existsJoin) {
   auto firstExistsTable = existsJoin->rightKeys()[0]->singleTable();
   VELOX_CHECK(firstExistsTable);
+
   MemoKey existsDtKey;
   existsDtKey.firstTable = firstExistsTable;
+  existsDtKey.tables.unionObjects(existsTables);
   for (auto& column : existsJoin->rightKeys()) {
     existsDtKey.columns.unionColumns(column);
   }
+
   auto optimization = queryCtx()->optimization();
-  existsDtKey.tables.unionObjects(existsTables);
   auto it = optimization->existenceDts().find(existsDtKey);
   DerivedTableP existsDt;
   if (it == optimization->existenceDts().end()) {
@@ -292,8 +274,7 @@ std::pair<DerivedTableP, JoinEdgeP> makeExistsDtAndJoin(
   } else {
     existsDt = it->second;
   }
-  auto* joinWithDt = make<JoinEdge>(
-      firstTable, existsDt, ExprVector{}, false, false, true, false);
+  auto* joinWithDt = JoinEdge::makeExists(firstTable, existsDt);
   joinWithDt->setFanouts(existsFanout, 1);
   for (auto i = 0; i < existsJoin->leftKeys().size(); ++i) {
     joinWithDt->addEquality(existsJoin->leftKeys()[i], existsDt->columns[i]);
@@ -343,7 +324,7 @@ void DerivedTable::import(
       noImportOfExists = true;
     }
   }
-  if (firstTable->type() == PlanType::kDerivedTable) {
+  if (firstTable->type() == PlanType::kDerivedTableNode) {
     importJoinsIntoFirstDt(firstTable->as<DerivedTable>());
   } else {
     fullyImported = _tables;
@@ -370,8 +351,8 @@ JoinEdgeP importedDtJoin(
   auto left = singleTable(innerKey);
   VELOX_CHECK(left);
   auto otherKey = dt->columns[0];
-  auto* newJoin = make<JoinEdge>(
-      left, dt, ExprVector{}, false, false, !fullyImported, false);
+  auto* newJoin = !fullyImported ? JoinEdge::makeExists(left, dt)
+                                 : JoinEdge::makeExists(left, dt);
   newJoin->addEquality(innerKey, otherKey);
   return newJoin;
 }
@@ -438,8 +419,8 @@ JoinEdgeP importedJoin(
   auto left = singleTable(innerKey);
   VELOX_CHECK(left);
   auto otherKey = join->sideOf(other).keys[0];
-  auto* newJoin = make<JoinEdge>(
-      left, other, ExprVector{}, false, false, !fullyImported, false);
+  auto* newJoin = !fullyImported ? JoinEdge::makeExists(left, other)
+                                 : JoinEdge::makeInner(left, other);
   newJoin->addEquality(innerKey, otherKey);
   return newJoin;
 }
@@ -453,17 +434,17 @@ importExpr(ExprCP expr, const ColumnVector& outer, const ExprVector& inner) {
   }
 
   switch (expr->type()) {
-    case PlanType::kColumn:
+    case PlanType::kColumnExpr:
       for (auto i = 0; i < inner.size(); ++i) {
         if (outer[i] == expr) {
           return inner[i];
         }
       }
       return expr;
-    case PlanType::kLiteral:
+    case PlanType::kLiteralExpr:
       return expr;
-    case PlanType::kCall:
-    case PlanType::kAggregate: {
+    case PlanType::kCallExpr:
+    case PlanType::kAggregateExpr: {
       auto children = expr->children();
       ExprVector newChildren(children.size());
       FunctionSet functions;
@@ -477,7 +458,7 @@ importExpr(ExprCP expr, const ColumnVector& outer, const ExprVector& inner) {
       }
 
       ExprCP newCondition = nullptr;
-      if (expr->type() == PlanType::kAggregate) {
+      if (expr->type() == PlanType::kAggregateExpr) {
         newCondition =
             importExpr(expr->as<Aggregate>()->condition(), outer, inner);
         anyChange |= newCondition != expr->as<Aggregate>()->condition();
@@ -491,13 +472,13 @@ importExpr(ExprCP expr, const ColumnVector& outer, const ExprVector& inner) {
         return expr;
       }
 
-      if (expr->type() == PlanType::kCall) {
+      if (expr->type() == PlanType::kCallExpr) {
         const auto* call = expr->as<Call>();
         return make<Call>(
             call->name(), call->value(), std::move(newChildren), functions);
       }
 
-      if (expr->type() == PlanType::kAggregate) {
+      if (expr->type() == PlanType::kAggregateExpr) {
         const auto* aggregate = expr->as<Aggregate>();
         return make<Aggregate>(
             aggregate->name(),
@@ -519,7 +500,7 @@ importExpr(ExprCP expr, const ColumnVector& outer, const ExprVector& inner) {
 } // namespace
 
 void DerivedTable::importJoinsIntoFirstDt(const DerivedTable* firstDt) {
-  if (tables.size() == 1 && tables[0]->type() == PlanType::kDerivedTable) {
+  if (tables.size() == 1 && tables[0]->type() == PlanType::kDerivedTableNode) {
     flattenDt(tables[0]->as<DerivedTable>());
     return;
   }
@@ -567,7 +548,7 @@ void DerivedTable::importJoinsIntoFirstDt(const DerivedTable* firstDt) {
     bool fullyImported = otherSide.isUnique;
     joinChain(other, joins, projected, visited, fullyImported, path);
     if (path.empty()) {
-      if (other->type() == PlanType::kDerivedTable) {
+      if (other->type() == PlanType::kDerivedTableNode) {
         const_cast<PlanObject*>(other)->as<DerivedTable>()->makeInitialPlan();
       }
 
@@ -649,7 +630,7 @@ bool isJoinEquality(
     std::vector<PlanObjectP>& tables,
     ExprCP& left,
     ExprCP& right) {
-  if (expr->type() == PlanType::kCall) {
+  if (expr->type() == PlanType::kCallExpr) {
     auto call = expr->as<Call>();
     if (call->name() == toName("eq")) {
       left = call->argAt(0);
@@ -684,8 +665,7 @@ findJoin(DerivedTableP dt, std::vector<PlanObjectP>& tables, bool create) {
     }
   }
   if (create) {
-    auto* join = make<JoinEdge>(
-        tables[0], tables[1], ExprVector{}, false, false, false, false);
+    auto* join = JoinEdge::makeInner(tables[0], tables[1]);
     dt->joins.push_back(join);
     return join;
   }
@@ -697,7 +677,6 @@ void DerivedTable::distributeConjuncts() {
   std::vector<DerivedTableP> changedDts;
   if (!having.empty()) {
     VELOX_CHECK_NOT_NULL(aggregation);
-    VELOX_CHECK_NOT_NULL(aggregation->aggregation);
 
     // Push HAVING clause that uses only grouping keys below the aggregation.
     //
@@ -705,17 +684,15 @@ void DerivedTable::distributeConjuncts() {
     //   =>
     //     SELECT a, sum(b) FROM t WHERE a > 0 GROUP BY a
 
-    const auto* op = aggregation->aggregation;
-
     // Gather the columns of grouping expressions. If a having depends
     // on these alone it can move below the aggregation and gets
     // translated from the aggregation output columns to the columns
     // inside the agg. Consider both the grouping expr nd its rename
     // after the aggregation.
     PlanObjectSet grouping;
-    for (auto i = 0; i < op->grouping.size(); ++i) {
-      grouping.unionSet(op->columns()[i]->columns());
-      grouping.unionSet(op->grouping[i]->columns());
+    for (auto i = 0; i < aggregation->groupingKeys().size(); ++i) {
+      grouping.unionSet(aggregation->columns()[i]->columns());
+      grouping.unionSet(aggregation->groupingKeys()[i]->columns());
     }
 
     for (auto i = 0; i < having.size(); ++i) {
@@ -728,7 +705,8 @@ void DerivedTable::distributeConjuncts() {
       // names. Pre/post agg names may differ for dts in set
       // operations. If already in pre-agg names, no-op.
       if (having[i]->columns().isSubset(grouping)) {
-        conjuncts.push_back(importExpr(having[i], op->columns(), op->grouping));
+        conjuncts.push_back(importExpr(
+            having[i], aggregation->columns(), aggregation->groupingKeys()));
         having.erase(having.begin() + i);
         --i;
       }
@@ -737,9 +715,20 @@ void DerivedTable::distributeConjuncts() {
 
   expandConjuncts();
 
+  // A nondeterminstic filter can be pushed down past a cardinality
+  // neutral border. This is either a single leaf table or a union all
+  // of dts.
+  bool allowNondeterministic = tables.size() == 1 &&
+      (tables[0]->type() == PlanType::kTableNode ||
+       (tables[0]->type() == PlanType::kDerivedTableNode &&
+        tables[0]->as<DerivedTable>()->setOp.has_value() &&
+        tables[0]->as<DerivedTable>()->setOp.value() ==
+            lp::SetOperation::kUnionAll));
+
   for (auto i = 0; i < conjuncts.size(); ++i) {
-    // No pushdown of non-deterministic.
-    if (conjuncts[i]->containsNonDeterministic()) {
+    // No pushdown of non-deterministic except if only pushdown target is a
+    // union all.
+    if (conjuncts[i]->containsNonDeterministic() && !allowNondeterministic) {
       continue;
     }
     PlanObjectSet tableSet = conjuncts[i]->allTables();
@@ -749,9 +738,9 @@ void DerivedTable::distributeConjuncts() {
       if (tables[0] == this) {
         continue; // the conjunct depends on containing dt, like grouping or
                   // existence flags. Leave in place.
-      } else if (tables[0]->type() == PlanType::kValuesTable) {
+      } else if (tables[0]->type() == PlanType::kValuesTableNode) {
         continue; // ValuesTable does not have filter push-down.
-      } else if (tables[0]->type() == PlanType::kDerivedTable) {
+      } else if (tables[0]->type() == PlanType::kDerivedTableNode) {
         // Translate the column names and add the condition to the conjuncts in
         // the dt. If the inner is a set operation, add the filter to children.
         auto innerDt = tables[0]->as<DerivedTable>();
@@ -773,7 +762,7 @@ void DerivedTable::distributeConjuncts() {
           }
         }
       } else {
-        VELOX_CHECK(tables[0]->type() == PlanType::kTable);
+        VELOX_CHECK(tables[0]->type() == PlanType::kTableNode);
         tables[0]->as<BaseTable>()->addFilter(conjuncts[i]);
       }
       conjuncts.erase(conjuncts.begin() + i);
@@ -791,8 +780,8 @@ void DerivedTable::distributeConjuncts() {
       if (isJoinEquality(conjuncts[i], tables, left, right)) {
         auto join = findJoin(this, tables, true);
         if (join->isInner()) {
-          if (left->type() == PlanType::kColumn &&
-              right->type() == PlanType::kColumn) {
+          if (left->type() == PlanType::kColumnExpr &&
+              right->type() == PlanType::kColumnExpr) {
             left->as<Column>()->equals(right->as<Column>());
           }
           if (join->leftTable() == tables[0]) {
@@ -818,7 +807,7 @@ void DerivedTable::distributeConjuncts() {
 
 namespace {
 void flattenAll(ExprCP expr, Name func, ExprVector& flat) {
-  if (expr->type() != PlanType::kCall || expr->as<Call>()->name() != func) {
+  if (expr->type() != PlanType::kCallExpr || expr->as<Call>()->name() != func) {
     flat.push_back(expr);
     return;
   }
@@ -984,13 +973,13 @@ void DerivedTable::expandConjuncts() {
 }
 
 void DerivedTable::makeInitialPlan() {
-  auto optimization = queryCtx()->optimization();
   MemoKey key;
   key.firstTable = this;
   key.tables.add(this);
   for (auto& column : columns) {
     key.columns.add(column);
   }
+
   distributeConjuncts();
   addImpliedJoins();
   linkTablesToJoins();
@@ -998,6 +987,8 @@ void DerivedTable::makeInitialPlan() {
     join->guessFanout();
   }
   setStartTables();
+
+  auto optimization = queryCtx()->optimization();
   PlanState state(*optimization, this);
   for (auto expr : exprs) {
     state.targetColumns.unionColumns(expr);
@@ -1021,6 +1012,23 @@ void DerivedTable::makeInitialPlan() {
       orderType);
   this->distribution = dtDist;
   optimization->memo()[key] = std::move(state.plans);
+}
+
+PlanPtr DerivedTable::bestInitialPlan() const {
+  MemoKey key;
+  key.firstTable = this;
+  key.tables.add(this);
+  for (auto& column : columns) {
+    key.columns.add(column);
+  }
+
+  auto& memo = queryCtx()->optimization()->memo();
+  auto it = memo.find(key);
+  VELOX_CHECK(it != memo.end(), "Expecting to find a plan for union branch");
+
+  bool ignore;
+  Distribution emptyDistribution;
+  return it->second.best(emptyDistribution, ignore);
 }
 
 std::string DerivedTable::toString() const {
