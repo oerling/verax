@@ -115,4 +115,9 @@ std::optional<int64_t> maybeIntegerLiteral(
 
 std::string conjunctsToString(const ExprVector& conjuncts);
 
+  ///Returns the plan object id of a table given the numeric part of
+  ///its synthetic cname. Returns -1 if not found. Used for setting
+  ///plan breakpoints at specific partial plans.
+int32_t findTableByCNum(int32_t cnum);
+  
 } // namespace facebook::velox::optimizer

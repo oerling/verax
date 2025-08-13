@@ -19,10 +19,9 @@
 #include "axiom/optimizer/Plan.h"
 #include "axiom/optimizer/PlanUtils.h"
 
-namespace facebook::velox::optimizer {
-
 namespace lp = facebook::velox::logical_plan;
 
+namespace facebook::velox::optimizer {
 namespace {
 
 const RowTypePtr& lambdaArgType(const lp::Expr* expr) {
@@ -30,7 +29,6 @@ const RowTypePtr& lambdaArgType(const lp::Expr* expr) {
   VELOX_CHECK_NOT_NULL(lambda);
   return lambda->signature();
 }
-} // namespace
 
 PathCP stepsToPath(const std::vector<Step>& steps) {
   std::vector<Step> reverse;
@@ -40,7 +38,9 @@ PathCP stepsToPath(const std::vector<Step>& steps) {
   return queryCtx()->toPath(make<Path>(std::move(reverse)));
 }
 
-void Optimization::markFieldAccessed(
+} // namespace
+
+void ToGraph::markFieldAccessed(
     const LogicalContextSource& source,
     int32_t ordinal,
     std::vector<Step>& steps,
@@ -158,7 +158,7 @@ void Optimization::markFieldAccessed(
       source.call->inputAt(nth), steps, isControl, callContext, callSources);
 }
 
-std::optional<int32_t> Optimization::stepToArg(
+std::optional<int32_t> ToGraph::stepToArg(
     const Step& step,
     const FunctionMetadata* metadata) {
   const auto begin = metadata->fieldIndexForArg.begin();
@@ -189,14 +189,13 @@ bool looksConstant(const lp::ExprPtr& expr) {
 }
 } // namespace
 
-lp::ConstantExprPtr Optimization::maybeFoldLogicalConstant(
-    const lp::ExprPtr expr) {
+lp::ConstantExprPtr ToGraph::maybeFoldLogicalConstant(const lp::ExprPtr expr) {
   if (expr->isConstant()) {
     return std::static_pointer_cast<const lp::ConstantExpr>(expr);
   }
   if (looksConstant(expr)) {
     auto literal = translateExpr(expr);
-    if (literal->type() == PlanType::kLiteral) {
+    if (literal->type() == PlanType::kLiteralExpr) {
       return std::make_shared<lp::ConstantExpr>(
           toTypePtr(literal->value().type),
           std::make_shared<Variant>(literal->as<Literal>()->literal()));
@@ -205,7 +204,7 @@ lp::ConstantExprPtr Optimization::maybeFoldLogicalConstant(
   return nullptr;
 }
 
-void Optimization::markSubfields(
+void ToGraph::markSubfields(
     const lp::Expr* expr,
     std::vector<Step>& steps,
     bool isControl,
@@ -383,9 +382,9 @@ void Optimization::markSubfields(
   VELOX_UNREACHABLE("Unhandled expr: {}", lp::ExprPrinter::toText(*expr));
 }
 
-void Optimization::markColumnSubfields(
+void ToGraph::markColumnSubfields(
     const lp::LogicalPlanNodePtr& source,
-    const std::vector<logical_plan::ExprPtr>& columns) {
+    const std::vector<lp::ExprPtr>& columns) {
   std::vector<const RowType*> context{source->outputType().get()};
   std::vector<LogicalContextSource> sources{{.planNode = source.get()}};
   for (const auto& column : columns) {
@@ -394,10 +393,10 @@ void Optimization::markColumnSubfields(
   }
 }
 
-void Optimization::markControl(const lp::LogicalPlanNode* node) {
-  const auto kind = node->kind();
+void ToGraph::markControl(const lp::LogicalPlanNode& node) {
+  const auto kind = node.kind();
   if (kind == lp::NodeKind::kJoin) {
-    const auto* join = node->asUnchecked<lp::JoinNode>();
+    const auto* join = node.asUnchecked<lp::JoinNode>();
     if (const auto& condition = join->condition()) {
       std::vector<const RowType*> context{
           join->left()->outputType().get(), join->right()->outputType().get()};
@@ -407,20 +406,20 @@ void Optimization::markControl(const lp::LogicalPlanNode* node) {
       markSubfields(condition, steps, /* isControl */ true, context, sources);
     }
   } else if (kind == lp::NodeKind::kFilter) {
-    const auto& filter = node->asUnchecked<lp::FilterNode>();
-    markColumnSubfields(node->onlyInput(), {filter->predicate()});
+    const auto& filter = node.asUnchecked<lp::FilterNode>();
+    markColumnSubfields(node.onlyInput(), {filter->predicate()});
   } else if (kind == lp::NodeKind::kAggregate) {
-    const auto* agg = node->asUnchecked<lp::AggregateNode>();
-    markColumnSubfields(node->onlyInput(), agg->groupingKeys());
+    const auto* agg = node.asUnchecked<lp::AggregateNode>();
+    markColumnSubfields(node.onlyInput(), agg->groupingKeys());
   } else if (kind == lp::NodeKind::kSort) {
-    const auto* order = node->asUnchecked<lp::SortNode>();
+    const auto* order = node.asUnchecked<lp::SortNode>();
     std::vector<lp::ExprPtr> keys;
     for (const auto& key : order->ordering()) {
       keys.push_back(key.expression);
     }
-    markColumnSubfields(node->onlyInput(), keys);
+    markColumnSubfields(node.onlyInput(), keys);
   } else if (kind == lp::NodeKind::kSet) {
-    auto* set = reinterpret_cast<const lp::SetNode*>(node);
+    auto* set = reinterpret_cast<const lp::SetNode*>(&node);
     if (set->operation() != lp::SetOperation::kUnionAll) {
       // If this is with a distinct every column is a control column.
       for (auto i = 0; i < set->outputType()->size(); ++i) {
@@ -436,17 +435,17 @@ void Optimization::markControl(const lp::LogicalPlanNode* node) {
     }
   }
 
-  for (const auto& source : node->inputs()) {
-    markControl(source.get());
+  for (const auto& source : node.inputs()) {
+    markControl(*source);
   }
 }
 
-void Optimization::markAllSubfields(
+void ToGraph::markAllSubfields(
     const RowType* type,
-    const lp::LogicalPlanNode* node) {
+    const lp::LogicalPlanNode& node) {
   markControl(node);
 
-  LogicalContextSource source = {.planNode = node};
+  LogicalContextSource source = {.planNode = &node};
 
   std::vector<const RowType*> context;
   std::vector<LogicalContextSource> sources;
@@ -457,10 +456,9 @@ void Optimization::markAllSubfields(
   }
 }
 
-std::vector<int32_t> Optimization::usedChannels(
-    const lp::LogicalPlanNode* node) {
-  const auto& control = logicalControlSubfields_.nodeFields[node];
-  const auto& payload = logicalPayloadSubfields_.nodeFields[node];
+std::vector<int32_t> ToGraph::usedChannels(const lp::LogicalPlanNode& node) {
+  const auto& control = logicalControlSubfields_.nodeFields[&node];
+  const auto& payload = logicalPayloadSubfields_.nodeFields[&node];
 
   BitSet unique;
   std::vector<int32_t> result;
@@ -486,7 +484,10 @@ lp::ExprPtr makeKey(const TypePtr& type, T value) {
 }
 } // namespace
 
-lp::ExprPtr stepToLogicalPlanGetter(Step step, const lp::ExprPtr& arg) {
+// static
+lp::ExprPtr ToGraph::stepToLogicalPlanGetter(
+    Step step,
+    const lp::ExprPtr& arg) {
   const auto& argType = arg->type();
   switch (step.kind) {
     case StepKind::kField: {

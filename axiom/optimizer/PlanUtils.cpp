@@ -60,7 +60,7 @@ std::string succinctNumber(double value, int32_t precision) {
       precision);
 }
 
-int32_t findByCNum(int32_t cnum) {
+int32_t findTableByCNum(int32_t cnum) {
   auto* ctx = queryCtx();
   auto max = ctx->maxId();
   for (auto i = 0; i <= max; ++i) {
@@ -68,16 +68,22 @@ int32_t findByCNum(int32_t cnum) {
     if (!obj) {
       continue;
     }
-    if (obj->type() == PlanType::kTable) {
+    if (obj->type() == PlanType::kTableNode) {
       if (atoi(obj->as<BaseTable>()->cname + 1) == cnum) {
         return i;
       }
     }
-    if (obj->type() == PlanType::kDerivedTable) {
+    if (obj->type() == PlanType::kDerivedTableNode) {
       if (atoi(obj->as<DerivedTable>()->cname + 2) == cnum) {
         return i;
       }
     }
+    if (obj->type() == PlanType::kValuesTableNode) {
+      if (atoi(obj->as<ValuesTable>()->cname + 1) == cnum) {
+        return i;
+      }
+    }
+
   }
   VELOX_USER_FAIL(
       "{} is not the number part of a correlation name of a table or derived table",

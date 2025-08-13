@@ -123,10 +123,12 @@ using EquivalenceP = Equivalence*;
 class Literal : public Expr {
  public:
   Literal(const Value& value, const velox::variant* literal)
-      : Expr(PlanType::kLiteral, value), literal_(literal), vector_(nullptr) {}
+      : Expr(PlanType::kLiteralExpr, value),
+        literal_(literal),
+        vector_(nullptr) {}
 
   Literal(const Value& value, const BaseVector* vector)
-      : Expr(PlanType::kLiteral, value), literal_{}, vector_(vector) {}
+      : Expr(PlanType::kLiteralExpr, value), literal_{}, vector_(vector) {}
 
   const velox::variant& literal() const {
     return *literal_;
@@ -222,13 +224,13 @@ inline folly::Range<T*> toRange(const std::vector<T, QGAllocator<T>>& v) {
 class Field : public Expr {
  public:
   Field(const Type* type, ExprCP base, Name field)
-      : Expr(PlanType::kField, Value(type, 1)), field_(field), base_(base) {
+      : Expr(PlanType::kFieldExpr, Value(type, 1)), field_(field), base_(base) {
     columns_ = base->columns();
     subexpressions_ = base->subexpressions();
   }
 
   Field(const Type* type, ExprCP base, int32_t index)
-      : Expr(PlanType::kField, Value(type, 1)),
+      : Expr(PlanType::kFieldExpr, Value(type, 1)),
         field_(nullptr),
         index_(index),
         base_(base) {
@@ -333,7 +335,7 @@ class Call : public Expr {
       FunctionSet functions);
 
   Call(Name name, Value value, ExprVector args, FunctionSet functions)
-      : Call(PlanType::kCall, name, value, std::move(args), functions) {}
+      : Call(PlanType::kCallExpr, name, value, std::move(args), functions) {}
 
   Name name() const {
     return name_;
@@ -387,7 +389,8 @@ using CallCP = const Call*;
 
 /// True if 'expr' is a call to function 'name'.
 inline bool isCallExpr(ExprCP expr, Name name) {
-  return expr->type() == PlanType::kCall && expr->as<Call>()->name() == name;
+  return expr->type() == PlanType::kCallExpr &&
+      expr->as<Call>()->name() == name;
 }
 
 /// Represents a lambda. May occur as an immediate argument of selected
@@ -395,7 +398,7 @@ inline bool isCallExpr(ExprCP expr, Name name) {
 class Lambda : public Expr {
  public:
   Lambda(ColumnVector args, const Type* type, ExprCP body)
-      : Expr(PlanType::kLambda, Value(type, 1)),
+      : Expr(PlanType::kLambdaExpr, Value(type, 1)),
         args_(std::move(args)),
         body_(body) {}
   const ColumnVector& args() const {
@@ -471,29 +474,45 @@ struct JoinSide {
 /// decomposable and reorderable conjuncts.
 class JoinEdge {
  public:
-  JoinEdge(
-      PlanObjectCP leftTable,
-      PlanObjectCP rightTable,
-      ExprVector filter,
-      bool leftOptional,
-      bool rightOptional,
-      bool rightExists,
-      bool rightNotExists,
-      ColumnCP markColumn = nullptr,
-      bool directed = false)
+  /// Default is INNER JOIN.
+  struct Spec {
+    ExprVector filter;
+    bool leftOptional{false};
+    bool rightOptional{false};
+    bool rightExists{false};
+    bool rightNotExists{false};
+    ColumnCP markColumn{nullptr};
+    bool directed{false};
+  };
+
+  JoinEdge(PlanObjectCP leftTable, PlanObjectCP rightTable, Spec spec)
       : leftTable_(leftTable),
         rightTable_(rightTable),
-        filter_(std::move(filter)),
-        leftOptional_(leftOptional),
-        rightOptional_(rightOptional),
-        rightExists_(rightExists),
-        rightNotExists_(rightNotExists),
-        markColumn_(markColumn),
-        directed_(directed) {
+        filter_(std::move(spec.filter)),
+        leftOptional_(spec.leftOptional),
+        rightOptional_(spec.rightOptional),
+        rightExists_(spec.rightExists),
+        rightNotExists_(spec.rightNotExists),
+        markColumn_(spec.markColumn),
+        directed_(spec.directed) {
     VELOX_CHECK_NOT_NULL(rightTable);
     if (isInner()) {
       VELOX_CHECK(filter_.empty());
     }
+  }
+
+  static JoinEdge* makeInner(PlanObjectCP leftTable, PlanObjectCP rightTable) {
+    return make<JoinEdge>(leftTable, rightTable, Spec{});
+  }
+
+  static JoinEdge* makeExists(PlanObjectCP leftTable, PlanObjectCP rightTable) {
+    return make<JoinEdge>(leftTable, rightTable, Spec{.rightExists = true});
+  }
+
+  static JoinEdge* makeNotExists(
+      PlanObjectCP leftTable,
+      PlanObjectCP rightTable) {
+    return make<JoinEdge>(leftTable, rightTable, Spec{.rightNotExists = true});
   }
 
   PlanObjectCP leftTable() const {
@@ -666,7 +685,7 @@ using JoinEdgeVector = std::vector<JoinEdgeP, QGAllocator<JoinEdgeP>>;
 /// BaseTable but the same BaseTable can be referenced from many TableScans, for
 /// example if accessing different indices in a secondary to primary key lookup.
 struct BaseTable : public PlanObject {
-  BaseTable() : PlanObject(PlanType::kTable) {}
+  BaseTable() : PlanObject(PlanType::kTableNode) {}
 
   // Correlation name, distinguishes between uses of the same schema table.
   Name cname{nullptr};
@@ -721,7 +740,7 @@ using BaseTableCP = const BaseTable*;
 
 struct ValuesTable : public PlanObject {
   explicit ValuesTable(const logical_plan::ValuesNode& values)
-      : PlanObject{PlanType::kValuesTable}, values{values} {}
+      : PlanObject{PlanType::kValuesTableNode}, values{values} {}
 
   // Correlation name, distinguishes between uses of the same values node.
   Name cname{nullptr};
@@ -765,7 +784,7 @@ class Aggregate : public Call {
       bool isAccumulator,
       const velox::Type* intermediateType)
       : Call(
-            PlanType::kAggregate,
+            PlanType::kAggregateExpr,
             name,
             value,
             std::move(args),
@@ -811,16 +830,42 @@ class Aggregate : public Call {
 };
 
 using AggregateCP = const Aggregate*;
+using AggregateVector = std::vector<AggregateCP, QGAllocator<AggregateCP>>;
 
-struct Aggregation;
-using AggregationP = Aggregation*;
+class AggregationPlan : public PlanObject {
+ public:
+  AggregationPlan(
+      ExprVector groupingKeys,
+      AggregateVector aggregates,
+      ColumnVector columns,
+      ColumnVector intermediateColumns)
+      : PlanObject(PlanType::kAggregationNode),
+        groupingKeys_(std::move(groupingKeys)),
+        aggregates_(std::move(aggregates)),
+        columns_(std::move(columns)),
+        intermediateColumns_(std::move(intermediateColumns)) {}
 
-/// Wraps an Aggregation RelationOp. This gives the aggregation a PlanObject id
-struct AggregationPlan : public PlanObject {
-  explicit AggregationPlan(AggregationP agg)
-      : PlanObject(PlanType::kAggregation), aggregation(agg) {}
+  const ExprVector& groupingKeys() const {
+    return groupingKeys_;
+  }
 
-  AggregationP aggregation;
+  const AggregateVector& aggregates() const {
+    return aggregates_;
+  }
+
+  const ColumnVector& columns() const {
+    return columns_;
+  }
+
+  const ColumnVector& intermediateColumns() const {
+    return intermediateColumns_;
+  }
+
+ private:
+  const ExprVector groupingKeys_;
+  const AggregateVector aggregates_;
+  const ColumnVector columns_;
+  const ColumnVector intermediateColumns_;
 };
 
 using AggregationPlanCP = const AggregationPlan*;

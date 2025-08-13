@@ -27,11 +27,11 @@ class JoinEdge;
 using JoinEdgeP = JoinEdge*;
 using JoinEdgeVector = std::vector<JoinEdgeP, QGAllocator<JoinEdgeP>>;
 
-struct AggregationPlan;
+class AggregationPlan;
 using AggregationPlanCP = const AggregationPlan*;
 
-struct OrderBy;
-using OrderByP = OrderBy*;
+enum class OrderType;
+using OrderTypeVector = std::vector<OrderType, QGAllocator<OrderType>>;
 
 /// Represents a derived table, i.e. a SELECT in a FROM clause. This is the
 /// basic unit of planning. Derived tables can be merged and split apart from
@@ -40,7 +40,7 @@ using OrderByP = OrderBy*;
 /// table. Joins can move between derived tables within limits, considering the
 /// semantics of e.g. group by.
 struct DerivedTable : public PlanObject {
-  DerivedTable() : PlanObject(PlanType::kDerivedTable) {}
+  DerivedTable() : PlanObject(PlanType::kDerivedTableNode) {}
 
   /// Distribution that gives partition, cardinality and
   /// order/uniqueness for the dt alone. This is expressed in terms of
@@ -113,8 +113,14 @@ struct DerivedTable : public PlanObject {
 
   /// Postprocessing clauses, group by, having, order by, limit, offset.
   AggregationPlanCP aggregation{nullptr};
+
   ExprVector having;
-  OrderByP orderBy{nullptr};
+
+  /// Order by.
+  ExprVector orderByKeys;
+  OrderTypeVector orderByTypes;
+
+  /// Limit and offset.
   int64_t limit{-1};
   int64_t offset{0};
 
@@ -128,16 +134,8 @@ struct DerivedTable : public PlanObject {
   /// restriction.
   std::vector<int32_t, QGAllocator<int32_t>> joinOrder;
   
-  /// Adds an equijoin edge between 'left' and 'right'. The flags correspond to
-  /// the like-named members in Join.
-  void addJoinEquality(
-      ExprCP left,
-      ExprCP right,
-      const ExprVector& filter,
-      bool leftOptional,
-      bool rightOptional,
-      bool rightExists,
-      bool rightNotExists);
+  /// Adds an equijoin edge between 'left' and 'right'.
+  void addJoinEquality(ExprCP left, ExprCP right);
 
   /// After 'joins' is filled in, links tables to their direct and
   /// equivalence-implied joins.
@@ -182,6 +180,14 @@ struct DerivedTable : public PlanObject {
     return std::find(joins.begin(), joins.end(), join) != joins.end();
   }
 
+  bool hasOrderBy() const {
+    return !orderByKeys.empty();
+  }
+
+  bool hasLimit() const {
+    return limit >= 0;
+  }
+
   /// Fills in 'startTables_' to 'tables_' that are not to the right of
   /// non-commutative joins.
   void setStartTables();
@@ -202,7 +208,9 @@ struct DerivedTable : public PlanObject {
   /// must have 'tables' set but does not need a plan. Some Ill formed
   /// or impossible join order will error out during optimization.
   void setJoinOrderHint(std::string_view str);
-  
+
+  PlanPtr bestInitialPlan() const;
+
   std::string toString() const override;
 
  private:
