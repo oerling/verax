@@ -79,23 +79,23 @@ Optimization::Optimization(
     velox::core::ExpressionEvaluator& evaluator,
     OptimizerOptions opts,
     runner::MultiFragmentPlan::Options options)
-    : schema_(schema),
-      opts_(std::move(opts)),
+    : opts_(std::move(opts)),
       logicalPlan_(&plan),
       history_(history),
       queryCtx_(std::move(_queryCtx)),
-      evaluator_(evaluator),
       options_(std::move(options)),
-      isSingle_(options_.numWorkers == 1) {
+      isSingle_(options_.numWorkers == 1),
+      toGraph_{schema, evaluator, opts_},
+      toVelox_{options_, opts_} {
   queryCtx()->optimization() = this;
-  root_ = makeQueryGraphFromLogical();
+  root_ = toGraph_.makeQueryGraph(*logicalPlan_);
   root_->distributeConjuncts();
   root_->addImpliedJoins();
   root_->linkTablesToJoins();
   for (auto* join : root_->joins) {
     join->guessFanout();
   }
-  setDerivedTableOutput(root_, *logicalPlan_);
+  toGraph_.setDerivedTableOutput(root_, *logicalPlan_);
 }
 
 void Optimization::trace(
@@ -104,7 +104,7 @@ void Optimization::trace(
     const Cost& cost,
     RelationOp& plan) {
   if (event & opts_.traceFlags) {
-    std::cout << (event == kRetained ? "Retained: " : "Abandoned: ") << id
+    std::cout << (event == OptimizerOptions::kRetained ? "Retained: " : "Abandoned: ") << id
               << ": " << cost.toString(true, true) << ": " << " "
               << plan.toString(true, false) << std::endl;
   }
@@ -146,9 +146,6 @@ std::string Plan::toString(bool detail) const {
 }
 
 void PlanState::addCost(RelationOp& op) {
-  if (!static_cast<bool>(op.cost().unitCost)) {
-    op.setCost(*this);
-  }
   cost.unitCost += cost.inputCardinality * cost.fanout * op.cost().unitCost;
   cost.setupCost += op.cost().setupCost;
   cost.fanout *= op.cost().fanout;
@@ -164,7 +161,7 @@ void PlanState::addNextJoin(
   if (!isOverBest()) {
     toTry.emplace_back(candidate, plan, cost, placed, columns, builds);
   } else {
-    optimization.trace(Optimization::kExceededBest, dt->id(), cost, *plan);
+    optimization.trace(OptimizerOptions::kExceededBest, dt->id(), cost, *plan);
   }
 }
 
@@ -193,6 +190,7 @@ const PlanObjectSet& PlanState::downstreamColumns() const {
   if (it != downstreamPrecomputed.end()) {
     return it->second;
   }
+
   PlanObjectSet result;
   for (auto join : dt->joins) {
     bool addFilter = false;
@@ -208,16 +206,13 @@ const PlanObjectSet& PlanState::downstreamColumns() const {
       result.unionColumns(join->filter());
     }
   }
-  for (auto& filter : dt->conjuncts) {
-    if (!placed.contains(filter)) {
-      result.unionColumns(filter);
-    }
-  }
+
   for (auto& conjunct : dt->conjuncts) {
     if (!placed.contains(conjunct)) {
       result.unionColumns(conjunct);
     }
   }
+
   if (dt->aggregation && !placed.contains(dt->aggregation)) {
     auto aggToPlace = dt->aggregation;
     for (auto i = 0; i < aggToPlace->columns().size(); ++i) {
@@ -231,6 +226,7 @@ const PlanObjectSet& PlanState::downstreamColumns() const {
       }
     }
   }
+
   result.unionSet(targetColumns);
   return downstreamPrecomputed[placed] = std::move(result);
 }
@@ -277,7 +273,7 @@ PlanPtr PlanSet::addPlan(RelationOpPtr plan, PlanState& state) {
         // Old plan has no order and is worse than new plus shuffle. Can't win.
         // rase.
         queryCtx()->optimization()->trace(
-            Optimization::kExceededBest, state.dt->id(), old->cost, *old->op);
+            OptimizerOptions::kExceededBest, state.dt->id(), old->cost, *old->op);
         plans.erase(plans.begin() + i);
         --i;
         continue;
@@ -839,7 +835,8 @@ void Optimization::addPostprocess(
     plan = filter;
   }
   if (dt->hasOrderBy()) {
-    auto* orderBy = make<OrderBy>(plan, dt->orderByKeys, dt->orderByTypes);
+    auto* orderBy = make<OrderBy>(
+        plan, dt->orderByKeys, dt->orderByTypes, dt->limit, dt->offset);
     state.addCost(*orderBy);
     plan = orderBy;
   }
@@ -1722,7 +1719,7 @@ void Optimization::makeJoins(RelationOpPtr plan, PlanState& state) {
     }
   } else {
     if (state.isOverBest()) {
-      trace(kExceededBest, dt->id(), state.cost, *plan);
+      trace(OptimizerOptions::kExceededBest, dt->id(), state.cost, *plan);
       return;
     }
     // Add multitable filters not associated to a non-inner join.
@@ -1736,7 +1733,7 @@ void Optimization::makeJoins(RelationOpPtr plan, PlanState& state) {
       }
       addPostprocess(dt, plan, state);
       auto kept = state.plans.addPlan(plan, state);
-      trace(kept ? kRetained : kExceededBest, dt->id(), state.cost, *plan);
+      trace(kept ? OptimizerOptions::kRetained : OptimizerOptions::kExceededBest, dt->id(), state.cost, *plan);
 
       return;
     }

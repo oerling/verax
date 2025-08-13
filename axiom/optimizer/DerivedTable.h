@@ -124,16 +124,8 @@ struct DerivedTable : public PlanObject {
   int64_t limit{-1};
   int64_t offset{0};
 
-  /// Adds an equijoin edge between 'left' and 'right'. The flags correspond to
-  /// the like-named members in Join.
-  void addJoinEquality(
-      ExprCP left,
-      ExprCP right,
-      const ExprVector& filter,
-      bool leftOptional,
-      bool rightOptional,
-      bool rightExists,
-      bool rightNotExists);
+  /// Adds an equijoin edge between 'left' and 'right'.
+  void addJoinEquality(ExprCP left, ExprCP right);
 
   /// After 'joins' is filled in, links tables to their direct and
   /// equivalence-implied joins.
@@ -201,6 +193,8 @@ struct DerivedTable : public PlanObject {
   /// before adding 'this' as a join side because join sides must have
   /// a cardinality guess.
   void makeInitialPlan();
+
+  PlanPtr bestInitialPlan() const;
 
   std::string toString() const override;
 

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "axiom/optimizer/ToVelox.h"
 #include "axiom/optimizer/Plan.h"
 #include "velox/core/PlanNode.h"
 #include "velox/exec/HashPartitionFunction.h"
@@ -22,16 +23,19 @@
 #include "velox/expression/ScopedVarSetter.h"
 #include "velox/vector/VariantToVector.h"
 
-namespace facebook::velox::optimizer {
-
 using namespace facebook::velox::exec;
 using namespace facebook::velox::runner;
 
+namespace facebook::velox::optimizer {
+
 namespace {
 std::vector<common::Subfield> columnSubfields(BaseTableCP table, int32_t id) {
-  BitSet set = table->columnSubfields(id, false, false);
   auto* optimization = queryCtx()->optimization();
-  auto columnName = queryCtx()->objectAt(id)->as<Column>()->name();
+
+  const auto columnName = queryCtx()->objectAt(id)->as<Column>()->name();
+
+  BitSet set = table->columnSubfields(id, false, false);
+
   std::vector<common::Subfield> subfields;
   set.forEach([&](auto id) {
     auto steps = queryCtx()->pathById(id)->steps();
@@ -54,7 +58,7 @@ std::vector<common::Subfield> columnSubfields(BaseTableCP table, int32_t id) {
             break;
           }
           if (first &&
-              optimization->isMapAsStruct(
+              optimization->opts().isMapAsStruct(
                   table->schemaTable->name, columnName)) {
             elements.push_back(std::make_unique<common::Subfield::NestedField>(
                 step.field ? std::string(step.field)
@@ -77,6 +81,7 @@ std::vector<common::Subfield> columnSubfields(BaseTableCP table, int32_t id) {
     }
     subfields.emplace_back(std::move(elements));
   });
+
   return subfields;
 }
 
@@ -97,10 +102,7 @@ RelationOpPtr addGather(const RelationOpPtr& op) {
 
 } // namespace
 
-void filterUpdated(BaseTableCP table, bool updateSelectivity) {
-  auto ctx = queryCtx();
-  auto optimization = ctx->optimization();
-
+void ToVelox::filterUpdated(BaseTableCP table, bool updateSelectivity) {
   PlanObjectSet columnSet;
   for (auto& filter : table->columnFilters) {
     columnSet.unionSet(filter->columns());
@@ -109,19 +111,23 @@ void filterUpdated(BaseTableCP table, bool updateSelectivity) {
   columnSet.forEach([&](auto obj) {
     leafColumns.push_back(reinterpret_cast<const Column*>(obj));
   });
-  optimization->columnAlteredTypes().clear();
+
+  columnAlteredTypes_.clear();
+
   ColumnVector topColumns;
-  auto scanType = optimization->subfieldPushdownScanType(
-      table, leafColumns, topColumns, optimization->columnAlteredTypes());
+  auto scanType = subfieldPushdownScanType(
+      table, leafColumns, topColumns, columnAlteredTypes_);
+
+  auto* optimization = queryCtx()->optimization();
+  auto* evaluator = optimization->evaluator();
 
   std::vector<core::TypedExprPtr> remainingConjuncts;
   std::vector<core::TypedExprPtr> pushdownConjuncts;
-  ScopedVarSetter noAlias(&optimization->makeVeloxExprWithNoAlias(), true);
-  ScopedVarSetter getters(&optimization->getterForPushdownSubfield(), true);
+  ScopedVarSetter noAlias(&makeVeloxExprWithNoAlias_, true);
+  ScopedVarSetter getters(&getterForPushdownSubfield_, true);
   for (auto filter : table->columnFilters) {
-    auto typedExpr = optimization->toTypedExpr(filter);
+    auto typedExpr = toTypedExpr(filter);
     try {
-      auto evaluator = optimization->evaluator();
       auto pair = velox::exec::toSubfieldFilter(typedExpr, evaluator);
       if (!pair.second) {
         remainingConjuncts.push_back(std::move(typedExpr));
@@ -133,7 +139,7 @@ void filterUpdated(BaseTableCP table, bool updateSelectivity) {
     }
   }
   for (auto expr : table->filter) {
-    remainingConjuncts.push_back(optimization->toTypedExpr(expr));
+    remainingConjuncts.push_back(toTypedExpr(expr));
   }
   core::TypedExprPtr remainingFilter;
   for (const auto& conjunct : remainingConjuncts) {
@@ -146,7 +152,9 @@ void filterUpdated(BaseTableCP table, bool updateSelectivity) {
           "and");
     }
   }
-  optimization->columnAlteredTypes().clear();
+
+  columnAlteredTypes_.clear();
+
   auto& dataColumns = table->schemaTable->connectorTable->rowType();
   auto* layout = table->schemaTable->columnGroups[0]->layout;
   auto connector = layout->connector();
@@ -167,23 +175,15 @@ void filterUpdated(BaseTableCP table, bool updateSelectivity) {
   }
   std::vector<core::TypedExprPtr> rejectedFilters;
   auto handle = connector->metadata()->createTableHandle(
-      *layout,
-      columns,
-      *optimization->evaluator(),
-      std::move(allFilters),
-      rejectedFilters);
+      *layout, columns, *evaluator, std::move(allFilters), rejectedFilters);
 
-  optimization->setLeafHandle(table->id(), handle, std::move(rejectedFilters));
+  setLeafHandle(table->id(), handle, std::move(rejectedFilters));
   if (updateSelectivity) {
     optimization->setLeafSelectivity(*const_cast<BaseTable*>(table), scanType);
   }
 }
 
-core::PlanNodeId Optimization::nextId() {
-  return idGenerator_.next();
-}
-
-PlanAndStats Optimization::toVeloxPlan(
+PlanAndStats ToVelox::toVeloxPlan(
     RelationOpPtr plan,
     const MultiFragmentPlan::Options& options) {
   options_ = options;
@@ -203,7 +203,7 @@ PlanAndStats Optimization::toVeloxPlan(
       std::move(prediction_)};
 }
 
-RowTypePtr Optimization::makeOutputType(const ColumnVector& columns) {
+RowTypePtr ToVelox::makeOutputType(const ColumnVector& columns) {
   std::vector<std::string> names;
   std::vector<TypePtr> types;
   for (auto i = 0; i < columns.size(); ++i) {
@@ -231,7 +231,7 @@ RowTypePtr Optimization::makeOutputType(const ColumnVector& columns) {
   return ROW(std::move(names), std::move(types));
 }
 
-core::TypedExprPtr Optimization::toAnd(const ExprVector& exprs) {
+core::TypedExprPtr ToVelox::toAnd(const ExprVector& exprs) {
   core::TypedExprPtr result;
   for (auto expr : exprs) {
     auto conjunct = toTypedExpr(expr);
@@ -243,19 +243,6 @@ core::TypedExprPtr Optimization::toAnd(const ExprVector& exprs) {
     }
   }
   return result;
-}
-
-bool Optimization::isMapAsStruct(Name table, Name column) {
-  if (opts_.allMapsAsStruct) {
-    return true;
-  }
-  auto it = opts_.mapAsStruct.find(table);
-  if (it == opts_.mapAsStruct.end()) {
-    return false;
-  }
-  return (
-      std::find(it->second.begin(), it->second.end(), column) !=
-      it->second.end());
 }
 
 namespace {
@@ -342,10 +329,8 @@ core::TypedExprPtr stepToGetter(Step step, core::TypedExprPtr arg) {
   }
 }
 
-core::TypedExprPtr Optimization::pathToGetter(
-    ColumnCP column,
-    PathCP path,
-    core::TypedExprPtr field) {
+core::TypedExprPtr
+ToVelox::pathToGetter(ColumnCP column, PathCP path, core::TypedExprPtr field) {
   bool first = true;
   // If this is a path over a map that is retrieved as struct, the first getter
   // becomes a struct getter.
@@ -379,7 +364,7 @@ core::TypedExprPtr Optimization::pathToGetter(
   return field;
 }
 
-core::TypedExprPtr Optimization::toTypedExpr(ExprCP expr) {
+core::TypedExprPtr ToVelox::toTypedExpr(ExprCP expr) {
   auto it = projectedExprs_.find(expr);
   if (it != projectedExprs_.end()) {
     return it->second;
@@ -449,7 +434,7 @@ core::TypedExprPtr Optimization::toTypedExpr(ExprCP expr) {
         return std::make_shared<core::ConstantTypedExpr>(variantToVector(
             toTypePtr(literal->value().type),
             literal->literal(),
-            evaluator_.pool()));
+            queryCtx()->optimization()->evaluator()->pool()));
       }
       return std::make_shared<core::ConstantTypedExpr>(
           toTypePtr(literal->value().type), literal->literal());
@@ -478,8 +463,8 @@ namespace {
 // related functions.
 class TempProjections {
  public:
-  TempProjections(Optimization& optimization, const RelationOp& input)
-      : optimization_(optimization), input_(input) {
+  TempProjections(ToVelox& tv, const RelationOp& input)
+      : toVelox_(tv), input_(input) {
     for (auto& column : input_.columns()) {
       exprChannel_[column] = nextChannel_++;
       names_.push_back(column->toString());
@@ -496,7 +481,7 @@ class TempProjections {
     if (it == exprChannel_.end()) {
       VELOX_CHECK(expr->type() != PlanType::kColumnExpr);
       exprChannel_[expr] = nextChannel_++;
-      exprs_.push_back(optimization_.toTypedExpr(expr));
+      exprs_.push_back(queryCtx()->optimization()->toTypedExpr(expr));
       names_.push_back(
           optName ? *optName : fmt::format("__r{}", nextChannel_ - 1));
       fieldRefs_.push_back(std::make_shared<core::FieldAccessTypedExpr>(
@@ -534,14 +519,11 @@ class TempProjections {
       return inputNode;
     }
     return std::make_shared<core::ProjectNode>(
-        optimization_.nextId(),
-        std::move(names_),
-        std::move(exprs_),
-        inputNode);
+        toVelox_.nextId(), std::move(names_), std::move(exprs_), inputNode);
   }
 
  private:
-  Optimization& optimization_;
+  ToVelox& toVelox_;
   const RelationOp& input_;
   int32_t nextChannel_{0};
   std::vector<core::FieldAccessTypedExprPtr> fieldRefs_;
@@ -551,7 +533,7 @@ class TempProjections {
 };
 } // namespace
 
-runner::ExecutableFragment Optimization::newFragment() {
+runner::ExecutableFragment ToVelox::newFragment() {
   ExecutableFragment fragment;
   fragment.width = options_.numWorkers;
   fragment.taskPrefix = fmt::format("stage{}", ++stageCounter_);
@@ -640,15 +622,10 @@ core::SortOrder toSortOrder(const OrderType& order) {
 }
 } // namespace
 
-core::PlanNodePtr Optimization::makeOrderBy(
+core::PlanNodePtr ToVelox::makeOrderBy(
     const OrderBy& op,
     ExecutableFragment& fragment,
     std::vector<ExecutableFragment>& stages) {
-  if (root_->limit > 0) {
-    toVeloxLimit_ = root_->limit;
-    toVeloxOffset_ = root_->offset;
-  }
-
   std::vector<core::SortOrder> sortOrder;
   sortOrder.reserve(op.distribution().orderType.size());
   for (auto order : op.distribution().orderType) {
@@ -663,34 +640,34 @@ core::PlanNodePtr Optimization::makeOrderBy(
     auto project = projections.maybeProject(input);
 
     if (options_.numDrivers == 1) {
-      if (toVeloxLimit_ <= 0) {
+      if (op.limit <= 0) {
         return std::make_shared<core::OrderByNode>(
             nextId(), keys, sortOrder, false, project);
       }
 
       auto node = addFinalTopN(
-          nextId(), keys, sortOrder, toVeloxLimit_ + toVeloxOffset_, project);
+          nextId(), keys, sortOrder, op.limit + op.offset, project);
 
-      if (toVeloxOffset_ > 0) {
-        return addFinalLimit(nextId(), toVeloxOffset_, toVeloxLimit_, node);
+      if (op.offset > 0) {
+        return addFinalLimit(nextId(), op.offset, op.limit, node);
       }
 
       return node;
     }
 
     core::PlanNodePtr node;
-    if (toVeloxLimit_ <= 0) {
+    if (op.limit <= 0) {
       node = std::make_shared<core::OrderByNode>(
           nextId(), keys, sortOrder, true, project);
     } else {
       node = addPartialTopN(
-          nextId(), keys, sortOrder, toVeloxLimit_ + toVeloxOffset_, project);
+          nextId(), keys, sortOrder, op.limit + op.offset, project);
     }
 
     node = addLocalMerge(nextId(), keys, sortOrder, node);
 
-    if (toVeloxLimit_ > 0) {
-      return addFinalLimit(nextId(), toVeloxOffset_, toVeloxLimit_, node);
+    if (op.limit > 0) {
+      return addFinalLimit(nextId(), op.offset, op.limit, node);
     }
 
     return node;
@@ -704,12 +681,12 @@ core::PlanNodePtr Optimization::makeOrderBy(
   auto project = projections.maybeProject(input);
 
   core::PlanNodePtr node;
-  if (toVeloxLimit_ <= 0) {
+  if (op.limit <= 0) {
     node = std::make_shared<core::OrderByNode>(
         nextId(), keys, sortOrder, true, project);
   } else {
     node = addPartialTopN(
-        nextId(), keys, sortOrder, toVeloxLimit_ + toVeloxOffset_, project);
+        nextId(), keys, sortOrder, op.limit + op.offset, project);
   }
 
   node = addLocalMerge(nextId(), keys, sortOrder, node);
@@ -724,13 +701,13 @@ core::PlanNodePtr Optimization::makeOrderBy(
   fragment.inputStages.push_back(InputStage{merge->id(), source.taskPrefix});
   stages.push_back(std::move(source));
 
-  if (toVeloxLimit_ > 0) {
-    return addFinalLimit(nextId(), toVeloxOffset_, toVeloxLimit_, merge);
+  if (op.limit > 0) {
+    return addFinalLimit(nextId(), op.offset, op.limit, merge);
   }
   return merge;
 }
 
-velox::core::PlanNodePtr Optimization::makeOffset(
+velox::core::PlanNodePtr ToVelox::makeOffset(
     const Limit& op,
     velox::runner::ExecutableFragment& fragment,
     std::vector<velox::runner::ExecutableFragment>& stages) {
@@ -757,7 +734,7 @@ velox::core::PlanNodePtr Optimization::makeOffset(
   return limitNode;
 }
 
-core::PlanNodePtr Optimization::makeLimit(
+core::PlanNodePtr ToVelox::makeLimit(
     const Limit& op,
     ExecutableFragment& fragment,
     std::vector<ExecutableFragment>& stages) {
@@ -888,8 +865,9 @@ bool hasSubfieldPushdown(const TableScan& scan) {
   return false;
 }
 
-} // namespace
-
+// Returns a struct with fields for skyline map keys of 'column' in
+// 'baseTable'. This is the type to return from the table reader
+// for the map column.
 RowTypePtr skylineStruct(BaseTableCP baseTable, ColumnCP column) {
   std::vector<std::string> names;
   std::vector<TypePtr> types;
@@ -922,8 +900,9 @@ RowTypePtr skylineStruct(BaseTableCP baseTable, ColumnCP column) {
 
   return ROW(std::move(names), std::move(types));
 }
+} // namespace
 
-RowTypePtr Optimization::scanOutputType(
+RowTypePtr ToVelox::scanOutputType(
     const TableScan& scan,
     ColumnVector& scanColumns,
     std::unordered_map<ColumnCP, TypePtr>& typeMap) {
@@ -935,7 +914,7 @@ RowTypePtr Optimization::scanOutputType(
       scan.baseTable, scan.columns(), scanColumns, typeMap);
 }
 
-RowTypePtr Optimization::subfieldPushdownScanType(
+RowTypePtr ToVelox::subfieldPushdownScanType(
     BaseTableCP baseTable,
     const ColumnVector& leafColumns,
     ColumnVector& topColumns,
@@ -967,11 +946,11 @@ RowTypePtr Optimization::subfieldPushdownScanType(
   return ROW(std::move(names), std::move(types));
 }
 
-core::PlanNodePtr Optimization::makeSubfieldProjections(
+core::PlanNodePtr ToVelox::makeSubfieldProjections(
     const TableScan& scan,
     const std::shared_ptr<const core::TableScanNode>& scanNode) {
-  ScopedVarSetter getters(&getterForPushdownSubfield(), true);
-  ScopedVarSetter noAlias(&makeVeloxExprWithNoAlias(), true);
+  ScopedVarSetter getters(&getterForPushdownSubfield_, true);
+  ScopedVarSetter noAlias(&makeVeloxExprWithNoAlias_, true);
   std::vector<std::string> names;
   std::vector<core::TypedExprPtr> exprs;
   for (auto* column : scan.columns()) {
@@ -998,7 +977,7 @@ core::TypedExprPtr toAndWithAliases(
 }
 } // namespace
 
-velox::core::PlanNodePtr Optimization::makeScan(
+velox::core::PlanNodePtr ToVelox::makeScan(
     const TableScan& scan,
     velox::runner::ExecutableFragment& fragment,
     std::vector<velox::runner::ExecutableFragment>& stages) {
@@ -1006,7 +985,7 @@ velox::core::PlanNodePtr Optimization::makeScan(
   bool isSubfieldPushdown = hasSubfieldPushdown(scan);
   auto handlePair = leafHandle(scan.baseTable->id());
   if (!handlePair.first) {
-    filterUpdated(scan.baseTable, false);
+    queryCtx()->optimization()->filterUpdated(scan.baseTable, false);
     handlePair = leafHandle(scan.baseTable->id());
     VELOX_CHECK_NOT_NULL(
         handlePair.first, "No table for scan {}", scan.toString(true, true));
@@ -1052,7 +1031,7 @@ velox::core::PlanNodePtr Optimization::makeScan(
   return result;
 }
 
-velox::core::PlanNodePtr Optimization::makeFilter(
+velox::core::PlanNodePtr ToVelox::makeFilter(
     const Filter& filter,
     velox::runner::ExecutableFragment& fragment,
     std::vector<velox::runner::ExecutableFragment>& stages) {
@@ -1064,12 +1043,12 @@ velox::core::PlanNodePtr Optimization::makeFilter(
   return filterNode;
 }
 
-velox::core::PlanNodePtr Optimization::makeProject(
+velox::core::PlanNodePtr ToVelox::makeProject(
     const Project& project,
     velox::runner::ExecutableFragment& fragment,
     std::vector<velox::runner::ExecutableFragment>& stages) {
   auto input = makeFragment(project.input(), fragment, stages);
-  if (opts_.parallelProjectWidth > 1) {
+  if (optimizerOptions_.parallelProjectWidth > 1) {
     auto result = maybeParallelProject(&project, input);
     if (result) {
       return result;
@@ -1085,7 +1064,7 @@ velox::core::PlanNodePtr Optimization::makeProject(
       nextId(), std::move(names), std::move(exprs), input);
 }
 
-velox::core::PlanNodePtr Optimization::makeJoin(
+velox::core::PlanNodePtr ToVelox::makeJoin(
     const Join& join,
     velox::runner::ExecutableFragment& fragment,
     std::vector<velox::runner::ExecutableFragment>& stages) {
@@ -1125,7 +1104,7 @@ velox::core::PlanNodePtr Optimization::makeJoin(
   return joinNode;
 }
 
-core::PlanNodePtr Optimization::makeAggregation(
+core::PlanNodePtr ToVelox::makeAggregation(
     Aggregation& op,
     ExecutableFragment& fragment,
     std::vector<ExecutableFragment>& stages) {
@@ -1214,7 +1193,7 @@ core::PlanNodePtr Optimization::makeAggregation(
       project);
 }
 
-velox::core::PlanNodePtr Optimization::makeRepartition(
+velox::core::PlanNodePtr ToVelox::makeRepartition(
     const Repartition& repartition,
     velox::runner::ExecutableFragment& fragment,
     std::vector<velox::runner::ExecutableFragment>& stages,
@@ -1257,7 +1236,7 @@ velox::core::PlanNodePtr Optimization::makeRepartition(
   return exchange;
 }
 
-velox::core::PlanNodePtr Optimization::makeUnionAll(
+velox::core::PlanNodePtr ToVelox::makeUnionAll(
     const UnionAll& unionAll,
     velox::runner::ExecutableFragment& fragment,
     std::vector<velox::runner::ExecutableFragment>& stages) {
@@ -1291,7 +1270,7 @@ velox::core::PlanNodePtr Optimization::makeUnionAll(
       localSources);
 }
 
-core::PlanNodePtr Optimization::makeValues(
+core::PlanNodePtr ToVelox::makeValues(
     const Values& values,
     ExecutableFragment& fragment) {
   fragment.width = 1;
@@ -1345,7 +1324,7 @@ core::PlanNodePtr Optimization::makeValues(
   return valuesNode;
 }
 
-void Optimization::makePredictionAndHistory(
+void ToVelox::makePredictionAndHistory(
     const core::PlanNodeId& id,
     const RelationOp* op) {
   nodeHistory_[id] = op->historyKey();
@@ -1353,7 +1332,7 @@ void Optimization::makePredictionAndHistory(
       .cardinality = op->cost().inputCardinality * op->cost().fanout};
 }
 
-core::PlanNodePtr Optimization::makeFragment(
+core::PlanNodePtr ToVelox::makeFragment(
     const RelationOpPtr& op,
     ExecutableFragment& fragment,
     std::vector<ExecutableFragment>& stages) {

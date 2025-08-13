@@ -62,10 +62,10 @@ ExceptionContext makeExceptionContext(ToGraphContext* ctx) {
   return e;
 }
 
-void Optimization::setDerivedTableOutput(
+void ToGraph::setDerivedTableOutput(
     DerivedTableP dt,
-    const lp::LogicalPlanNode& planNode) {
-  const auto& outputType = planNode.outputType();
+    const lp::LogicalPlanNode& logicalPlan) {
+  const auto& outputType = logicalPlan.outputType();
   for (auto i = 0; i < outputType->size(); ++i) {
     const auto& fieldType = outputType->childAt(i);
     const auto& fieldName = outputType->nameOf(i);
@@ -79,18 +79,7 @@ void Optimization::setDerivedTableOutput(
   }
 }
 
-DerivedTableP Optimization::makeQueryGraphFromLogical() {
-  markAllSubfields(logicalPlan_->outputType().get(), logicalPlan_);
-
-  root_ = newDt();
-  currentSelect_ = root_;
-  makeQueryGraph(*logicalPlan_, kAllAllowedInDt);
-  return root_;
-}
-
-void Optimization::translateConjuncts(
-    const lp::ExprPtr& input,
-    ExprVector& flat) {
+void ToGraph::translateConjuncts(const lp::ExprPtr& input, ExprVector& flat) {
   if (!input) {
     return;
   }
@@ -103,18 +92,7 @@ void Optimization::translateConjuncts(
   }
 }
 
-std::shared_ptr<const exec::ConstantExpr> Optimization::foldConstant(
-    const core::TypedExprPtr& typedExpr) {
-  auto exprSet = evaluator_.compile(typedExpr);
-  const auto& first = exprSet->exprs().front();
-
-  if (first->isConstant()) {
-    return std::dynamic_pointer_cast<exec::ConstantExpr>(first);
-  }
-  return nullptr;
-}
-
-ExprCP Optimization::tryFoldConstant(
+ExprCP ToGraph::tryFoldConstant(
     const lp::CallExpr* call,
     const lp::SpecialFormExpr* cast,
     const ExprVector& literals) {
@@ -126,7 +104,7 @@ ExprCP Optimization::tryFoldConstant(
         value,
         literals,
         FunctionSet());
-    auto typedExpr = toTypedExpr(veraxExpr);
+    auto typedExpr = queryCtx()->optimization()->toTypedExpr(veraxExpr);
     auto exprSet = evaluator_.compile(typedExpr);
     auto first = exprSet->exprs().front().get();
     if (auto constantExpr = dynamic_cast<const exec::ConstantExpr*>(first)) {
@@ -143,10 +121,7 @@ ExprCP Optimization::tryFoldConstant(
   return nullptr;
 }
 
-bool Optimization::isSubfield(
-    const lp::Expr* expr,
-    Step& step,
-    lp::ExprPtr& input) {
+bool ToGraph::isSubfield(const lp::Expr* expr, Step& step, lp::ExprPtr& input) {
   if (isSpecialForm(expr, lp::SpecialForm::kDereference)) {
     step.kind = StepKind::kField;
     auto maybeIndex =
@@ -202,7 +177,7 @@ bool Optimization::isSubfield(
   return false;
 }
 
-void Optimization::getExprForField(
+void ToGraph::getExprForField(
     const lp::Expr* field,
     lp::ExprPtr& resultExpr,
     ColumnCP& resultColumn,
@@ -251,8 +226,7 @@ void Optimization::getExprForField(
   }
 }
 
-std::optional<ExprCP> Optimization::translateSubfield(
-    const lp::ExprPtr& inputExpr) {
+std::optional<ExprCP> ToGraph::translateSubfield(const lp::ExprPtr& inputExpr) {
   std::vector<Step> steps;
   auto* source = logicalExprSource_;
   auto expr = inputExpr;
@@ -315,7 +289,6 @@ PathCP innerPath(const std::vector<Step>& steps, int32_t last) {
   }
   return toPath(std::move(reverse));
 }
-} // namespace
 
 Variant* subscriptLiteral(TypeKind kind, const Step& step) {
   auto* ctx = queryCtx();
@@ -340,7 +313,9 @@ Variant* subscriptLiteral(TypeKind kind, const Step& step) {
   }
 }
 
-ExprCP Optimization::makeGettersOverSkyline(
+} // namespace
+
+ExprCP ToGraph::makeGettersOverSkyline(
     const std::vector<Step>& steps,
     const SubfieldProjections* skyline,
     const lp::ExprPtr& base,
@@ -368,7 +343,7 @@ ExprCP Optimization::makeGettersOverSkyline(
     if (column) {
       expr = column;
     } else {
-      trace(kPreprocess, [&]() {
+      trace(OptimizerOptions::kPreprocess, [&]() {
         std::cout << "Complex function with no skyline: steps="
                   << toPath(steps)->toString() << std::endl;
         std::cout << "base=" << lp::ExprPrinter::toText(*base) << std::endl;
@@ -458,7 +433,7 @@ std::optional<BitSet> findSubfields(
 }
 } // namespace
 
-BitSet Optimization::functionSubfields(
+BitSet ToGraph::functionSubfields(
     const lp::CallExpr* call,
     bool controlOnly,
     bool payloadOnly) {
@@ -479,7 +454,7 @@ BitSet Optimization::functionSubfields(
   return subfields;
 }
 
-void Optimization::ensureFunctionSubfields(const lp::ExprPtr& expr) {
+void ToGraph::ensureFunctionSubfields(const lp::ExprPtr& expr) {
   if (const auto* call = expr->asUnchecked<lp::CallExpr>()) {
     auto metadata = functionMetadata(exec::sanitizeName(call->name()));
     if (!metadata) {
@@ -528,7 +503,7 @@ Name BuiltinNames::reverse(Name name) const {
   return name;
 }
 
-BuiltinNames& Optimization::builtinNames() {
+BuiltinNames& ToGraph::builtinNames() {
   if (!builtinNames_) {
     builtinNames_ = std::make_unique<BuiltinNames>();
   }
@@ -559,7 +534,7 @@ bool shouldInvert(ExprCP left, ExprCP right) {
 
 } // namespace
 
-void Optimization::canonicalizeCall(Name& name, ExprVector& args) {
+void ToGraph::canonicalizeCall(Name& name, ExprVector& args) {
   auto& names = builtinNames();
   if (!names.isCanonicalizable(name)) {
     return;
@@ -571,7 +546,7 @@ void Optimization::canonicalizeCall(Name& name, ExprVector& args) {
   }
 }
 
-ExprCP Optimization::deduppedCall(
+ExprCP ToGraph::deduppedCall(
     Name name,
     Value value,
     ExprVector args,
@@ -593,7 +568,7 @@ ExprCP Optimization::deduppedCall(
   return call;
 }
 
-ExprCP Optimization::makeConstant(const lp::ConstantExpr& constant) {
+ExprCP ToGraph::makeConstant(const lp::ConstantExpr& constant) {
   auto temp = constant.value();
   auto it = constantDedup_.find(temp);
   if (it != constantDedup_.end()) {
@@ -646,7 +621,7 @@ FunctionSet functionBits(Name name) {
 
 } // namespace
 
-ExprCP Optimization::translateExpr(const lp::ExprPtr& expr) {
+ExprCP ToGraph::translateExpr(const lp::ExprPtr& expr) {
   if (expr->isInputReference()) {
     return translateColumn(expr->asUnchecked<lp::InputReferenceExpr>()->name());
   }
@@ -726,7 +701,7 @@ ExprCP Optimization::translateExpr(const lp::ExprPtr& expr) {
   return nullptr;
 }
 
-ExprCP Optimization::translateLambda(const lp::LambdaExpr* lambda) {
+ExprCP ToGraph::translateLambda(const lp::LambdaExpr* lambda) {
   auto savedRenames = renames_;
   auto row = lambda->signature();
   toType(row);
@@ -743,7 +718,19 @@ ExprCP Optimization::translateLambda(const lp::LambdaExpr* lambda) {
   return make<Lambda>(std::move(args), toType(lambda->type()), body);
 }
 
-std::optional<ExprCP> Optimization::translateSubfieldFunction(
+namespace {
+// Returns a mask that allows 'op' in the same derived table.
+uint64_t allow(PlanType op) {
+  return 1UL << static_cast<int32_t>(op);
+}
+
+// True if 'op' is in 'mask.
+bool contains(uint64_t mask, PlanType op) {
+  return 0 != (mask & (1UL << static_cast<int32_t>(op)));
+}
+} // namespace
+
+std::optional<ExprCP> ToGraph::translateSubfieldFunction(
     const lp::CallExpr* call,
     const FunctionMetadata* metadata) {
   logicalTranslatedSubfieldFuncs_.insert(call);
@@ -802,7 +789,7 @@ std::optional<ExprCP> Optimization::translateSubfieldFunction(
     for (auto& pair : map) {
       translated[pair.first] = translateExpr(pair.second);
     }
-    trace(kPreprocess, [&]() {
+    trace(OptimizerOptions::kPreprocess, [&]() {
       std::cout << "Explode=" << lp::ExprPrinter::toText(*call) << std::endl;
       std::cout << "num paths=" << paths.size() << std::endl;
       std::cout << "translated=" << map.size() << std::endl;
@@ -823,7 +810,7 @@ std::optional<ExprCP> Optimization::translateSubfieldFunction(
   return callExpr;
 }
 
-ExprCP Optimization::translateColumn(const std::string& name) {
+ExprCP ToGraph::translateColumn(const std::string& name) {
   auto it = renames_.find(name);
   if (it != renames_.end()) {
     return it->second;
@@ -831,8 +818,7 @@ ExprCP Optimization::translateColumn(const std::string& name) {
   VELOX_FAIL("Cannot resolve column name: {}", name);
 }
 
-ExprVector Optimization::translateColumns(
-    const std::vector<lp::ExprPtr>& source) {
+ExprVector ToGraph::translateColumns(const std::vector<lp::ExprPtr>& source) {
   ExprVector result{source.size()};
   for (auto i = 0; i < source.size(); ++i) {
     result[i] = translateExpr(source[i]); // NOLINT
@@ -840,7 +826,7 @@ ExprVector Optimization::translateColumns(
   return result;
 }
 
-AggregationPlanCP Optimization::translateAggregation(
+AggregationPlanCP ToGraph::translateAggregation(
     const lp::AggregateNode& logicalAgg) {
   ExprVector groupingKeys = translateColumns(logicalAgg.groupingKeys());
   AggregateVector aggregates;
@@ -864,7 +850,7 @@ AggregationPlanCP Optimization::translateAggregation(
 
   // The keys for intermediate are the same as for final.
   ColumnVector intermediateColumns = columns;
-  for (auto channel : usedChannels(&logicalAgg)) {
+  for (auto channel : usedChannels(logicalAgg)) {
     if (channel < logicalAgg.groupingKeys().size()) {
       continue;
     }
@@ -920,7 +906,7 @@ AggregationPlanCP Optimization::translateAggregation(
       std::move(intermediateColumns));
 }
 
-PlanObjectP Optimization::addOrderBy(const lp::SortNode& order) {
+PlanObjectP ToGraph::addOrderBy(const lp::SortNode& order) {
   OrderTypeVector orderType;
   ExprVector keys;
   for (auto& field : order.ordering()) {
@@ -982,9 +968,10 @@ void extractNonInnerJoinEqualities(
     }
   }
 }
+
 } // namespace
 
-void Optimization::translateJoin(const lp::JoinNode& join) {
+void ToGraph::translateJoin(const lp::JoinNode& join) {
   const auto& joinLeft = join.left();
   const auto& joinRight = join.right();
 
@@ -1027,11 +1014,10 @@ void Optimization::translateJoin(const lp::JoinNode& join) {
     auto* edge = make<JoinEdge>(
         leftTableVector.size() == 1 ? leftTableVector[0] : nullptr,
         rightTable,
-        conjuncts,
-        leftOptional,
-        rightOptional,
-        false,
-        false);
+        JoinEdge::Spec{
+            .filter = std::move(conjuncts),
+            .leftOptional = leftOptional,
+            .rightOptional = rightOptional});
     currentSelect_->joins.push_back(edge);
     for (auto i = 0; i < leftKeys.size(); ++i) {
       edge->addEquality(leftKeys[i], rightKeys[i]);
@@ -1039,13 +1025,13 @@ void Optimization::translateJoin(const lp::JoinNode& join) {
   }
 }
 
-DerivedTableP Optimization::newDt() {
+DerivedTableP ToGraph::newDt() {
   auto* dt = make<DerivedTable>();
   dt->cname = newCName("dt");
   return dt;
 }
 
-PlanObjectP Optimization::wrapInDt(const lp::LogicalPlanNode& node) {
+PlanObjectP ToGraph::wrapInDt(const lp::LogicalPlanNode& node) {
   DerivedTableP previousDt = currentSelect_;
   auto* dt = newDt();
 
@@ -1055,7 +1041,7 @@ PlanObjectP Optimization::wrapInDt(const lp::LogicalPlanNode& node) {
   currentSelect_ = previousDt;
 
   const auto& type = node.outputType();
-  for (auto i : usedChannels(&node)) {
+  for (auto i : usedChannels(node)) {
     const auto& name = type->nameOf(i);
 
     const auto* inner = translateColumn(name);
@@ -1073,7 +1059,7 @@ PlanObjectP Optimization::wrapInDt(const lp::LogicalPlanNode& node) {
   return dt;
 }
 
-PlanObjectP Optimization::makeBaseTable(const lp::TableScanNode& tableScan) {
+PlanObjectP ToGraph::makeBaseTable(const lp::TableScanNode& tableScan) {
   const auto* schemaTable = schema_.findTable(tableScan.tableName());
   VELOX_CHECK_NOT_NULL(
       schemaTable, "Table not found: {}", tableScan.tableName());
@@ -1083,7 +1069,7 @@ PlanObjectP Optimization::makeBaseTable(const lp::TableScanNode& tableScan) {
   baseTable->schemaTable = schemaTable;
   logicalPlanLeaves_[&tableScan] = baseTable;
 
-  auto channels = usedChannels(&tableScan);
+  auto channels = usedChannels(tableScan);
   const auto& type = tableScan.outputType();
   const auto& names = tableScan.columnNames();
   for (auto i : channels) {
@@ -1113,10 +1099,10 @@ PlanObjectP Optimization::makeBaseTable(const lp::TableScanNode& tableScan) {
         baseTable->payloadSubfields.subfields.push_back(payloadPaths);
         allPaths.unionSet(payloadPaths);
       }
-      if (opts_.pushdownSubfields) {
+      if (options_.pushdownSubfields) {
         Path::subfieldSkyline(allPaths);
         if (!allPaths.empty()) {
-          trace(kPreprocess, [&]() {
+          trace(OptimizerOptions::kPreprocess, [&]() {
             std::cout << "Subfields: " << baseTable->cname << "."
                       << baseTable->schemaTable->name << " " << column->name()
                       << ":" << allPaths.size() << std::endl;
@@ -1129,23 +1115,27 @@ PlanObjectP Optimization::makeBaseTable(const lp::TableScanNode& tableScan) {
     renames_[type->nameOf(i)] = column;
   }
 
+  auto* optimization = queryCtx()->optimization();
+
+  optimization->filterUpdated(baseTable, false);
+
   ColumnVector top;
   std::unordered_map<ColumnCP, TypePtr> map;
-  filterUpdated(baseTable, false);
-  auto scanType =
-      subfieldPushdownScanType(baseTable, baseTable->columns, top, map);
-  setLeafSelectivity(*baseTable, scanType);
+  auto scanType = optimization->subfieldPushdownScanType(
+      baseTable, baseTable->columns, top, map);
+
+  optimization->setLeafSelectivity(*baseTable, scanType);
   currentSelect_->tables.push_back(baseTable);
   currentSelect_->tableSet.add(baseTable);
   return baseTable;
 }
 
-PlanObjectP Optimization::makeValuesTable(const lp::ValuesNode& values) {
+PlanObjectP ToGraph::makeValuesTable(const lp::ValuesNode& values) {
   auto* valuesTable = make<ValuesTable>(values);
   valuesTable->cname = newCName("vt");
   logicalPlanLeaves_[&values] = valuesTable;
 
-  auto channels = usedChannels(&values);
+  auto channels = usedChannels(values);
   const auto& type = values.outputType();
   const auto& names = values.outputType()->names();
   const auto cardinality = valuesTable->cardinality();
@@ -1189,7 +1179,7 @@ const Type* pathType(const Type* type, PathCP path) {
 }
 } // namespace
 
-void Optimization::makeSubfieldColumns(
+void ToGraph::makeSubfieldColumns(
     BaseTable* baseTable,
     ColumnCP column,
     const BitSet& paths) {
@@ -1211,12 +1201,12 @@ void Optimization::makeSubfieldColumns(
   allColumnSubfields_[column] = std::move(projections);
 }
 
-PlanObjectP Optimization::addProjection(const lp::ProjectNode* project) {
+PlanObjectP ToGraph::addProjection(const lp::ProjectNode* project) {
   logicalExprSource_ = project->onlyInput().get();
   const auto& names = project->names();
   const auto& exprs = project->expressions();
-  auto channels = usedChannels(project);
-  trace(kPreprocess, [&]() {
+  auto channels = usedChannels(*project);
+  trace(OptimizerOptions::kPreprocess, [&]() {
     for (auto i = 0; i < exprs.size(); ++i) {
       if (std::find(channels.begin(), channels.end(), i) == channels.end()) {
         std::cout << "P=" << project->id()
@@ -1243,7 +1233,7 @@ PlanObjectP Optimization::addProjection(const lp::ProjectNode* project) {
   return currentSelect_;
 }
 
-PlanObjectP Optimization::addFilter(const lp::FilterNode* filter) {
+PlanObjectP ToGraph::addFilter(const lp::FilterNode* filter) {
   logicalExprSource_ = filter->onlyInput().get();
 
   ExprVector flat;
@@ -1261,15 +1251,12 @@ PlanObjectP Optimization::addFilter(const lp::FilterNode* filter) {
   return currentSelect_;
 }
 
-PlanObjectP Optimization::addAggregation(const lp::AggregateNode& aggNode) {
-  aggFinalType_ = aggNode.outputType();
-
+PlanObjectP ToGraph::addAggregation(const lp::AggregateNode& aggNode) {
   currentSelect_->aggregation = translateAggregation(aggNode);
-
   return currentSelect_;
 }
 
-PlanObjectP Optimization::addLimit(const lp::LimitNode& limitNode) {
+PlanObjectP ToGraph::addLimit(const lp::LimitNode& limitNode) {
   currentSelect_->limit = limitNode.count();
   currentSelect_->offset = limitNode.offset();
   return currentSelect_;
@@ -1292,7 +1279,7 @@ bool hasNondeterministic(const lp::ExprPtr& expr) {
 }
 } // namespace
 
-DerivedTableP Optimization::translateSetJoin(
+DerivedTableP ToGraph::translateSetJoin(
     const lp::SetNode& set,
     DerivedTableP setDt) {
   auto previousDt = currentSelect_;
@@ -1304,13 +1291,15 @@ DerivedTableP Optimization::translateSetJoin(
   const bool exists = set.operation() == lp::SetOperation::kIntersect;
   const bool anti = set.operation() == lp::SetOperation::kExcept;
 
+  VELOX_CHECK(exists || anti);
+
   const auto* left = setDt->tables[0]->as<DerivedTable>();
 
   for (auto i = 1; i < setDt->tables.size(); ++i) {
     const auto* right = setDt->tables[i]->as<DerivedTable>();
 
-    auto* joinEdge =
-        make<JoinEdge>(left, right, ExprVector{}, false, false, exists, anti);
+    auto* joinEdge = exists ? JoinEdge::makeExists(left, right)
+                            : JoinEdge::makeNotExists(left, right);
     for (auto i = 0; i < left->columns.size(); ++i) {
       joinEdge->addEquality(left->columns[i], right->columns[i]);
     }
@@ -1339,7 +1328,7 @@ DerivedTableP Optimization::translateSetJoin(
   return setDt;
 }
 
-void Optimization::makeUnionDistributionAndStats(
+void ToGraph::makeUnionDistributionAndStats(
     DerivedTableP setDt,
     DerivedTableP innerDt) {
   if (setDt->distribution == nullptr) {
@@ -1355,19 +1344,8 @@ void Optimization::makeUnionDistributionAndStats(
         setDt->columns.size(),
         "Union inputs must have same arity also after pruning");
 
-    MemoKey key;
-    key.firstTable = innerDt;
-    key.tables.add(innerDt);
-    for (auto& column : innerDt->columns) {
-      key.columns.add(column);
-    }
+    auto plan = innerDt->bestInitialPlan()->op;
 
-    auto it = memo_.find(key);
-    VELOX_CHECK(it != memo_.end(), "Expecting to find a plan for union branch");
-
-    bool ignore;
-    Distribution emptyDistribution;
-    auto plan = it->second.best(emptyDistribution, ignore)->op;
     setDt->distribution->cardinality += plan->distribution().cardinality;
     for (auto i = 0; i < setDt->columns.size(); ++i) {
       // The Column is created in setDt before all branches are planned so the
@@ -1383,7 +1361,7 @@ void Optimization::makeUnionDistributionAndStats(
   }
 }
 
-DerivedTableP Optimization::translateUnion(
+DerivedTableP ToGraph::translateUnion(
     const lp::SetNode& set,
     DerivedTableP setDt,
     bool isTopLevel,
@@ -1426,7 +1404,7 @@ DerivedTableP Optimization::translateUnion(
 
       if (isLeftLeaf) {
         // This is the left leaf of a union tree.
-        for (auto i : usedChannels(input.get())) {
+        for (auto i : usedChannels(*input)) {
           const auto& name = type->nameOf(i);
 
           ExprCP inner = translateColumn(name);
@@ -1439,7 +1417,7 @@ DerivedTableP Optimization::translateUnion(
         }
         isLeftLeaf = false;
       } else {
-        for (auto i : usedChannels(input.get())) {
+        for (auto i : usedChannels(*input)) {
           ExprCP inner = translateColumn(type->nameOf(i));
           newDt->exprs.push_back(inner);
         }
@@ -1472,7 +1450,26 @@ DerivedTableP Optimization::translateUnion(
   return setDt;
 }
 
-PlanObjectP Optimization::makeQueryGraph(
+DerivedTableP ToGraph::makeQueryGraph(const lp::LogicalPlanNode& logicalPlan) {
+  markAllSubfields(logicalPlan.outputType().get(), logicalPlan);
+
+  auto root = newDt();
+  currentSelect_ = root;
+
+  makeQueryGraph(logicalPlan, kAllAllowedInDt);
+  return root;
+}
+
+namespace {
+// Removes 'op' from the set of operators allowed in the current derived
+// table. makeQueryGraph() starts a new derived table if it finds an operator
+// that does not belong to the mask.
+uint64_t makeDtIf(uint64_t mask, PlanType op) {
+  return mask & ~(1UL << static_cast<int32_t>(op));
+}
+} // namespace
+
+PlanObjectP ToGraph::makeQueryGraph(
     const lp::LogicalPlanNode& node,
     uint64_t allowedInDt) {
   ToGraphContext ctx(&node);
@@ -1566,8 +1563,7 @@ PlanObjectP Optimization::makeQueryGraph(
     case lp::NodeKind::kUnnest:
     default:
       VELOX_NYI(
-          "Unsupported PlanNode {}",
-          logical_plan::NodeKindName::toName(node.kind()));
+          "Unsupported PlanNode {}", lp::NodeKindName::toName(node.kind()));
   }
 }
 

@@ -474,29 +474,45 @@ struct JoinSide {
 /// decomposable and reorderable conjuncts.
 class JoinEdge {
  public:
-  JoinEdge(
-      PlanObjectCP leftTable,
-      PlanObjectCP rightTable,
-      ExprVector filter,
-      bool leftOptional,
-      bool rightOptional,
-      bool rightExists,
-      bool rightNotExists,
-      ColumnCP markColumn = nullptr,
-      bool directed = false)
+  /// Default is INNER JOIN.
+  struct Spec {
+    ExprVector filter;
+    bool leftOptional{false};
+    bool rightOptional{false};
+    bool rightExists{false};
+    bool rightNotExists{false};
+    ColumnCP markColumn{nullptr};
+    bool directed{false};
+  };
+
+  JoinEdge(PlanObjectCP leftTable, PlanObjectCP rightTable, Spec spec)
       : leftTable_(leftTable),
         rightTable_(rightTable),
-        filter_(std::move(filter)),
-        leftOptional_(leftOptional),
-        rightOptional_(rightOptional),
-        rightExists_(rightExists),
-        rightNotExists_(rightNotExists),
-        markColumn_(markColumn),
-        directed_(directed) {
+        filter_(std::move(spec.filter)),
+        leftOptional_(spec.leftOptional),
+        rightOptional_(spec.rightOptional),
+        rightExists_(spec.rightExists),
+        rightNotExists_(spec.rightNotExists),
+        markColumn_(spec.markColumn),
+        directed_(spec.directed) {
     VELOX_CHECK_NOT_NULL(rightTable);
     if (isInner()) {
       VELOX_CHECK(filter_.empty());
     }
+  }
+
+  static JoinEdge* makeInner(PlanObjectCP leftTable, PlanObjectCP rightTable) {
+    return make<JoinEdge>(leftTable, rightTable, Spec{});
+  }
+
+  static JoinEdge* makeExists(PlanObjectCP leftTable, PlanObjectCP rightTable) {
+    return make<JoinEdge>(leftTable, rightTable, Spec{.rightExists = true});
+  }
+
+  static JoinEdge* makeNotExists(
+      PlanObjectCP leftTable,
+      PlanObjectCP rightTable) {
+    return make<JoinEdge>(leftTable, rightTable, Spec{.rightNotExists = true});
   }
 
   PlanObjectCP leftTable() const {
