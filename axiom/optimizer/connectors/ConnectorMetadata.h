@@ -193,6 +193,8 @@ class Column {
 //// Describes the kind of table, e.g. durable vs. temporary.
 enum class TableKind { kTable, kTempTable };
 
+VELOX_DECLARE_ENUM_NAME(TableKind);
+  
 class Table;
 
 /// Represents sorting order. Duplicate of core::SortOrder. Connectors
@@ -527,7 +529,7 @@ struct LookupKeys {
 };
 
 /// Describes how to repartition data before a TableWriter.
-struct WritePartitioning {
+struct WritePartitionInfo {
   /// Columns for partitioning,. Names refer to the column names in the insert
   /// table handle. Empty if any worker can write any row.
   const std::vector<std::string> columns;
@@ -569,11 +571,12 @@ enum class WriteKind {
   // and then new values for the columns being changed. The new values
   // may overlap with row ids if the row id is a set of primary key
   // columns.
-
   kUpdate
 };
 
-class ConnectorMetadata {
+VELOX_DECLARE_ENUM_NAME(WriteKind);
+
+  class ConnectorMetadata {
  public:
   virtual ~ConnectorMetadata() = default;
 
@@ -694,7 +697,7 @@ class ConnectorMetadata {
 
   /// Returns specification for repartitioning data before the table writer
   /// stage.
-  virtual WritePartitioning writerShuffleInfo(
+    virtual WritePartitionInfo writePartitionInfo(
       const ConnectorInsertTableHandlePtr& handle) {
     VELOX_UNSUPPORTED();
   }
@@ -723,3 +726,22 @@ class ConnectorMetadata {
 };
 
 } // namespace facebook::velox::connector
+
+
+template <>
+struct fmt::formatter<facebook::velox::connector::TableKind> : fmt::formatter<string_view> {
+  template <typename FormatContext>
+  auto format(facebook::velox::connector::TableKind k, FormatContext& ctx) const {
+    return formatter<string_view>::format(
+					  facebook::velox::connector::TableKindName::toName(k), ctx);
+  }
+};
+
+template <>
+struct fmt::formatter<facebook::velox::connector::WriteKind> : fmt::formatter<string_view> {
+  template <typename FormatContext>
+  auto format(facebook::velox::connector::WriteKind k, FormatContext& ctx) const {
+    return formatter<string_view>::format(
+					  facebook::velox::connector::WriteKindName::toName(k), ctx);
+  }
+};

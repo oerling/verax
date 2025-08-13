@@ -115,7 +115,7 @@ ConnectorInsertTableHandlePtr HiveConnectorMetadata::createInsertTableHandle(
     WriteKind kind,
     const ConnectorSessionPtr& session) {
   ensureInitialized();
-  VELOX_CHECK(kind == WriteKind::kInsert, "Only insert supported");
+  VELOX_CHECK_EQ(kind, WriteKind::kInsert, "Only insert supported");
 
   std::vector<std::shared_ptr<const HiveColumnHandle>> inputColumns;
   auto storageFormat = dwio::common::FileFormat::DWRF;
