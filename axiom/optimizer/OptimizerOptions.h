@@ -28,7 +28,6 @@ struct OptimizerOptions {
   static constexpr int32_t kSample = 4;
   static constexpr int32_t kPreprocess = 8;
 
-
   /// Parallelizes independent projections over this many threads. 1 means no
   /// parallel projection.
   int32_t parallelProjectWidth = 1;
@@ -40,7 +39,7 @@ struct OptimizerOptions {
   /// Makes all maps for which a known subset of keys is accessed to
   /// be projected out as structs.
   bool allMapsAsStruct{false};
-  
+
   /// Map from table name to  list of map columns to be read as structs unless
   /// the whole map is accessed as a map.
   std::unordered_map<std::string, std::vector<std::string>> mapAsStruct;
@@ -51,10 +50,10 @@ struct OptimizerOptions {
   int32_t traceFlags{0};
 
   bool isMapAsStruct(const char* table, const char* column) const {
-  if (allMapsAsStruct) {
-    return true;
-  }
-  auto it = mapAsStruct.find(table);
+    if (allMapsAsStruct) {
+      return true;
+    }
+    auto it = mapAsStruct.find(table);
     if (it == mapAsStruct.end()) {
       return false;
     }

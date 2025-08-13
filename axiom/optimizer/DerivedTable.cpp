@@ -719,7 +719,7 @@ void DerivedTable::distributeConjuncts() {
   // neutral border. This is either a single leaf table or a union all
   // of dts.
   bool allowNondeterministic = tables.size() == 1 &&
-    (tables[0]->type() == PlanType::kTableNode ||
+      (tables[0]->type() == PlanType::kTableNode ||
        (tables[0]->type() == PlanType::kDerivedTableNode &&
         tables[0]->as<DerivedTable>()->setOp.has_value() &&
         tables[0]->as<DerivedTable>()->setOp.value() ==

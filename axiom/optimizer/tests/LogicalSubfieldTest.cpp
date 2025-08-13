@@ -267,7 +267,7 @@ class LogicalSubfieldTest : public QueryTestBase,
             .project({"float_features as float_features_1"})
             .project({"float_features_1 as float_features_2"})
 
-      .project(
+            .project(
                 {"make_row_from_map(float_features_2, array[10010, 10020, 10030], array['f1', 'f2', 'f3']) as r"})
             .project({"r as r1"})
             .project({"r1 as r2"})
