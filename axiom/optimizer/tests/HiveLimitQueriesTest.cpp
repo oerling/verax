@@ -44,11 +44,8 @@ TEST_F(HiveLimitQueriesTest, limit) {
     SCOPED_TRACE("numWorkers: 1, numDrivers: 1");
     auto plan = planVelox(logicalPlan, {.numWorkers = 1, .numDrivers = 1});
 
-    auto matcher = core::PlanMatcherBuilder()
-                       .tableScan()
-                       .project()
-                       .finalLimit(0, 10)
-                       .build();
+    auto matcher =
+        core::PlanMatcherBuilder().tableScan().finalLimit(0, 10).build();
 
     checkSingleNodePlan(plan, matcher);
     checkResults(plan, referenceResults);
@@ -61,7 +58,6 @@ TEST_F(HiveLimitQueriesTest, limit) {
 
     auto matcher = core::PlanMatcherBuilder()
                        .tableScan()
-                       .project()
                        .partialLimit(0, 10)
                        .localPartition()
                        .finalLimit(0, 10)
@@ -84,7 +80,6 @@ TEST_F(HiveLimitQueriesTest, limit) {
 
     auto matcher = core::PlanMatcherBuilder()
                        .tableScan()
-                       .project()
                        .partialLimit(0, 10)
                        .localPartition()
                        .finalLimit(0, 10)
@@ -119,11 +114,8 @@ TEST_F(HiveLimitQueriesTest, offset) {
     SCOPED_TRACE("numWorkers: 1, numDrivers: 1");
     auto plan = planVelox(logicalPlan, {.numWorkers = 1, .numDrivers = 1});
 
-    auto matcher = core::PlanMatcherBuilder()
-                       .tableScan()
-                       .project()
-                       .finalLimit(5, 10)
-                       .build();
+    auto matcher =
+        core::PlanMatcherBuilder().tableScan().finalLimit(5, 10).build();
 
     checkSingleNodePlan(plan, matcher);
     checkResults(plan, referenceResults);
@@ -136,7 +128,6 @@ TEST_F(HiveLimitQueriesTest, offset) {
 
     auto matcher = core::PlanMatcherBuilder()
                        .tableScan()
-                       .project()
                        .partialLimit(0, 15)
                        .localPartition()
                        .finalLimit(5, 10)
@@ -159,7 +150,6 @@ TEST_F(HiveLimitQueriesTest, offset) {
 
     auto matcher = core::PlanMatcherBuilder()
                        .tableScan()
-                       .project()
                        .partialLimit(0, 15)
                        .localPartition()
                        .finalLimit(0, 15)

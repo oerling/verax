@@ -74,7 +74,7 @@ void ToGraph::setDtOutput(
     dt->exprs.push_back(inner);
 
     Value value(toType(type), 0);
-    auto* outer = make<Column>(toName(name), dt, value);
+    auto* outer = make<Column>(toName(name), dt, value, toName(name));
     dt->columns.push_back(outer);
     renames_[name] = outer;
   }
@@ -90,7 +90,8 @@ void ToGraph::setDtUsedOutput(
     const auto* inner = translateColumn(name);
     dt->exprs.push_back(inner);
 
-    const auto* outer = make<Column>(toName(name), dt, inner->value());
+    const auto* outer =
+        make<Column>(toName(name), dt, inner->value(), toName(name));
     dt->columns.push_back(outer);
     renames_[name] = outer;
   }
@@ -858,7 +859,7 @@ AggregationPlanCP ToGraph::translateAggregation(
     } else {
       toType(logicalAgg.outputType()->childAt(i));
 
-      auto* column = make<Column>(name, currentDt_, key->value());
+      auto* column = make<Column>(name, currentDt_, key->value(), name);
       columns.push_back(column);
     }
 
@@ -902,13 +903,13 @@ AggregationPlanCP ToGraph::translateAggregation(
         false,
         accumulatorType);
     auto name = toName(logicalAgg.outputNames()[channel]);
-    auto* column = make<Column>(name, currentDt_, agg->value());
+    auto* column = make<Column>(name, currentDt_, agg->value(), name);
     columns.push_back(column);
 
     auto intermediateValue = agg->value();
     intermediateValue.type = accumulatorType;
     auto* intermediateColumn =
-        make<Column>(name, currentDt_, intermediateValue);
+        make<Column>(name, currentDt_, intermediateValue, name);
     intermediateColumns.push_back(intermediateColumn);
     auto dedupped = queryCtx()->dedup(agg);
     aggregates.push_back(dedupped->as<Aggregate>());
@@ -1085,9 +1086,13 @@ void ToGraph::finalizeDt(
 }
 
 PlanObjectP ToGraph::makeBaseTable(const lp::TableScanNode& tableScan) {
-  const auto* schemaTable = schema_.findTable(tableScan.tableName());
+  const auto* schemaTable =
+      schema_.findTable(tableScan.connectorId(), tableScan.tableName());
   VELOX_CHECK_NOT_NULL(
-      schemaTable, "Table not found: {}", tableScan.tableName());
+      schemaTable,
+      "Table not found: {} via connector {}",
+      tableScan.tableName(),
+      tableScan.connectorId());
 
   auto* baseTable = make<BaseTable>();
   baseTable->cname = newCName("t");
@@ -1103,8 +1108,12 @@ PlanObjectP ToGraph::makeBaseTable(const lp::TableScanNode& tableScan) {
     const auto& name = names[i];
     auto schemaColumn = schemaTable->findColumn(name);
     auto value = schemaColumn->value();
-    auto* column =
-        make<Column>(toName(name), baseTable, value, schemaColumn->name());
+    auto* column = make<Column>(
+        toName(name),
+        baseTable,
+        value,
+        toName(type->nameOf(i)),
+        schemaColumn->name());
     baseTable->columns.push_back(column);
 
     const auto kind = column->value().type->kind();
@@ -1167,8 +1176,8 @@ PlanObjectP ToGraph::makeValuesTable(const lp::ValuesNode& values) {
     VELOX_DCHECK_LT(i, type->size());
 
     const auto& name = names[i];
-    Value value{type->childAt(i).get(), cardinality};
-    auto* column = make<Column>(toName(name), valuesTable, value);
+    Value value{toType(type->childAt(i)), cardinality};
+    auto* column = make<Column>(toName(name), valuesTable, value, toName(name));
     valuesTable->columns.push_back(column);
 
     renames_[name] = column;
@@ -1217,8 +1226,8 @@ void ToGraph::makeSubfieldColumns(
     auto type = pathType(column->value().type, path);
     Value value(type, card);
     auto name = fmt::format("{}.{}", column->name(), path->toString());
-    auto* subcolumn =
-        make<Column>(toName(name), baseTable, value, nullptr, column, path);
+    auto* subcolumn = make<Column>(
+        toName(name), baseTable, value, nullptr, nullptr, column, path);
     baseTable->columns.push_back(subcolumn);
     projections.pathToExpr[path] = subcolumn;
   });
@@ -1347,8 +1356,11 @@ DerivedTableP ToGraph::translateSetJoin(
   ColumnVector columns;
   for (auto i = 0; i < type->size(); ++i) {
     exprs.push_back(left->columns[i]);
-    columns.push_back(
-        make<Column>(toName(type->nameOf(i)), setDt, exprs.back()->value()));
+    columns.push_back(make<Column>(
+        toName(type->nameOf(i)),
+        setDt,
+        exprs.back()->value(),
+        toName(type->nameOf(i))));
     renames_[type->nameOf(i)] = columns.back();
   }
 
@@ -1446,7 +1458,8 @@ DerivedTableP ToGraph::translateUnion(
           newDt->exprs.push_back(inner);
 
           // The top dt has the same columns as all the unioned dts.
-          auto* outer = make<Column>(toName(name), setDt, inner->value());
+          auto* outer =
+              make<Column>(toName(name), setDt, inner->value(), toName(name));
           setDt->columns.push_back(outer);
           newDt->columns.push_back(outer);
         }

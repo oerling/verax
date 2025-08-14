@@ -451,15 +451,14 @@ class Optimization {
     return history_;
   }
 
-  /// If false, correlation names are not included in Column::toString(),. Used
+  /// If false, correlation names are not included in Column::toString(). Used
   /// for canonicalizing join cache keys.
   bool& cnamesInExpr() {
     return cnamesInExpr_;
   }
 
-  /// Map for canonicalizing correlation names when making history cache keys.
-  std::unordered_map<Name, Name>*& canonicalCnames() {
-    return canonicalCnames_;
+  bool cnamesInExpr() const {
+    return cnamesInExpr_;
   }
 
   BuiltinNames& builtinNames() {
@@ -631,8 +630,6 @@ class Optimization {
   const bool isSingle_;
 
   bool cnamesInExpr_{true};
-
-  std::unordered_map<Name, Name>* canonicalCnames_{nullptr};
 
   ToGraph toGraph_;
 

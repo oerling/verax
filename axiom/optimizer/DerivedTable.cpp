@@ -671,6 +671,24 @@ findJoin(DerivedTableP dt, std::vector<PlanObjectP>& tables, bool create) {
   }
   return nullptr;
 }
+
+// Check if a non-UNION DT has a limit or one of the children of a UNION DT has
+// a limit.
+bool dtHasLimit(const DerivedTable& dt) {
+  if (dt.setOp.has_value()) {
+    for (const auto& child : dt.children) {
+      if (child->type() == PlanType::kDerivedTableNode &&
+          child->as<DerivedTable>()->hasLimit()) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  return dt.hasLimit();
+}
+
 } // namespace
 
 void DerivedTable::distributeConjuncts() {
@@ -738,12 +756,20 @@ void DerivedTable::distributeConjuncts() {
       if (tables[0] == this) {
         continue; // the conjunct depends on containing dt, like grouping or
                   // existence flags. Leave in place.
-      } else if (tables[0]->type() == PlanType::kValuesTableNode) {
+      }
+
+      if (tables[0]->type() == PlanType::kValuesTableNode) {
         continue; // ValuesTable does not have filter push-down.
-      } else if (tables[0]->type() == PlanType::kDerivedTableNode) {
+      }
+
+      if (tables[0]->type() == PlanType::kDerivedTableNode) {
         // Translate the column names and add the condition to the conjuncts in
         // the dt. If the inner is a set operation, add the filter to children.
         auto innerDt = tables[0]->as<DerivedTable>();
+        if (dtHasLimit(*innerDt)) {
+          continue;
+        }
+
         auto numChildren =
             innerDt->children.empty() ? 1 : innerDt->children.size();
         for (auto childIdx = 0; childIdx < numChildren; ++childIdx) {

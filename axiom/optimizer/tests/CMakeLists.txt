@@ -90,7 +90,7 @@ add_executable(
   PlanTest.cpp
   ParquetTpchTest.cpp
   QueryTestBase.cpp
-  LogicalSubfieldTest.cpp
+  SubfieldTest.cpp
   FeatureGen.cpp
   Genies.cpp
   SchemaResolverTest.cpp)

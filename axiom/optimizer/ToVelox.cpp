@@ -29,6 +29,7 @@ using namespace facebook::velox::runner;
 namespace facebook::velox::optimizer {
 
 namespace {
+
 std::vector<common::Subfield> columnSubfields(BaseTableCP table, int32_t id) {
   auto* optimization = queryCtx()->optimization();
 
@@ -187,15 +188,18 @@ PlanAndStats ToVelox::toVeloxPlan(
     RelationOpPtr plan,
     const MultiFragmentPlan::Options& options) {
   options_ = options;
-  std::vector<ExecutableFragment> stages;
+
   prediction_.clear();
   nodeHistory_.clear();
+
   if (options_.numWorkers > 1) {
     plan = addGather(plan);
   }
 
   ExecutableFragment top;
+  std::vector<ExecutableFragment> stages;
   top.fragment.planNode = makeFragment(std::move(plan), top, stages);
+
   stages.push_back(std::move(top));
   return PlanAndStats{
       std::make_shared<velox::runner::MultiFragmentPlan>(
@@ -225,7 +229,7 @@ RowTypePtr ToVelox::makeOutputType(const ColumnVector& columns) {
       }
     }
     auto name = makeVeloxExprWithNoAlias_ ? std::string(column->name())
-                                          : column->toString();
+                                          : outputName(column);
     names.push_back(name);
     types.push_back(toTypePtr(columns[i]->value().type));
   }
@@ -379,7 +383,7 @@ core::TypedExprPtr ToVelox::toTypedExpr(ExprCP expr) {
         return pathToGetter(column->topColumn(), column->path(), field);
       }
       auto name = makeVeloxExprWithNoAlias_ ? std::string(column->name())
-                                            : column->toString();
+                                            : outputName(column);
       // Check if a top level map should be retrieved as struct.
       auto it = columnAlteredTypes_.find(column);
       if (it != columnAlteredTypes_.end()) {
@@ -468,9 +472,9 @@ class TempProjections {
       : toVelox_(tv), input_(input) {
     for (auto& column : input_.columns()) {
       exprChannel_[column] = nextChannel_++;
-      names_.push_back(column->toString());
+      names_.push_back(ToVelox::outputName(column));
       fieldRefs_.push_back(std::make_shared<core::FieldAccessTypedExpr>(
-          toTypePtr(column->value().type), column->toString()));
+          toTypePtr(column->value().type), names_.back()));
     }
     exprs_.insert(exprs_.begin(), fieldRefs_.begin(), fieldRefs_.end());
   }
@@ -519,6 +523,7 @@ class TempProjections {
     if (nextChannel_ == input_.columns().size()) {
       return inputNode;
     }
+
     return std::make_shared<core::ProjectNode>(
         toVelox_.nextId(), std::move(names_), std::move(exprs_), inputNode);
   }
@@ -955,7 +960,7 @@ core::PlanNodePtr ToVelox::makeSubfieldProjections(
   std::vector<std::string> names;
   std::vector<core::TypedExprPtr> exprs;
   for (auto* column : scan.columns()) {
-    names.push_back(column->toString());
+    names.push_back(outputName(column));
     exprs.push_back(toTypedExpr(column));
   }
   return std::make_shared<core::ProjectNode>(
@@ -971,8 +976,7 @@ core::TypedExprPtr toAndWithAliases(
   std::unordered_map<std::string, core::TypedExprPtr> mapping;
   for (const auto& column : baseTable->columns) {
     mapping[column->name()] = std::make_shared<core::FieldAccessTypedExpr>(
-        toTypePtr(column->value().type),
-        fmt::format("{}.{}", baseTable->cname, column->name()));
+        toTypePtr(column->value().type), ToVelox::outputName(column));
   }
   return result->rewriteInputNames(mapping);
 }
@@ -1003,7 +1007,7 @@ velox::core::PlanNodePtr ToVelox::makeScan(
     // No correlation name in scan output if pushed down subfield projection
     // follows.
     auto scanColumnName =
-        isSubfieldPushdown ? column->name() : column->toString();
+        isSubfieldPushdown ? column->name() : outputName(column);
     assignments[scanColumnName] =
         std::const_pointer_cast<connector::ColumnHandle>(
             scan.index->layout->connector()->metadata()->createColumnHandle(
@@ -1055,12 +1059,36 @@ velox::core::PlanNodePtr ToVelox::makeProject(
       return result;
     }
   }
+
+  bool redundant = true;
+  for (auto i = 0; i < project.exprs().size(); ++i) {
+    auto expr = project.exprs()[i];
+    if (expr->type() != PlanType::kColumnExpr) {
+      redundant = false;
+      break;
+    }
+
+    auto column = project.columns()[i];
+
+    // TODO Why expr->sameOrEquals(*column) doesn't work?
+    if (input->outputType()->nameOf(i) != outputName(column)) {
+      redundant = false;
+      break;
+    }
+  }
+
+  if (redundant) {
+    return input;
+  }
+
   std::vector<std::string> names;
   std::vector<core::TypedExprPtr> exprs;
   for (auto i = 0; i < project.exprs().size(); ++i) {
-    names.push_back(project.columns()[i]->toString());
+    auto column = project.columns()[i];
+    names.push_back(outputName(column));
     exprs.push_back(toTypedExpr(project.exprs()[i]));
   }
+
   return std::make_shared<core::ProjectNode>(
       nextId(), std::move(names), std::move(exprs), input);
 }
@@ -1091,6 +1119,7 @@ velox::core::PlanNodePtr ToVelox::makeJoin(
 
   auto leftKeys = leftProjections.toFieldRefs(join.leftKeys);
   auto rightKeys = rightProjections.toFieldRefs(join.rightKeys);
+
   auto joinNode = std::make_shared<core::HashJoinNode>(
       nextId(),
       join.joinType,
@@ -1122,7 +1151,7 @@ core::PlanNodePtr ToVelox::makeAggregation(
     const auto* column = op.columns()[i + numKeys];
     const auto& type = toTypePtr(column->value().type);
 
-    aggregateNames.push_back(column->toString());
+    aggregateNames.push_back(outputName(column));
 
     const auto* aggregate = op.aggregates[i];
 
@@ -1157,7 +1186,7 @@ core::PlanNodePtr ToVelox::makeAggregation(
   std::vector<std::string> keyNames;
   keyNames.reserve(op.groupingKeys.size());
   for (auto i = 0; i < op.groupingKeys.size(); ++i) {
-    keyNames.push_back(op.columns()[i]->toString());
+    keyNames.push_back(outputName(op.columns()[i]));
   }
 
   auto keys = projections.toFieldRefs(op.groupingKeys, &keyNames);
@@ -1209,7 +1238,9 @@ velox::core::PlanNodePtr ToVelox::makeRepartition(
   if (distribution.distributionType.isGather) {
     fragment.width = 1;
   }
+
   auto partitioningInput = project.maybeProject(sourcePlan);
+
   auto partitionFunctionFactory = createPartitionFunctionSpec(
       partitioningInput->outputType(), keys, distribution.isBroadcast);
   if (distribution.isBroadcast) {

@@ -94,6 +94,7 @@ class ExprResolver {
   static inline int32_t literalsCounter_{0};
 };
 
+// Make sure to specify Context.queryCtx to enable constand folding.
 class PlanBuilder {
  public:
   struct Context {

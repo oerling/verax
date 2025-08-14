@@ -154,9 +154,10 @@ class Literal : public Expr {
 class Column : public Expr {
  public:
   Column(
-      Name _name,
-      PlanObjectP _relation,
+      Name name,
+      PlanObjectP relation,
       const Value& value,
+      Name alias = nullptr,
       Name nameInTable = nullptr,
       ColumnCP topColumn = nullptr,
       PathCP path = nullptr);
@@ -167,6 +168,10 @@ class Column : public Expr {
 
   PlanObjectCP relation() const {
     return relation_;
+  }
+
+  Name alias() const {
+    return alias_;
   }
 
   ColumnCP schemaColumn() const {
@@ -198,6 +203,9 @@ class Column : public Expr {
 
   // The defining BaseTable or DerivedTable.
   PlanObjectP relation_;
+
+  // Optional alias copied from the the logical plan.
+  Name alias_;
 
   // Equivalence class. Lists all columns directly or indirectly asserted equal
   // to 'this'.

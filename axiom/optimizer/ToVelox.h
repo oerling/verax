@@ -79,6 +79,11 @@ class ToVelox {
 
   void filterUpdated(BaseTableCP baseTable, bool updateSelectivity = true);
 
+  // Returns column name to use in the Velox plan.
+  static std::string outputName(ColumnCP column) {
+    return column->alias() ? column->alias() : column->toString();
+  }
+
  private:
   void setLeafHandle(
       int32_t id,

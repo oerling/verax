@@ -47,27 +47,28 @@ void Column::equals(ColumnCP other) const {
 }
 
 std::string Column::toString() const {
-  auto* opt = queryCtx()->optimization();
+  const auto* opt = queryCtx()->optimization();
   if (!-opt->cnamesInExpr()) {
     return name_;
   }
-  Name cname = !relation_ ? ""
-      : relation_->type() == PlanType::kTableNode
-      ? relation_->as<BaseTable>()->cname
-      : relation_->type() == PlanType::kValuesTableNode
-      ? relation_->as<ValuesTable>()->cname
-      : relation_->type() == PlanType::kDerivedTableNode
-      ? relation_->as<DerivedTable>()->cname
-      : "--";
 
-  // Map corre;correlation names to canonical if making keys for history pieces.
-  auto canonical = opt->canonicalCnames();
-  if (canonical) {
-    auto it = canonical->find(cname);
-    if (it != canonical->end()) {
-      cname = it->second;
+  Name cname = "";
+  if (relation_) {
+    switch (relation_->type()) {
+      case PlanType::kTableNode:
+        cname = relation_->as<BaseTable>()->cname;
+        break;
+      case PlanType::kValuesTableNode:
+        cname = relation_->as<ValuesTable>()->cname;
+        break;
+      case PlanType::kDerivedTableNode:
+        cname = relation_->as<DerivedTable>()->cname;
+        break;
+      default:
+        cname = "--";
     }
   }
+
   return fmt::format("{}.{}", cname, name_);
 }
 
@@ -356,12 +357,14 @@ Column::Column(
     Name name,
     PlanObjectP relation,
     const Value& value,
+    Name alias,
     Name nameInTable,
     ColumnCP top,
     PathCP path)
     : Expr(PlanType::kColumnExpr, value),
       name_(name),
       relation_(relation),
+      alias_(alias),
       topColumn_(top),
       path_(path) {
   columns_.add(this);

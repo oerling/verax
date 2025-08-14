@@ -151,10 +151,15 @@ void predictionWarnings(
     const PlanAndStats& plan,
     const core::PlanNodeId& id,
     int64_t actualRows,
-    int64_t predictedRows) {
+    float predictedRows) {
   if (actualRows == 0 && predictedRows == 0) {
     return;
   }
+
+  if (std::isnan(predictedRows)) {
+    return;
+  }
+
   std::string historyKey;
   auto it = plan.history.find(id);
   if (it != plan.history.end()) {

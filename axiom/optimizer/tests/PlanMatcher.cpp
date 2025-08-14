@@ -33,14 +33,6 @@ class PlanMatcherImpl : public PlanMatcher {
 
   bool match(const PlanNodePtr& plan) const override {
     const auto* specificNode = dynamic_cast<const T*>(plan.get());
-
-    // Ignore project nodes until optimizer is fixed to avoid adding redundant
-    // ones.
-    if (specificNode == nullptr &&
-        dynamic_cast<const ProjectNode*>(plan.get())) {
-      return match(plan->sources()[0]);
-    }
-
     EXPECT_TRUE(specificNode != nullptr)
         << "Expected " << folly::demangle(typeid(T).name()) << ", but got "
         << plan->toString(false, false);
@@ -167,6 +159,25 @@ class HiveScanMatcher : public PlanMatcherImpl<TableScanNode> {
   const std::string tableName_;
   const common::SubfieldFilters subfieldFilters_;
   const std::string remainingFilter_;
+};
+
+class ValuesMatcher : public PlanMatcherImpl<ValuesNode> {
+ public:
+  explicit ValuesMatcher(const TypePtr& type = nullptr)
+      : PlanMatcherImpl<ValuesNode>(), type_(type) {}
+
+  bool matchDetails(const ValuesNode& plan) const override {
+    if (type_) {
+      EXPECT_TRUE(type_->equivalent(*plan.outputType()))
+          << "Expected equal output types on ValuesNode, but got '"
+          << type_->toString() << "', and '" << plan.outputType()->toString()
+          << "'.";
+    }
+    return true;
+  }
+
+ private:
+  TypePtr type_;
 };
 
 class FilterMatcher : public PlanMatcherImpl<FilterNode> {
@@ -365,6 +376,18 @@ PlanMatcherBuilder& PlanMatcherBuilder::hiveScan(
   VELOX_USER_CHECK_NULL(matcher_);
   matcher_ = std::make_shared<HiveScanMatcher>(
       tableName, std::move(subfieldFilters), remainingFilter);
+  return *this;
+}
+
+PlanMatcherBuilder& PlanMatcherBuilder::values() {
+  VELOX_USER_CHECK_NULL(matcher_);
+  matcher_ = std::make_shared<ValuesMatcher>();
+  return *this;
+}
+
+PlanMatcherBuilder& PlanMatcherBuilder::values(const TypePtr& type) {
+  VELOX_USER_CHECK_NULL(matcher_);
+  matcher_ = std::make_shared<ValuesMatcher>(type);
   return *this;
 }
 

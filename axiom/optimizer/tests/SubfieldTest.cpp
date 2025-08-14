@@ -38,8 +38,8 @@ namespace lp = facebook::velox::logical_plan;
 
 namespace facebook::velox::optimizer {
 
-class LogicalSubfieldTest : public QueryTestBase,
-                            public testing::WithParamInterface<int32_t> {
+class SubfieldTest : public QueryTestBase,
+                     public testing::WithParamInterface<int32_t> {
  protected:
   static void SetUpTestCase() {
     testDataPath_ = FLAGS_subfield_data_path;
@@ -266,7 +266,6 @@ class LogicalSubfieldTest : public QueryTestBase,
             .unionAll(lp::PlanBuilder(ctx).tableScan("features"))
             .project({"float_features as float_features_1"})
             .project({"float_features_1 as float_features_2"})
-
             .project(
                 {"make_row_from_map(float_features_2, array[10010, 10020, 10030], array['f1', 'f2', 'f3']) as r"})
             .project({"r as r1"})
@@ -289,7 +288,6 @@ class LogicalSubfieldTest : public QueryTestBase,
     auto matcher =
         core::PlanMatcherBuilder()
             .hiveScan("features", {}, "float_features[10010] + 1 < 10000")
-            .project()
             .localPartition(
                 core::PlanMatcherBuilder()
                     .hiveScan(
@@ -373,7 +371,7 @@ class LogicalSubfieldTest : public QueryTestBase,
   }
 };
 
-TEST_P(LogicalSubfieldTest, structs) {
+TEST_P(SubfieldTest, structs) {
   auto structType =
       ROW({"s1", "s2", "s3"},
           {BIGINT(), ROW({"s2s1"}, {BIGINT()}), ARRAY(BIGINT())});
@@ -401,7 +399,7 @@ TEST_P(LogicalSubfieldTest, structs) {
   assertSame(referencePlan, fragmentedPlan);
 }
 
-TEST_P(LogicalSubfieldTest, maps) {
+TEST_P(SubfieldTest, maps) {
   FeatureOptions opts;
   opts.rng.seed(1);
   auto vectors = makeFeatures(1, 100, opts, pool_.get());
@@ -590,8 +588,8 @@ TEST_P(LogicalSubfieldTest, maps) {
 }
 
 VELOX_INSTANTIATE_TEST_SUITE_P(
-    LogicalSubfieldTests,
-    LogicalSubfieldTest,
+    SubfieldTests,
+    SubfieldTest,
     testing::ValuesIn(std::vector<int32_t>{1, 2, 3}));
 
 } // namespace facebook::velox::optimizer

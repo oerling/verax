@@ -133,10 +133,17 @@ core::PlanNodePtr ToVelox::makeParallelProject(
     auto i = indices[nth];
     groupCost += costs[i];
     groups.back().push_back(toTypedExpr(exprs[i]));
-    names.push_back(fmt::format("__temp{}", exprs[i]->id()));
+
+    auto expr = exprs[i];
+    if (expr->type() == PlanType::kColumnExpr) {
+      names.push_back(outputName(expr->as<Column>()));
+    } else {
+      names.push_back(fmt::format("__temp{}", expr->id()));
+    }
+
     auto fieldAccess = std::make_shared<core::FieldAccessTypedExpr>(
         groups.back().back()->type(), names.back());
-    projectedExprs_[exprs[i]] = fieldAccess;
+    projectedExprs_[expr] = fieldAccess;
     if (groupCost > targetCost) {
       if (nth == indices.size() - 1) {
         break;
@@ -269,27 +276,30 @@ core::PlanNodePtr ToVelox::maybeParallelProject(
     core::PlanNodePtr input) {
   PlanObjectSet top;
   PlanObjectSet allColumns;
-  PlanObjectSet placed;
   auto& exprs = project->exprs();
-  auto& columns = project->columns();
-  for (auto e : exprs) {
-    allColumns.unionSet(e->columns());
-    top.add(e);
+  for (auto expr : exprs) {
+    allColumns.unionSet(expr->columns());
+    top.add(expr);
   }
+
   std::vector<LevelData> levelData;
   std::unordered_map<ExprCP, int32_t> refCount;
   makeExprLevels(top, levelData, refCount);
+
+  PlanObjectSet placed;
 
   for (;;) {
     auto cses = makeCseBorder(levelData, placed, refCount);
     if (cses.empty()) {
       break;
     }
+
     auto previousPlaced = placed;
-    cses.forEach([&](PlanObjectCP o) {
-      placed.unionSet(o->as<Expr>()->subexpressions());
+    cses.forEach([&](PlanObjectCP object) {
+      placed.unionSet(object->as<Expr>()->subexpressions());
     });
     placed.unionSet(cses);
+
     auto extraColumns = columnBorder(top, placed);
     extraColumns.except(cses);
     input = makeParallelProject(input, cses, previousPlaced, extraColumns);
@@ -298,24 +308,31 @@ core::PlanNodePtr ToVelox::maybeParallelProject(
   // Common prerequisites are placed, the expressions that are left  are a tree
   // with no order
   PlanObjectSet parallel;
-  top.forEach(
-      [&](PlanObjectCP o) { parallelBorder(o->as<Expr>(), placed, parallel); });
+  top.forEach([&](PlanObjectCP object) {
+    parallelBorder(object->as<Expr>(), placed, parallel);
+  });
+
   auto previousPlaced = placed;
-  parallel.forEach([&](PlanObjectCP o) {
-    placed.unionSet(o->as<Expr>()->subexpressions());
+  parallel.forEach([&](PlanObjectCP object) {
+    placed.unionSet(object->as<Expr>()->subexpressions());
   });
   placed.unionSet(parallel);
+
   auto extra = columnBorder(top, placed);
   // The projected through columns are loaded here, so these go into the
   // parallel exprs and not in the 'noLoadIdentities'.
   parallel.unionSet(extra);
+
   PlanObjectSet empty;
   input = makeParallelProject(input, parallel, previousPlaced, empty);
-  // one final project for the renames and final functions.
+
+  // One final project for the renames and final functions.
+  auto& columns = project->columns();
+
   std::vector<std::string> names;
   std::vector<core::TypedExprPtr> finalExprs;
   for (auto i = 0; i < exprs.size(); ++i) {
-    names.push_back(columns[i]->toString());
+    names.push_back(outputName(columns[i]));
     finalExprs.push_back(toTypedExpr(exprs[i]));
   }
   return std::make_shared<core::ProjectNode>(
