@@ -663,7 +663,10 @@ class ConnectorMetadata {
   /// transactional. to create the table with data, insert into all
   /// materializations, call finishWrite on each and then commit the whole
   /// transaction if the connector requires that.
-  virtual void createTable(
+  ///
+  /// *** Rename to createTable after renaming conflicting createTable functions
+  /// in derived classes ***
+  virtual void createTableWithOptions(
       const std::string& tableName,
       const RowTypePtr& rowType,
       const std::unordered_map<std::string, std::string>& options,

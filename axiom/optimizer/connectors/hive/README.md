@@ -1,4 +1,3 @@
-
 HiveConnectorMetadata
 
 We define HiveConnectorMetadata as a general purpose base class of all

@@ -229,7 +229,7 @@ class LocalHiveConnectorMetadata : public HiveConnectorMetadata {
   std::shared_ptr<core::QueryCtx> makeQueryCtx(
       const std::string& queryId) override;
 
-  void createTable(
+  void createTableWithOptions(
       const std::string& tableName,
       const RowTypePtr& rowType,
       const std::unordered_map<std::string, std::string>& options,

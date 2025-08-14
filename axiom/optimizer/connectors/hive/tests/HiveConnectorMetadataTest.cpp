@@ -133,7 +133,7 @@ TEST_F(HiveConnectorMetadataTest, createTable) {
 
   auto session = std::make_shared<connector::hive::HiveConnectorSession>();
 
-  metadata->createTable("test", tableType, options, session, false);
+  metadata->createTableWithOptions("test", tableType, options, session, false);
 
   auto table = metadata->findTable("test");
   auto& layouts = table->layouts();

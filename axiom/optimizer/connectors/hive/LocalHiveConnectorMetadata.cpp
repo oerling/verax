@@ -775,7 +775,7 @@ void createDir(const std::string& path) {
   }
 }
 
-void LocalHiveConnectorMetadata::createTable(
+void LocalHiveConnectorMetadata::createTableWithOptions(
     const std::string& tableName,
     const RowTypePtr& rowType,
     const std::unordered_map<std::string, std::string>& options,
