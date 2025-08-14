@@ -59,7 +59,10 @@ velox_link_libraries(
   velox_optimizer_tests_plan_matcher
   velox_hive_connector
   velox_parse_parser
-)
+    GTest::gmock
+  glog::glog
+  GTest::gtest
+  GTest::gtest_main)
 
 velox_add_library(
   velox_optimizer_tests_hive_queries_test_base
