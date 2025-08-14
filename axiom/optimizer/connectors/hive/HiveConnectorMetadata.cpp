@@ -27,8 +27,8 @@ HiveColumnHandle::ColumnType columnType(
     const HiveTableLayout& layout,
     const std::string& columnName) {
   auto& columns = layout.hivePartitionColumns();
-  for (auto& c : columns) {
-    if (c->name() == columnName) {
+  for (auto& column : columns) {
+    if (column->name() == columnName) {
       return HiveColumnHandle::ColumnType::kPartitionKey;
     }
   }
@@ -117,7 +117,7 @@ ConnectorInsertTableHandlePtr HiveConnectorMetadata::createInsertTableHandle(
   ensureInitialized();
   VELOX_CHECK_EQ(kind, WriteKind::kInsert, "Only insert supported");
 
-  std::vector<std::shared_ptr<const HiveColumnHandle>> inputColumns;
+  std::vector<HiveColumnHandlePtr> inputColumns;
 
   auto* hiveLayout = dynamic_cast<const HiveTableLayout*>(&layout);
   VELOX_CHECK_NOT_NULL(hiveLayout);
@@ -149,9 +149,9 @@ ConnectorInsertTableHandlePtr HiveConnectorMetadata::createInsertTableHandle(
   if (hiveLayout->numBuckets().has_value()) {
     std::vector<std::string> names;
     std::vector<TypePtr> types;
-    for (auto& c : layout.partitionColumns()) {
-      names.push_back(c->name());
-      types.push_back(c->type());
+    for (auto& column : layout.partitionColumns()) {
+      names.push_back(column->name());
+      types.push_back(column->type());
     }
     std::vector<std::shared_ptr<const HiveSortingColumn>> sortedBy;
     for (auto i = 0; i < layout.orderColumns().size(); ++i) {
@@ -172,7 +172,7 @@ ConnectorInsertTableHandlePtr HiveConnectorMetadata::createInsertTableHandle(
   return std::make_shared<HiveInsertTableHandle>(
       inputColumns,
       makeLocationHandle(
-          fmt::format("{}/{}", dataPath(), layout.table()->name())),
+			 fmt::format("{}/{}", dataPath(), layout.table()->name()), std::nullopt),
       storageFormat,
       bucketProperty,
       compressionKind,

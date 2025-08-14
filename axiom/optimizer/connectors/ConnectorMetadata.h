@@ -715,7 +715,7 @@ class ConnectorMetadata {
   }
 
   /// Returns column handles whose value uniquely identifies a row for creating
-  /// and update or delete record. These may be for example some connector
+  /// an update or delete record. These may be for example some connector
   /// specific opaque row id or primary key columns.
   virtual std::vector<ColumnHandlePtr> rowIdHandles(
       const TableLayout& layout,

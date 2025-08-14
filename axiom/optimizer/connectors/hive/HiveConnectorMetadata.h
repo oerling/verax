@@ -146,12 +146,15 @@ class HiveConnectorMetadata : public ConnectorMetadata {
 
   virtual std::shared_ptr<connector::hive::LocationHandle> makeLocationHandle(
       std::string targetDirectory,
-      std::optional<std::string> writeDirectory = std::nullopt,
+      std::optional<std::string> writeDirectory,
       connector::hive::LocationHandle::TableType tableType =
           connector::hive::LocationHandle::TableType::kNew) {
     VELOX_UNSUPPORTED();
   }
 
+  /// Returns the path to the filesystem root for the data managed by
+  /// 'this'. Directories inside this correspond to schemas and
+  /// tables.
   virtual std::string dataPath() const {
     VELOX_UNSUPPORTED();
   }
