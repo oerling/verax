@@ -172,7 +172,8 @@ ConnectorInsertTableHandlePtr HiveConnectorMetadata::createInsertTableHandle(
   return std::make_shared<HiveInsertTableHandle>(
       inputColumns,
       makeLocationHandle(
-			 fmt::format("{}/{}", dataPath(), layout.table()->name()), std::nullopt),
+          fmt::format("{}/{}", dataPath(), layout.table()->name()),
+          std::nullopt),
       storageFormat,
       bucketProperty,
       compressionKind,
