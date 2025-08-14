@@ -16,6 +16,8 @@
 
 #include "axiom/optimizer/connectors/ConnectorSplitSource.h"
 #include "axiom/optimizer/connectors/hive/LocalHiveConnectorMetadata.h"
+#include "velox/dwio/parquet/RegisterParquetReader.h"
+#include "velox/dwio/parquet/RegisterParquetWriter.h"
 #include "velox/exec/tests/utils/AssertQueryBuilder.h"
 #include "velox/exec/tests/utils/DistributedPlanBuilder.h"
 #include "velox/exec/tests/utils/LocalRunnerTestBase.h"
@@ -56,6 +58,14 @@ class HiveConnectorMetadataTest : public LocalRunnerTestBase {
     // Creates the data and schema from 'testTables_'. These are created on the
     // first test fixture initialization.
     LocalRunnerTestBase::SetUpTestCase();
+    parquet::registerParquetReaderFactory();
+    parquet::registerParquetWriterFactory();
+  }
+
+  static void TearDownTestCase() {
+    LocalRunnerTestBase::TearDownTestCase();
+    parquet::unregisterParquetWriterFactory();
+    parquet::unregisterParquetReaderFactory();
   }
 
   static void makeAscending(const RowVectorPtr& rows, int32_t& counter) {
@@ -117,7 +127,9 @@ TEST_F(HiveConnectorMetadataTest, createTable) {
       {"bucketed_by", "key1"},
       {"sorted_by", "key1, key2"},
       {"bucket_count", "4"},
-      {"partitioned_by", "ds"}};
+      {"partitioned_by", "ds"},
+      {"file_format", "parquet"},
+      {"compression_kind", "snappy"}};
 
   auto session = std::make_shared<connector::hive::HiveConnectorSession>();
 
@@ -146,6 +158,9 @@ TEST_F(HiveConnectorMetadataTest, createTable) {
   auto partition = layout->hivePartitionColumns();
   ASSERT_EQ(1, partition.size());
   EXPECT_EQ(columns[3], partition[0]);
+
+  EXPECT_EQ(layout->fileFormat(), dwio::common::toFileFormat("parquet"));
+  EXPECT_EQ(layout->table()->options().at("compression_kind"), "snappy");
 
   auto data = makeRowVector({
       makeFlatVector<int64_t>(kTestSize, [](auto row) { return row; }),

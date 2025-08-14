@@ -430,6 +430,13 @@ LocalTable* LocalHiveConnectorMetadata::createTableFromSchema(
       numBuckets = atoi(buckets["bucketCount"].asString().c_str());
     }
   }
+  if (json.count("compressionKind")) {
+    table->options_["compression_kind"] = json["compressionKind"].asString();
+  }
+  auto format = format_;
+  if (json.count("fileFormat")) {
+    format = dwio::common::toFileFormat(json["fileFormat"].asString());
+  }
   std::vector<const Column*> empty;
   auto layout = std::make_unique<LocalHiveTableLayout>(
       table->name(),
@@ -441,7 +448,7 @@ LocalTable* LocalHiveConnectorMetadata::createTableFromSchema(
       sortOrder,
       empty,
       partition,
-      format_,
+      format,
       numBuckets);
   table->exportedLayouts_.push_back(layout.get());
   table->layouts_.push_back(std::move(layout));
@@ -538,7 +545,10 @@ void LocalHiveConnectorMetadata::loadTable(
       table = tables_[tableName].get();
     }
     dwio::common::ReaderOptions readerOptions{schemaPool_.get()};
-    readerOptions.setFileFormat(format_);
+    // If the table has a schema it has a layout that gives the file format.
+    // Otherwise we default it from 'this'.
+    readerOptions.setFileFormat(
+				table->layouts().empty() ? format_ : reinterpret_cast<const HiveTableLayout*>(table->layouts()[0])->fileFormat());
     auto input = std::make_unique<dwio::common::BufferedInput>(
         std::make_shared<LocalReadFile>(info->path),
         readerOptions.memoryPool());
@@ -768,24 +778,45 @@ void LocalHiveConnectorMetadata::createTable(
     const RowTypePtr& rowType,
     const std::unordered_map<std::string, std::string>& options,
     const ConnectorSessionPtr& session,
-    bool deleteIfExists,
+    bool errorIfExists,
     TableKind kind) {
+  VELOX_CHECK_EQ(kind, TableKind::kTable);
   validateOptions(options);
   ensureInitialized();
   auto path = dataPath() + "/" + tableName;
   if (dirExists(path)) {
-    if (!deleteIfExists) {
+    if (errorIfExists) {
       VELOX_USER_FAIL("Table {} already exists", tableName);
-    } else if (deleteIfExists) {
-      deleteDirectoryContents(path);
+    } else {
+      return;
     }
   } else {
     createDir(path);
   }
 
   folly::dynamic schema = folly::dynamic::object;
+
+  auto it = options.find("compression_kind");
+  if (it != options.end()) {
+    //  Check the kind is recognized.
+    common::stringToCompressionKind(it->second);
+    schema["compressionKind"] = it->second;
+  }
+  it = options.find("file_format");
+  std::string fileFormat;
+  if (it != options.end()) {
+    VELOX_USER_CHECK(
+        dwio::common::toFileFormat(it->second) !=
+            dwio::common::FileFormat::UNKNOWN,
+        "Bad file format {}",
+        it->second);
+    fileFormat = it->second;
+  } else {
+    fileFormat = toString(format_);
+  }
+  schema["fileFormat"] = fileFormat;
   folly::dynamic buckets = folly::dynamic::object;
-  auto it = options.find("bucketed_by");
+  it = options.find("bucketed_by");
   if (it != options.end()) {
     folly::dynamic columns = folly::dynamic::array;
     std::vector<std::string> tokens;

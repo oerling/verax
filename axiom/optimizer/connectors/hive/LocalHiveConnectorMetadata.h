@@ -200,7 +200,7 @@ class LocalHiveConnectorMetadata : public HiveConnectorMetadata {
     return &splitManager_;
   }
 
-  dwio::common::FileFormat fileFormat() const {
+  dwio::common::FileFormat fileFormat() const override {
     return format_;
   }
 
@@ -234,7 +234,7 @@ class LocalHiveConnectorMetadata : public HiveConnectorMetadata {
       const RowTypePtr& rowType,
       const std::unordered_map<std::string, std::string>& options,
       const ConnectorSessionPtr& session,
-      bool deleteIfExists,
+      bool errorIfExists = true,
       TableKind kind = TableKind::kTable) override;
 
   void finishWrite(

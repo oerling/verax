@@ -194,7 +194,7 @@ class Column {
 enum class TableKind { kTable, kTempTable };
 
 VELOX_DECLARE_ENUM_NAME(TableKind);
-  
+
 class Table;
 
 /// Represents sorting order. Duplicate of core::SortOrder. Connectors
@@ -384,7 +384,7 @@ class Table {
   /// Returns an estimate of the number of rows in 'this'.
   virtual uint64_t numRows() const = 0;
 
-  virtual const std::unordered_map<std::string, std::string>& options() {
+  virtual const std::unordered_map<std::string, std::string>& options() const {
     return options_;
   }
 
@@ -576,7 +576,7 @@ enum class WriteKind {
 
 VELOX_DECLARE_ENUM_NAME(WriteKind);
 
-  class ConnectorMetadata {
+class ConnectorMetadata {
  public:
   virtual ~ConnectorMetadata() = default;
 
@@ -654,20 +654,19 @@ VELOX_DECLARE_ENUM_NAME(WriteKind);
   /// write to all. In such cases the plan typically has a different
   /// table writer for each materialization. Any transaction semantics
   /// are connector dependent. Throws an error if the table exists,
-  /// unless 'deleteIfExists' is true, in which case the table is
-  /// silently deleted.  finishWrite should be called for all insert
-  /// table handles to complete the write also if no data is added. To
-  /// create an empty table, call createTable and then commit if the
-  /// connector is transactional. to create the table with data,
-  /// insert into all materializations, call finishWrite on each and
-  /// then commit the whole transaction if the connector requires
-  /// that.
+  /// unless 'errorIfExists' is false, in which case the operation returns
+  /// silently.  finishWrite should be called for all insert table handles
+  /// to complete the write also if no data is added. To create an empty
+  /// table, call createTable and then commit if the connector is
+  /// transactional. to create the table with data, insert into all
+  /// materializations, call finishWrite on each and then commit the whole
+  /// transaction if the connector requires that.
   virtual void createTable(
       const std::string& tableName,
       const RowTypePtr& rowType,
       const std::unordered_map<std::string, std::string>& options,
       const ConnectorSessionPtr& session,
-      bool deleteIfExists,
+      bool errorIfExists = true,
       TableKind tableKind = TableKind::kTable) {
     VELOX_UNSUPPORTED();
   }
@@ -697,7 +696,7 @@ VELOX_DECLARE_ENUM_NAME(WriteKind);
 
   /// Returns specification for repartitioning data before the table writer
   /// stage.
-    virtual WritePartitionInfo writePartitionInfo(
+  virtual WritePartitionInfo writePartitionInfo(
       const ConnectorInsertTableHandlePtr& handle) {
     VELOX_UNSUPPORTED();
   }
@@ -727,21 +726,24 @@ VELOX_DECLARE_ENUM_NAME(WriteKind);
 
 } // namespace facebook::velox::connector
 
-
 template <>
-struct fmt::formatter<facebook::velox::connector::TableKind> : fmt::formatter<string_view> {
+struct fmt::formatter<facebook::velox::connector::TableKind>
+    : fmt::formatter<string_view> {
   template <typename FormatContext>
-  auto format(facebook::velox::connector::TableKind k, FormatContext& ctx) const {
+  auto format(facebook::velox::connector::TableKind k, FormatContext& ctx)
+      const {
     return formatter<string_view>::format(
-					  facebook::velox::connector::TableKindName::toName(k), ctx);
+        facebook::velox::connector::TableKindName::toName(k), ctx);
   }
 };
 
 template <>
-struct fmt::formatter<facebook::velox::connector::WriteKind> : fmt::formatter<string_view> {
+struct fmt::formatter<facebook::velox::connector::WriteKind>
+    : fmt::formatter<string_view> {
   template <typename FormatContext>
-  auto format(facebook::velox::connector::WriteKind k, FormatContext& ctx) const {
+  auto format(facebook::velox::connector::WriteKind k, FormatContext& ctx)
+      const {
     return formatter<string_view>::format(
-					  facebook::velox::connector::WriteKindName::toName(k), ctx);
+        facebook::velox::connector::WriteKindName::toName(k), ctx);
   }
 };

@@ -48,13 +48,12 @@ class HiveConnectorSession : public connector::ConnectorSession {
 };
 
 /// Describes a Hive table layout. Adds a file format and a list of
-
 /// Hive partitioning columns and an optional bucket count to the base
-/// TableLayout. The partitioning in TableLayout does not differentiate between
-/// bucketing and Hive partitioning columns. The bucketing columns
-/// are the 'partitioning' columns minus the
-/// 'hivePartitioningColumns'. 'numBuckets' is the number of Hive buckets if
-/// 'partitionColumns' differs from 'hivePartitionColumns'.
+/// TableLayout. The partitioning in TableLayout referes to bucketing.
+/// 'numBuckets' is the number of Hive buckets if
+/// 'partitionColumns' is not empty. 'hivePartitionColumns' refers to Hive
+/// partitioning, i.e. columns whose value gives a directory in the ile storage
+/// tree.
 class HiveTableLayout : public TableLayout {
  public:
   HiveTableLayout(
@@ -135,6 +134,10 @@ class HiveConnectorMetadata : public ConnectorMetadata {
       WriteKind kind,
       const ConnectorSessionPtr& session) override;
 
+  virtual dwio::common::FileFormat fileFormat() const {
+    VELOX_UNSUPPORTED();
+  }
+  
  protected:
   virtual void ensureInitialized() const {}
 
@@ -152,7 +155,7 @@ class HiveConnectorMetadata : public ConnectorMetadata {
   virtual std::string dataPath() const {
     VELOX_UNSUPPORTED();
   }
-
+  
   HiveConnector* const hiveConnector_;
 };
 

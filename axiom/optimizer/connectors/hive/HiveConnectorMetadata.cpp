@@ -118,19 +118,34 @@ ConnectorInsertTableHandlePtr HiveConnectorMetadata::createInsertTableHandle(
   VELOX_CHECK_EQ(kind, WriteKind::kInsert, "Only insert supported");
 
   std::vector<std::shared_ptr<const HiveColumnHandle>> inputColumns;
-  auto storageFormat = dwio::common::FileFormat::DWRF;
-  std::optional<common::CompressionKind> compressionKind;
+
+  auto* hiveLayout = dynamic_cast<const HiveTableLayout*>(&layout);
+  VELOX_CHECK_NOT_NULL(hiveLayout);
+  auto storageFormat = hiveLayout->fileFormat();
 
   std::unordered_map<std::string, std::string> serdeParameters;
   const std::shared_ptr<dwio::common::WriterOptions> writerOptions;
 
+  common::CompressionKind compressionKind;
+
+  auto it = options.find("compression_kind" );
+  if (it != options.end()) {
+    compressionKind = common::stringToCompressionKind(it->second);
+  } else {
+    it = layout.table()->options().find("compression_kind");
+    if (it != layout.table()->options().end()) {
+      compressionKind = common::stringToCompressionKind(it->second);
+    } else {
+      compressionKind = common::CompressionKind::CompressionKind_ZSTD;
+    }
+  }
+  
   for (auto i = 0; i < rowType->size(); ++i) {
     inputColumns.push_back(std::static_pointer_cast<const HiveColumnHandle>(
         createColumnHandle(layout, rowType->nameOf(i))));
   }
 
   std::shared_ptr<const HiveBucketProperty> bucketProperty;
-  auto* hiveLayout = reinterpret_cast<const HiveTableLayout*>(&layout);
   if (hiveLayout->numBuckets().has_value()) {
     std::vector<std::string> names;
     std::vector<TypePtr> types;
