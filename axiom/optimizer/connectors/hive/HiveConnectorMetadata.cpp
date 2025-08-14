@@ -128,7 +128,7 @@ ConnectorInsertTableHandlePtr HiveConnectorMetadata::createInsertTableHandle(
 
   common::CompressionKind compressionKind;
 
-  auto it = options.find("compression_kind" );
+  auto it = options.find("compression_kind");
   if (it != options.end()) {
     compressionKind = common::stringToCompressionKind(it->second);
   } else {
@@ -139,7 +139,7 @@ ConnectorInsertTableHandlePtr HiveConnectorMetadata::createInsertTableHandle(
       compressionKind = common::CompressionKind::CompressionKind_ZSTD;
     }
   }
-  
+
   for (auto i = 0; i < rowType->size(); ++i) {
     inputColumns.push_back(std::static_pointer_cast<const HiveColumnHandle>(
         createColumnHandle(layout, rowType->nameOf(i))));

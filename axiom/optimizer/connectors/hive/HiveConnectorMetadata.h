@@ -137,7 +137,7 @@ class HiveConnectorMetadata : public ConnectorMetadata {
   virtual dwio::common::FileFormat fileFormat() const {
     VELOX_UNSUPPORTED();
   }
-  
+
  protected:
   virtual void ensureInitialized() const {}
 
@@ -155,7 +155,7 @@ class HiveConnectorMetadata : public ConnectorMetadata {
   virtual std::string dataPath() const {
     VELOX_UNSUPPORTED();
   }
-  
+
   HiveConnector* const hiveConnector_;
 };
 

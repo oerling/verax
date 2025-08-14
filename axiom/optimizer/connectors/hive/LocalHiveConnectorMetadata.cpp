@@ -548,7 +548,10 @@ void LocalHiveConnectorMetadata::loadTable(
     // If the table has a schema it has a layout that gives the file format.
     // Otherwise we default it from 'this'.
     readerOptions.setFileFormat(
-				table->layouts().empty() ? format_ : reinterpret_cast<const HiveTableLayout*>(table->layouts()[0])->fileFormat());
+        table->layouts().empty()
+            ? format_
+            : reinterpret_cast<const HiveTableLayout*>(table->layouts()[0])
+                  ->fileFormat());
     auto input = std::make_unique<dwio::common::BufferedInput>(
         std::make_shared<LocalReadFile>(info->path),
         readerOptions.memoryPool());

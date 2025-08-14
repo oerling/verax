@@ -18,7 +18,7 @@
 
 namespace facebook::velox::connector {
 
-  namespace {
+namespace {
 folly::F14FastMap<TableKind, std::string> tableKindNames() {
   static const folly::F14FastMap<TableKind, std::string> kNames = {
       {TableKind::kTable, "kTable"},
@@ -30,9 +30,9 @@ folly::F14FastMap<TableKind, std::string> tableKindNames() {
 
 folly::F14FastMap<WriteKind, std::string> writeKindNames() {
   static const folly::F14FastMap<WriteKind, std::string> kNames = {
-    {WriteKind::kInsert, "kInsert"},
-    {WriteKind::kUpdate, "kUpdate"},
-    {WriteKind::kDelete, "kDelete"},
+      {WriteKind::kInsert, "kInsert"},
+      {WriteKind::kUpdate, "kUpdate"},
+      {WriteKind::kDelete, "kDelete"},
   };
 
   return kNames;
@@ -44,6 +44,4 @@ VELOX_DEFINE_ENUM_NAME(TableKind, tableKindNames);
 
 VELOX_DEFINE_ENUM_NAME(WriteKind, writeKindNames);
 
-  
-
-} // namespace facebook::velox::connectors
+} // namespace facebook::velox::connector
