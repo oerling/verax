@@ -33,6 +33,7 @@ enum class NodeKind {
   kLimit = 7,
   kSet = 8,
   kUnnest = 9,
+  kTableWrite = 10,
 };
 
 VELOX_DECLARE_ENUM_NAME(NodeKind)
@@ -650,6 +651,7 @@ class UnnestNode : public LogicalPlanNode {
     return ordinalityName_;
   }
 
+
   bool flattenArrayOfRows() const {
     return flattenArrayOfRows_;
   }
@@ -673,4 +675,43 @@ class UnnestNode : public LogicalPlanNode {
 
 using UnnestNodePtr = std::shared_ptr<const UnnestNode>;
 
+class TableWriteNode : public LogicalPlanNode {
+ public:
+  TableWriteNode(
+		 const std::string& id,
+      const LogicalPlanNodePtr& input,
+		 const std::string& tableName,
+		 const RowTypePtr& columns,
+		 const std::vector<std::string>& columnNames,
+		 const std::unordered_map<std::string, std::string>& options = {})
+    : LogicalPlanNode(NodeKind::kTableWrite, id, {input}, outputType),
+      tableName_(tableName),
+      columns_(columns),
+      columnNames(columnNames),
+      options_(options){}
+
+  constt std::string& tableName() const {
+    return tableName_;
+  }
+
+  const RowTypePtr& columns() const  {
+    return columns_;
+  }
+
+  const std::vector<std::string> columnNames() const {
+    return columnNames_;
+  }
+  
+  const std::unordered_map<std::string, std::string>& options() const {
+    return options_;
+  }
+
+private:
+  constt std::string tableName_;
+  const RowTypePtr columns_;
+  const std::vector<std::string> columnNames_;
+  const std::unordered_map<std::string, std::string> options_;
+};
+  
+  
 } // namespace facebook::velox::logical_plan
