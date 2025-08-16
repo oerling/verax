@@ -106,7 +106,7 @@ TableScan::TableScan(
   cost_.fanout = fanout;
 
   if (!keys.empty()) {
-    float lookupRange(index->distribution().cardinality);
+    float lookupRange(index->table->cardinality);
     float orderSelectivity = orderPrefixDistance(this->input(), index, keys);
     auto distance = lookupRange / std::max<float>(1, orderSelectivity);
     float batchSize = std::min<float>(cost_.inputCardinality, 10000);
@@ -124,7 +124,7 @@ TableScan::TableScan(
     return;
   }
   const auto cardinality =
-      index->distribution().cardinality * baseTable->filterSelectivity;
+      index->table->cardinality * baseTable->filterSelectivity;
   updateLeafCost(cardinality, columns_, cost_);
 }
 
@@ -134,7 +134,7 @@ Distribution TableScan::outputDistribution(
     ColumnGroupP index,
     const ColumnVector& columns) {
   auto schemaColumns = transform<ColumnVector>(
-      columns, [](auto& c) { return c->schemaColumn(); });
+      columns, [](auto& column) { return column->schemaColumn(); });
 
   ExprVector partition;
   ExprVector order;
@@ -144,6 +144,7 @@ Distribution TableScan::outputDistribution(
     partition = index->distribution().partition;
     replace(partition, schemaColumns, columns.data());
   }
+
   auto numPrefix = prefixSize(index->distribution().order, schemaColumns);
   if (numPrefix > 0) {
     order = index->distribution().order;
@@ -154,7 +155,6 @@ Distribution TableScan::outputDistribution(
   }
   return Distribution(
       index->distribution().distributionType,
-      index->distribution().cardinality * baseTable->filterSelectivity,
       std::move(partition),
       std::move(order),
       std::move(orderType),
@@ -285,15 +285,9 @@ std::string TableScan::toString(bool /*recursive*/, bool detail) const {
   return out.str();
 }
 
-Values::Values(
-      const ValuesTable& valuesTable,
-      ColumnVector columns)
-      : RelationOp{
-          RelType::kValues,
-          nullptr,
-          Distribution{DistributionType::gather(), valuesTable.cardinality(), {}},
-          std::move(columns)},
-        valuesTable{valuesTable} {
+Values::Values(const ValuesTable& valuesTable, ColumnVector columns)
+    : RelationOp{RelType::kValues, nullptr, Distribution{DistributionType::gather(), {}}, std::move(columns)},
+      valuesTable{valuesTable} {
   cost_.inputCardinality = 1;
 
   const auto cardinality = valuesTable.cardinality();
@@ -455,10 +449,22 @@ std::string Repartition::toString(bool recursive, bool detail) const {
   return out.str();
 }
 
-namespace {
-Distribution makeAggDistribution(
-    const RelationOpPtr& input,
-    const ExprVector& groupingKeys) {
+Aggregation::Aggregation(
+    RelationOpPtr input,
+    ExprVector _groupingKeys,
+    AggregateVector _aggregates,
+    velox::core::AggregationNode::Step step,
+    ColumnVector columns)
+    : RelationOp(
+          RelType::kAggregation,
+          input,
+          input->distribution(),
+          std::move(columns)),
+      groupingKeys(std::move(_groupingKeys)),
+      aggregates(std::move(_aggregates)),
+      step{step} {
+  cost_.inputCardinality = inputCardinality();
+
   float cardinality = 1;
   for (auto key : groupingKeys) {
     cardinality *= key->value().cardinality;
@@ -471,32 +477,7 @@ Distribution makeAggDistribution(
   // input. This approaches d as n goes to infinity. The chance of one in d
   // being unique after n values is 1 - (1/d)^n.
   auto nOut = cardinality -
-      cardinality *
-          pow(1.0 - (1.0 / cardinality), input->distribution().cardinality);
-
-  auto distribution = input->distribution();
-  distribution.cardinality = nOut;
-  return distribution;
-}
-} // namespace
-
-Aggregation::Aggregation(
-    RelationOpPtr input,
-    ExprVector _groupingKeys,
-    AggregateVector _aggregates,
-    velox::core::AggregationNode::Step step,
-    ColumnVector columns)
-    : RelationOp(
-          RelType::kAggregation,
-          input,
-          makeAggDistribution(input, _groupingKeys),
-          std::move(columns)),
-      groupingKeys(std::move(_groupingKeys)),
-      aggregates(std::move(_aggregates)),
-      step{step} {
-  cost_.inputCardinality = inputCardinality();
-
-  const auto nOut = distribution_.cardinality;
+      cardinality * pow(1.0 - (1.0 / cardinality), input->resultCardinality());
 
   cost_.fanout = nOut / cost_.inputCardinality;
   cost_.unitCost = groupingKeys.size() * Costs::hashProbeCost(nOut);
@@ -582,23 +563,11 @@ std::string HashBuild::toString(bool recursive, bool detail) const {
   return out.str();
 }
 
-namespace {
-
-Distribution makeFilterDistribution(
-    const RelationOpPtr& input,
-    size_t numExprs) {
-  Distribution distribution = input->distribution();
-  distribution.cardinality *= pow(0.8, numExprs);
-
-  return distribution;
-}
-} // namespace
-
 Filter::Filter(RelationOpPtr input, ExprVector exprs)
     : RelationOp(
           RelType::kFilter,
           input,
-          makeFilterDistribution(input, exprs.size()),
+          input->distribution(),
           input->columns()),
       exprs_(std::move(exprs)) {
   cost_.inputCardinality = inputCardinality();
@@ -738,24 +707,11 @@ std::string OrderBy::toString(bool recursive, bool detail) const {
   return out.str();
 }
 
-namespace {
-Distribution makeLimitDistribution(const RelationOpPtr& input, int64_t limit) {
-  Distribution distribution = input->distribution();
-
-  distribution.distributionType = DistributionType::gather();
-  distribution.partition.clear();
-  distribution.cardinality =
-      std::min<float>(input->distribution().cardinality, limit);
-
-  return distribution;
-}
-} // namespace
-
 Limit::Limit(RelationOpPtr input, int64_t limit, int64_t offset)
     : RelationOp(
           RelType::kLimit,
           input,
-          makeLimitDistribution(input, limit),
+          Distribution::gather(),
           input->columns()),
       limit{limit},
       offset{offset} {
@@ -786,22 +742,11 @@ std::string Limit::toString(bool recursive, bool detail) const {
   return out.str();
 }
 
-namespace {
-Distribution makeUnionAllDistribution(const RelationOpPtrVector& inputs) {
-  float cardinality = 0;
-  for (auto& input : inputs) {
-    cardinality += input->distribution().cardinality;
-  }
-
-  return Distribution(DistributionType{}, cardinality, ExprVector{});
-}
-} // namespace
-
 UnionAll::UnionAll(RelationOpPtrVector _inputs)
     : RelationOp(
           RelType::kUnionAll,
           nullptr,
-          makeUnionAllDistribution(_inputs),
+          Distribution(DistributionType{}, ExprVector{}),
           _inputs[0]->columns()),
       inputs(std::move(_inputs)) {
   for (auto& input : inputs) {

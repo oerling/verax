@@ -878,4 +878,42 @@ class AggregationPlan : public PlanObject {
 
 using AggregationPlanCP = const AggregationPlan*;
 
+using NameVector = std::vector<Name, QGAllocator<Name>>;
+
+class WritePlan : public PlanObject {
+ public:
+  WritePlan(
+      Name table,
+      logical_plan::WriteKind kind,
+      ExprVector values,
+      NameVector columns)
+      : PlanObject(PlanType::kWriteNode),
+        table_(table),
+        kind_(kind),
+        values_(values),
+        columns_(columns) {}
+
+  Name table() const {
+    return table_;
+  }
+
+  logical_plan::WriteKind kind() const {
+    return kind_;
+  }
+
+  const ExprVector values() const {
+    return values_;
+  }
+
+  const NameVector& columns() const {
+    return columns_;
+  }
+
+ private:
+  Name table_;
+  logical_plan::WriteKind kind_;
+  ExprVector values_;
+  NameVector columns_;
+};
+
 } // namespace facebook::velox::optimizer

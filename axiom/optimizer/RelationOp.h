@@ -126,7 +126,7 @@ class RelationOp : public Relation {
       return 1;
     }
 
-    return input()->distribution().cardinality;
+    return input()->resultCardinality();
   }
 
   /// Returns the value constraints of 'expr' at the output of

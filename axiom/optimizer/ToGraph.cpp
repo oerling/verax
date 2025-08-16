@@ -1219,8 +1219,7 @@ void ToGraph::makeSubfieldColumns(
   SubfieldProjections projections;
   auto* ctx = queryCtx();
   float card =
-      baseTable->schemaTable->columnGroups[0]->distribution().cardinality *
-      baseTable->filterSelectivity;
+      baseTable->schemaTable->cardinality * baseTable->filterSelectivity;
   paths.forEach([&](auto id) {
     auto* path = ctx->pathById(id);
     auto type = pathType(column->value().type, path);
@@ -1306,6 +1305,18 @@ PlanObjectP ToGraph::addLimit(const lp::LimitNode& limitNode) {
   return currentDt_;
 }
 
+  PlanObjectP ToGraph::addWrite(const lp::TableWriteNode& tableWriteNode) {
+    VELOX_CHECK_NULL(currentDt_->write, "Only one TableWrite allowed");
+    NameVector columns;
+    ExprVector values;
+    for (auto i = 0; i < tableWriteNode.columnNames().size(); ++i) {
+      columns.push_back(toName(tableWriteNode.columnNames()[i]));
+      values.push_back(translateColumn(tableWriteNode.onlyInput()->outputType()->nameOf(i)));
+    }
+    currentDt_->write = make<WritePlan>(toName(tableWriteNode.tableName()), tableWriteNode.kind(), std::move(values),  std::move(columns));
+    return currentDt_;
+  }
+  
 namespace {
 bool hasNondeterministic(const lp::ExprPtr& expr) {
   if (const auto* call = expr->asUnchecked<lp::CallExpr>()) {
@@ -1379,8 +1390,7 @@ void ToGraph::makeUnionDistributionAndStats(
     DerivedTableP setDt,
     DerivedTableP innerDt) {
   if (setDt->distribution == nullptr) {
-    DistributionType empty;
-    setDt->distribution = make<Distribution>(empty, 0, ExprVector{});
+    setDt->distribution = make<Distribution>();
   }
   if (innerDt == nullptr) {
     innerDt = setDt;
@@ -1393,7 +1403,7 @@ void ToGraph::makeUnionDistributionAndStats(
 
     auto plan = innerDt->bestInitialPlan()->op;
 
-    setDt->distribution->cardinality += plan->distribution().cardinality;
+    setDt->cardinality += plan->resultCardinality();
     for (auto i = 0; i < setDt->columns.size(); ++i) {
       // The Column is created in setDt before all branches are planned so the
       // value is mutated here.
@@ -1626,7 +1636,11 @@ PlanObjectP ToGraph::makeQueryGraph(
       currentDt_->tableSet.add(setDt);
       return currentDt_;
     }
-    case lp::NodeKind::kUnnest:
+  case lp::NodeKind::kTableWrite: {
+    makeQueryGraph(*node.onlyInput(), allowedInDt);
+    return addWrite(*node.asUnchecked<lp::TableWriteNode>());
+  }
+  case lp::NodeKind::kUnnest:
     default:
       VELOX_NYI(
           "Unsupported PlanNode {}", lp::NodeKindName::toName(node.kind()));

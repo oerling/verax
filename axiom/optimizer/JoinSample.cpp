@@ -146,8 +146,9 @@ std::shared_ptr<runner::Runner> prepareSampleRunner(
       TableScan::outputDistribution(base, index, columns),
       base,
       index,
-      index->distribution().cardinality,
+      index->table->cardinality,
       columns);
+
   ExprCP hash = makeHash(keys[0]);
   if (keys.size() == 1) {
     hash = mul(hash, 1815531889);

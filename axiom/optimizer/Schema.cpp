@@ -46,15 +46,15 @@ std::vector<ColumnCP> SchemaTable::toColumns(
 
 ColumnGroupP SchemaTable::addIndex(
     const char* name,
-    float cardinality,
     int32_t numKeysUnique,
     int32_t numOrdering,
     const ColumnVector& keys,
     DistributionType distType,
     const ColumnVector& partition,
     const ColumnVector& columns) {
+  VELOX_CHECK_LE(numKeysUnique, keys.size());
+
   Distribution distribution;
-  distribution.cardinality = cardinality;
   for (auto i = 0; i < numOrdering; ++i) {
     distribution.orderType.push_back(OrderType::kAscNullsFirst);
   }
@@ -103,27 +103,29 @@ SchemaTableCP Schema::findTable(
   if (it != tables_.end()) {
     return it->second;
   }
+
   VELOX_CHECK_NOT_NULL(source_);
   auto* table = source_->findTable(std::string(connectorId), std::string(name));
   if (!table) {
     return nullptr;
   }
-  auto* schemaTable = make<SchemaTable>(internedName, table->rowType());
+
+  auto* schemaTable =
+      make<SchemaTable>(internedName, table->rowType(), table->numRows());
   schemaTable->connectorTable = table;
+
   ColumnVector columns;
-  for (auto& pair : table->columnMap()) {
-    auto& tableColumn = *pair.second;
-    float cardinality = tableColumn.approxNumDistinct(table->numRows());
-    Value value(toType(tableColumn.type()), cardinality);
-    auto columnName = toName(pair.first);
-    auto* column = make<Column>(columnName, nullptr, value);
-    schemaTable->columns[columnName] = column;
+  for (const auto& [columnName, tableColumn] : table->columnMap()) {
+    float cardinality = tableColumn->approxNumDistinct(table->numRows());
+    Value value(toType(tableColumn->type()), cardinality);
+    auto* column = make<Column>(toName(columnName), nullptr, value);
+    schemaTable->columns[column->name()] = column;
     columns.push_back(column);
   }
   DistributionType defaultDist;
   defaultDist.locus = defaultLocus_;
-  auto* pk = schemaTable->addIndex(
-      toName("pk"), table->numRows(), 0, 0, {}, defaultDist, {}, columns);
+  auto* pk =
+      schemaTable->addIndex(toName("pk"), 0, 0, {}, defaultDist, {}, columns);
   addTable(schemaTable);
   pk->layout = table->layouts()[0];
   return schemaTable;
@@ -137,13 +139,12 @@ float tableCardinality(PlanObjectCP table) {
   if (table->type() == PlanType::kTableNode) {
     return table->as<BaseTable>()
         ->schemaTable->columnGroups[0]
-        ->distribution()
-        .cardinality;
+        ->table->cardinality;
   } else if (table->type() == PlanType::kValuesTableNode) {
     return table->as<ValuesTable>()->cardinality();
   }
   VELOX_CHECK(table->type() == PlanType::kDerivedTableNode);
-  return table->as<DerivedTable>()->distribution->cardinality;
+  return table->as<DerivedTable>()->cardinality;
 }
 
 // The fraction of rows of a base table selected by non-join filters. 0.2
@@ -211,19 +212,20 @@ IndexInfo SchemaTable::indexInfo(ColumnGroupP index, CPSpan<Column> columns)
     const {
   IndexInfo info;
   info.index = index;
-  info.scanCardinality = index->distribution().cardinality;
-  info.joinCardinality = index->distribution().cardinality;
+  info.scanCardinality = index->table->cardinality;
+  info.joinCardinality = index->table->cardinality;
+
+  const auto numSorting = index->distribution().orderType.size();
+  const auto numUnique = index->distribution().numKeysUnique;
+
   PlanObjectSet covered;
-  int32_t numCovered = 0;
-  int32_t numSorting = index->distribution().orderType.size();
-  int32_t numUnique = index->distribution().numKeysUnique;
   for (auto i = 0; i < numSorting || i < numUnique; ++i) {
     auto part = findColumnByName(
         columns, index->distribution().order[i]->as<Column>()->name());
     if (!part) {
       break;
     }
-    ++numCovered;
+
     covered.add(part);
     if (i < numSorting) {
       info.scanCardinality = combine(
@@ -249,7 +251,7 @@ IndexInfo SchemaTable::indexInfo(ColumnGroupP index, CPSpan<Column> columns)
       // Join key is an expression dependent on the table.
       covered.unionColumns(column->as<Expr>());
       info.joinCardinality = combine(
-          info.joinCardinality, numCovered, column->value().cardinality);
+          info.joinCardinality, covered.size(), column->value().cardinality);
       continue;
     }
     if (covered.contains(column)) {
@@ -260,9 +262,8 @@ IndexInfo SchemaTable::indexInfo(ColumnGroupP index, CPSpan<Column> columns)
       continue;
     }
     covered.add(column);
-    ++numCovered;
-    info.joinCardinality =
-        combine(info.joinCardinality, numCovered, column->value().cardinality);
+    info.joinCardinality = combine(
+        info.joinCardinality, covered.size(), column->value().cardinality);
   }
   info.coveredColumns = std::move(covered);
   return info;
@@ -326,9 +327,7 @@ IndexInfo joinCardinality(PlanObjectCP table, CPSpan<Column> keys) {
   }
   VELOX_CHECK(table->type() == PlanType::kDerivedTableNode);
   const auto* dt = table->as<DerivedTable>();
-  const auto* distribution = dt->distribution;
-  VELOX_CHECK_NOT_NULL(distribution);
-  computeCardinalities(distribution->cardinality);
+  computeCardinalities(dt->cardinality);
   result.unique =
       dt->aggregation && keys.size() >= dt->aggregation->groupingKeys().size();
   return result;

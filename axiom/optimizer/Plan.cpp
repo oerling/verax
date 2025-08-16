@@ -227,7 +227,12 @@ const PlanObjectSet& PlanState::downstreamColumns() const {
       }
     }
   }
-
+  if (dt->write  && !placed.contains(dt->write)) {
+    for (auto i = 0; i < dt->write->columns().size(); ++i) {
+      result.unionColumns(dt->write->values()[i]);
+    }
+  }
+  
   result.unionSet(targetColumns);
   return downstreamPrecomputed[placed] = std::move(result);
 }
@@ -789,9 +794,7 @@ RelationOpPtr repartitionForAgg(const RelationOpPtr& plan, PlanState& state) {
   }
 
   Distribution distribution(
-      plan->distribution().distributionType,
-      plan->resultCardinality(),
-      std::move(keyValues));
+      plan->distribution().distributionType, std::move(keyValues));
   auto* repartition =
       make<Repartition>(plan, std::move(distribution), plan->columns());
   state.addCost(*repartition);
@@ -934,9 +937,7 @@ RelationOpPtr repartitionForIndex(
   }
 
   Distribution distribution(
-      info.index->distribution().distributionType,
-      plan->resultCardinality(),
-      std::move(keyExprs));
+      info.index->distribution().distributionType, std::move(keyExprs));
   auto* repartition =
       make<Repartition>(plan, std::move(distribution), plan->columns());
   state.addCost(*repartition);
@@ -1082,9 +1083,7 @@ void alignJoinSides(
   auto part = joinKeyPartition(input, keys);
   if (part.empty()) {
     Distribution distribution(
-        otherInput->distribution().distributionType,
-        input->resultCardinality(),
-        keys);
+        otherInput->distribution().distributionType, keys);
     auto* repartition =
         make<Repartition>(input, distribution, input->columns());
     state.addCost(*repartition);
@@ -1103,9 +1102,7 @@ void alignJoinSides(
   }
 
   Distribution distribution(
-      input->distribution().distributionType,
-      otherInput->resultCardinality(),
-      std::move(distColumns));
+      input->distribution().distributionType, std::move(distColumns));
   auto* repartition = make<Repartition>(
       otherInput, std::move(distribution), otherInput->columns());
   otherState.addCost(*repartition);
@@ -1158,8 +1155,7 @@ void Optimization::joinByHash(
   if (plan->distribution().distributionType.isGather) {
     forBuild = Distribution::gather();
   } else {
-    forBuild =
-        Distribution(plan->distribution().distributionType, 0, copartition);
+    forBuild = Distribution(plan->distribution().distributionType, copartition);
   }
 
   PlanObjectSet empty;
@@ -1190,7 +1186,7 @@ void Optimization::joinByHash(
           }
         }
         Distribution distribution(
-            plan->distribution().distributionType, 0, copartition);
+            plan->distribution().distributionType, copartition);
         auto* repartition =
             make<Repartition>(buildInput, distribution, buildInput->columns());
         buildState.addCost(*repartition);
@@ -1201,8 +1197,7 @@ void Optimization::joinByHash(
         isBroadcastableSize(buildPlan, state)) {
       auto* broadcast = make<Repartition>(
           buildInput,
-          Distribution::broadcast(
-              plan->distribution().distributionType, plan->resultCardinality()),
+          Distribution::broadcast(plan->distribution().distributionType),
           buildInput->columns());
       buildState.addCost(*broadcast);
       buildInput = broadcast;
@@ -1323,7 +1318,7 @@ void Optimization::joinByHashRight(
   bool needsShuffle = false;
   auto probePlan = makePlan(
       memoKey,
-      Distribution(plan->distribution().distributionType, 0, {}),
+      Distribution(plan->distribution().distributionType, {}),
       empty,
       candidate.existsFanout,
       state,
@@ -1496,7 +1491,8 @@ RelationOpPtr Optimization::placeSingleRowDt(
     memoKey.columns.add(column);
   }
 
-  auto broadcast = Distribution::broadcast(DistributionType(), 1);
+  const auto broadcast = Distribution::broadcast(DistributionType());
+
   PlanObjectSet empty;
   bool needsShuffle = false;
   auto rightPlan = makePlan(memoKey, broadcast, empty, 1, state, needsShuffle);
@@ -1648,13 +1644,13 @@ namespace {
 
 float startingScore(PlanObjectCP table) {
   if (table->type() == PlanType::kTableNode) {
-    return table->as<BaseTable>()
-        ->schemaTable->columnGroups[0]
-        ->distribution()
-        .cardinality;
-  } else if (table->type() == PlanType::kValuesTableNode) {
+    return table->as<BaseTable>()->schemaTable->cardinality;
+  }
+
+  if (table->type() == PlanType::kValuesTableNode) {
     return table->as<ValuesTable>()->cardinality();
   }
+
   return 10;
 }
 } // namespace
@@ -1695,7 +1691,7 @@ void Optimization::makeJoins(RelationOpPtr plan, PlanState& state) {
               std::move(distribution),
               table,
               index,
-              index->distribution().cardinality * table->filterSelectivity,
+              index->table->cardinality * table->filterSelectivity,
               std::move(columns));
           state.addCost(*scan);
           makeJoins(scan, state);
@@ -1802,7 +1798,7 @@ Distribution somePartition(const RelationOpPtrVector& inputs) {
       queryCtx()->optimization()->options().numWorkers;
   distributionType.locus = firstInput->distribution().distributionType.locus;
 
-  return Distribution(distributionType, 0.0, columns);
+  return Distribution(distributionType, columns);
 }
 
 // Adds the costs in the input states to the first state and if 'distinct' is

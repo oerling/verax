@@ -35,6 +35,8 @@ using NameMap = std::unordered_map<
     std::equal_to<Name>,
     QGAllocator<std::pair<const Name, T>>>;
 
+using TypeCP = const Type*;
+  
 /// Represents constraints on a column value or intermediate result.
 struct Value {
   Value(const velox::Type* _type, float _cardinality)
@@ -105,18 +107,6 @@ class Locus {
     return connector_;
   }
 
-  /// Sets the cardinality in op. Returns true if set. If false, default
-  /// cardinality determination.
-  virtual bool setCardinality(RelationOp& /*op*/) const {
-    return false;
-  }
-
-  /// Sets the cost. Returns true if set. If false, the default cost is set with
-  /// RelationOp::setCost.
-  virtual bool setCost(RelationOp& /*op*/) const {
-    return false;
-  }
-
   std::string toString() const {
     return name_;
   }
@@ -164,23 +154,23 @@ struct Distribution {
   Distribution() = default;
   Distribution(
       DistributionType type,
-      float cardinality,
       ExprVector _partition,
       ExprVector _order = {},
       OrderTypeVector _orderType = {},
       int32_t uniquePrefix = 0,
       float _spacing = 0)
       : distributionType(std::move(type)),
-        cardinality(cardinality),
         partition(std::move(_partition)),
         order(std::move(_order)),
         orderType(std::move(_orderType)),
         numKeysUnique(uniquePrefix),
-        spacing(_spacing) {}
+        spacing(_spacing) {
+    VELOX_CHECK_EQ(order.size(), orderType.size());
+  }
 
   /// Returns a Distribution for use in a broadcast shuffle.
-  static Distribution broadcast(DistributionType type, float cardinality) {
-    Distribution result(type, cardinality, {});
+  static Distribution broadcast(DistributionType type) {
+    Distribution result(type, {});
     result.isBroadcast = true;
     return result;
   }
@@ -191,7 +181,7 @@ struct Distribution {
   static Distribution gather(
       const ExprVector& order = {},
       const OrderTypeVector& orderType = {}) {
-    return Distribution(DistributionType::gather(), 1, {}, order, orderType);
+    return Distribution(DistributionType::gather(), {}, order, orderType);
   }
 
   /// True if 'this' and 'other' have the same number/type of keys and same
@@ -207,10 +197,6 @@ struct Distribution {
   std::string toString() const;
 
   DistributionType distributionType;
-
-  // Number of rows 'this' applies to. This is the size in rows if 'this'
-  // occurs in a table or index.
-  float cardinality;
 
   // Partitioning columns. The values of these columns determine which of
   // 'numPartitions' contains any given row. This does not specify the
@@ -383,14 +369,13 @@ float baseSelectivity(PlanObjectCP object);
 /// partitioned physical representations (ColumnGroups). Not all ColumnGroups
 /// (aka indices) need to contain all columns.
 struct SchemaTable {
-  SchemaTable(Name _name, const velox::RowTypePtr& _type)
-      : name(_name), type(reinterpret_cast<const RowType*>(toType(_type))) {}
+  SchemaTable(Name _name, const velox::RowTypePtr& _type, float _cardinality)
+      : name(_name), type(&toType(_type)->asRow()), cardinality{_cardinality} {}
 
   /// Adds an index. The arguments set the corresponding members of a
   /// Distribution.
   ColumnGroupP addIndex(
       Name name,
-      float cardinality,
       int32_t numKeysUnique,
       int32_t numOrdering,
       const ColumnVector& keys,
@@ -419,8 +404,10 @@ struct SchemaTable {
   IndexInfo indexByColumns(CPSpan<Column> columns) const;
 
   std::vector<ColumnCP> toColumns(const std::vector<std::string>& names);
-  Name name;
+
+  const Name name;
   const RowType* type;
+  const float cardinality;
 
   // Lookup from name to column.
   NameMap<ColumnCP> columns;

@@ -54,6 +54,3 @@ not run the same sample repeatedly.
 For now the local connector metadata should be seen as a test-only
 reference implementation. A more complete DDL support will be added in
 time.
-
-
-

@@ -1021,22 +1021,20 @@ void DerivedTable::makeInitialPlan() {
   }
 
   optimization->makeJoins(nullptr, state);
+
   Distribution emptyDistribution;
   bool needsShuffle;
   auto plan = state.plans.best(emptyDistribution, needsShuffle)->op;
+
   auto& distribution = plan->distribution();
   ExprVector partition = distribution.partition;
   ExprVector order = distribution.order;
   auto orderType = distribution.orderType;
   replace(partition, exprs, columns.data());
   replace(order, exprs, columns.data());
-  auto* dtDist = make<Distribution>(
-      distribution.distributionType,
-      distribution.cardinality,
-      partition,
-      order,
-      orderType);
-  this->distribution = dtDist;
+
+  this->distribution = make<Distribution>(
+      distribution.distributionType, partition, order, orderType);
   optimization->memo()[key] = std::move(state.plans);
 }
 

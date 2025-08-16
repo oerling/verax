@@ -333,6 +333,8 @@ class ToGraph {
 
   PlanObjectP addOrderBy(const logical_plan::SortNode& order);
 
+  PlanObjectP addWrite(const logical_plan::TableWriteNode& TableWriteNode);
+  
   bool isSubfield(
       const logical_plan::Expr* expr,
       Step& step,
