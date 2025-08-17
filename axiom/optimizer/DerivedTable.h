@@ -33,9 +33,9 @@ using AggregationPlanCP = const AggregationPlan*;
 enum class OrderType;
 using OrderTypeVector = std::vector<OrderType, QGAllocator<OrderType>>;
 
- class WritePlan;
- using WritePlanCP = const WritePlan*;
- 
+class WritePlan;
+using WritePlanCP = const WritePlan*;
+
 /// Represents a derived table, i.e. a SELECT in a FROM clause. This is the
 /// basic unit of planning. Derived tables can be merged and split apart from
 /// other ones. Join types and orders are decided within each derived table. A

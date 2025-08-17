@@ -1305,14 +1305,14 @@ PlanObjectP ToGraph::addLimit(const lp::LimitNode& limitNode) {
   return currentDt_;
 }
 
-  PlanObjectP ToGraph::addWrite(const lp::TableWriteNode& tableWrite) {
-    VELOX_CHECK_NULL(currentDt_->write, "Only one TableWrite allowed");
-    auto* connector = connector::getConnector(tableWrite.connectorId());
-    VELOX_CHECK_NOT_NULL(connector);
-    auto* metadata = connector->metadata();
-    VELOX_CHECK_NOT_NULL(metadata);
-    
-    const auto* schemaTable =
+PlanObjectP ToGraph::addWrite(const lp::TableWriteNode& tableWrite) {
+  VELOX_CHECK_NULL(currentDt_->write, "Only one TableWrite allowed");
+  auto* connector = connector::getConnector(tableWrite.connectorId());
+  VELOX_CHECK_NOT_NULL(connector);
+  auto* metadata = connector->metadata();
+  VELOX_CHECK_NOT_NULL(metadata);
+
+  const auto* schemaTable =
       schema_.findTable(tableWrite.connectorId(), tableWrite.tableName());
   VELOX_CHECK_NOT_NULL(
       schemaTable,
@@ -1321,29 +1321,45 @@ PlanObjectP ToGraph::addLimit(const lp::LimitNode& limitNode) {
       tableWrite.connectorId());
 
   auto* layout = schemaTable->columnGroups[0]->layout;
-  
-    NameVector columns;
-    ExprVector values;
-    for (auto i = 0; i < tableWrite.columnNames().size(); ++i) {
-      columns.push_back(toName(tableWrite.columnNames()[i]));
-      values.push_back(translateColumn(tableWrite.onlyInput()->outputType()->nameOf(i)));
-    }
-    currentDt_->write = make<WritePlan>(toName(tableWrite.tableName()), layout, tableWriteNode.kind(), std::move(values),  std::move(columns));
 
-
-    auto& options = queryCtx()->optimization()->opts();
-    VELOX_CHECK_NOT_NULL(options.session, "Need a ConnectorSession for write operations");
-
-    VELOX_CHECK_EQ(table->columnGroups.size(), 1, "Only one materialization supported for table write");
-    auto* layout = table->columnGroups[0]->layout;
-    VELOX_CHECK_EQ(tabelWrite.writeKind(), lp::WriteKind::kInsert);
-    
-    
-    auto handle = metadata->createInsertTableHandle(*layout, tableWrite.onlyInput()->outputType(), tableWrite.options(), connector::WriteKind::kWrite, options.session);
-    writeInfos_[currentDt_->write->id()] =  std::make_unique<WriteInfo>(handle, logical_plan::WriteKind::kInsert, metadata->writePartitionInfo(handle));
-    return currentDt_;
+  NameVector columns;
+  ExprVector values;
+  for (auto i = 0; i < tableWrite.columnNames().size(); ++i) {
+    columns.push_back(toName(tableWrite.columnNames()[i]));
+    values.push_back(
+        translateColumn(tableWrite.onlyInput()->outputType()->nameOf(i)));
   }
-  
+  currentDt_->write = make<WritePlan>(
+      toName(tableWrite.tableName()),
+      layout,
+      tableWriteNode.kind(),
+      std::move(values),
+      std::move(columns));
+
+  auto& options = queryCtx()->optimization()->opts();
+  VELOX_CHECK_NOT_NULL(
+      options.session, "Need a ConnectorSession for write operations");
+
+  VELOX_CHECK_EQ(
+      table->columnGroups.size(),
+      1,
+      "Only one materialization supported for table write");
+  auto* layout = table->columnGroups[0]->layout;
+  VELOX_CHECK_EQ(tabelWrite.writeKind(), lp::WriteKind::kInsert);
+
+  auto handle = metadata->createInsertTableHandle(
+      *layout,
+      tableWrite.onlyInput()->outputType(),
+      tableWrite.options(),
+      connector::WriteKind::kWrite,
+      options.session);
+  writeInfos_[currentDt_->write->id()] = std::make_unique<WriteInfo>(
+      handle,
+      logical_plan::WriteKind::kInsert,
+      metadata->writePartitionInfo(handle));
+  return currentDt_;
+}
+
 namespace {
 bool hasNondeterministic(const lp::ExprPtr& expr) {
   if (const auto* call = expr->asUnchecked<lp::CallExpr>()) {
@@ -1663,11 +1679,11 @@ PlanObjectP ToGraph::makeQueryGraph(
       currentDt_->tableSet.add(setDt);
       return currentDt_;
     }
-  case lp::NodeKind::kTableWrite: {
-    wrapInDt(*node.onlyInput());
-    return addWrite(*node.asUnchecked<lp::TableWriteNode>());
-  }
-  case lp::NodeKind::kUnnest:
+    case lp::NodeKind::kTableWrite: {
+      wrapInDt(*node.onlyInput());
+      return addWrite(*node.asUnchecked<lp::TableWriteNode>());
+    }
+    case lp::NodeKind::kUnnest:
     default:
       VELOX_NYI(
           "Unsupported PlanNode {}", lp::NodeKindName::toName(node.kind()));

@@ -830,10 +830,12 @@ std::string TableWrite::toString(bool recursive, bool detail) const {
   if (recursive) {
     out << input()->toString(true, detail) << " ";
   }
- 
-  out << fmt::format("Writer {} {}", write->kind(), itemsToString(write->values().data(), write->values().size()));
-    return out.str();
+
+  out << fmt::format(
+      "Writer {} {}",
+      write->kind(),
+      itemsToString(write->values().data(), write->values().size()));
+  return out.str();
 }
 
-  
 } // namespace facebook::velox::optimizer

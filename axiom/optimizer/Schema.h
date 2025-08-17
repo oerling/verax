@@ -36,7 +36,7 @@ using NameMap = std::unordered_map<
     QGAllocator<std::pair<const Name, T>>>;
 
 using TypeCP = const Type*;
-  
+
 /// Represents constraints on a column value or intermediate result.
 struct Value {
   Value(const velox::Type* _type, float _cardinality)
@@ -123,24 +123,27 @@ using LocusCP = const Locus*;
 /// combination of partition keys. For a join to be copartitioned,
 /// both sides must have compatible partition functions and the join
 /// keys must include the partition keys.  'numPartitions' is 1 if the
-/// data is not partitioned. 
+/// data is not partitioned.
 struct DistributionType {
   bool operator==(const DistributionType& other) const {
-    return typesCompatible(partitionType, other.partitionType) && numPartitions == other.numPartitions &&
-        locus == other.locus && isGather == other.isGather;
+    return typesCompatible(partitionType, other.partitionType) &&
+        numPartitions == other.numPartitions && locus == other.locus &&
+        isGather == other.isGather;
   }
 
   static typesCompatible(PartitionType* left, PartitionType* right) {
     if (left == nullptr && right == nullptr) {
       return true;
     }
-    if (left != nullptr && right != nullptr && left->copartition(*right) != nullptr) {
+    if (left != nullptr && right != nullptr &&
+        left->copartition(*right) != nullptr) {
       return true;
     }
     return false;
   }
 
-  /// Partition function. nullptr means Velox default, copartitioned only with itself.
+  /// Partition function. nullptr means Velox default, copartitioned only with
+  /// itself.
   const connector::PartitionType* partitionType{nullptr};
   int32_t numPartitions{1};
   LocusCP locus{nullptr};
@@ -148,7 +151,7 @@ struct DistributionType {
 
   static DistributionType gather() {
     static const DistributionType kGather = {
-      .partitionType = nullptr,
+        .partitionType = nullptr,
         .numPartitions = 1,
         .locus = nullptr,
         .isGather = true};

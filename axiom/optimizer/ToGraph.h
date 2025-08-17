@@ -172,16 +172,20 @@ struct SubfieldProjections {
   std::unordered_map<PathCP, ExprCP> pathToExpr;
 };
 
-  struct WriteInfo {
-    WriteInfo(connector::ConnectorInsertTableHandlePtr handle, logical_plan::WriteKind kind, WritePartitionInfo& info, const RowTypePtr& rowType)
+struct WriteInfo {
+  WriteInfo(
+      connector::ConnectorInsertTableHandlePtr handle,
+      logical_plan::WriteKind kind,
+      WritePartitionInfo& info,
+      const RowTypePtr& rowType)
       : handle(handl), kind(kind), info(info), rowType(rowType) {}
-    
-    connector::ConnectorInsertTableHandlePtr handle;
-    logical_plan::WriteKind kind;
-    connector :: WritePartitionInfo info;
-    RowTypePtr rowType;
-  };
-  
+
+  connector::ConnectorInsertTableHandlePtr handle;
+  logical_plan::WriteKind kind;
+  connector ::WritePartitionInfo info;
+  RowTypePtr rowType;
+};
+
 class ToGraph {
  public:
   ToGraph(
@@ -227,11 +231,10 @@ class ToGraph {
     }
   }
 
-
   std::unordered_map<int32_t, std::unique_ptr<WriteInfo>>& writeInfos() {
     return writeInfos_;
   }
-  
+
  private:
   static bool isSpecialForm(
       const logical_plan::Expr* expr,
@@ -355,7 +358,7 @@ class ToGraph {
   PlanObjectP addOrderBy(const logical_plan::SortNode& order);
 
   PlanObjectP addWrite(const logical_plan::TableWriteNode& TableWriteNode);
-  
+
   bool isSubfield(
       const logical_plan::Expr* expr,
       Step& step,

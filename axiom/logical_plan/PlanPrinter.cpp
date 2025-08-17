@@ -157,7 +157,7 @@ class ToTextVisitor : public PlanNodeVisitor {
       const override {
     appendNode("TableWrite", node, context);
   }
-  
+
  private:
   static std::string makeIndent(int32_t size) {
     return std::string(size * 2, ' ');
@@ -328,7 +328,7 @@ class CollectExprStatsPlanNodeVisitor : public PlanNodeVisitor {
     visitInputs(node, context);
   }
 
-    void visit(const TableWriteNode& node, PlanNodeVisitorContext& context)
+  void visit(const TableWriteNode& node, PlanNodeVisitorContext& context)
       const override {
     auto& stats = static_cast<Context&>(context).stats;
     visitInputs(node, context);
@@ -598,7 +598,7 @@ class SummarizeToTextVisitor : public PlanNodeVisitor {
     appendNode(node, context);
   }
 
-    void visit(const TableWriteNode& node, PlanNodeVisitorContext& context)
+  void visit(const TableWriteNode& node, PlanNodeVisitorContext& context)
       const override {
     appendNode(node, context);
   }

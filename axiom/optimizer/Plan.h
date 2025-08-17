@@ -470,9 +470,9 @@ class Optimization {
   void trace(int32_t event, int32_t id, const Cost& cost, RelationOp& plan);
 
   WriteInfo* writeInfo(int32_t id) const {
-    return toGraph_.writeInfo().at(id).get(); 
+    return toGraph_.writeInfo().at(id).get();
   }
-  
+
  private:
   // Retrieves or makes a plan from 'key'. 'key' specifies a set of top level
   // joined tables or a hash join build side table or join.
@@ -631,12 +631,14 @@ class Optimization {
 
 const JoinEdgeVector& joinedBy(PlanObjectCP table);
 
-  /// Compares 'first' and 'second' and returns the one that should be
-  /// the repartition partitioning to do copartition with the two. If
-  /// there is no copartition possibility or if either or both are
-  /// nullptr, returns nullptr.
-connector::PartitionType* coPartitionType(const connector::PartitionType* first,   const connector::PartitionType* second);
-  
+/// Compares 'first' and 'second' and returns the one that should be
+/// the repartition partitioning to do copartition with the two. If
+/// there is no copartition possibility or if either or both are
+/// nullptr, returns nullptr.
+connector::PartitionType* coPartitionType(
+    const connector::PartitionType* first,
+    const connector::PartitionType* second);
+
 /// Returns  the inverse join type, e.g. right outer from left outer.
 /// TODO Move this function to Velox.
 core::JoinType reverseJoinType(core::JoinType joinType);

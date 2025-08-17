@@ -46,13 +46,15 @@ void planBreakpoint() {
   LOG(INFO) << "Join order breakpoint";
 }
 
-  connector::PartitionType* coPartitionType(const connector::PartitionType* first,   const connector::PartitionType* second) {
-    if (!first  || !second) {
-      return nullptr;
-    }
-    return first->copartition(*second);
+connector::PartitionType* coPartitionType(
+    const connector::PartitionType* first,
+    const connector::PartitionType* second) {
+  if (!first || !second) {
+    return nullptr;
   }
-  
+  return first->copartition(*second);
+}
+
 void PlanState::setFirstTable(int32_t id) {
   if (dt->id() == debugDt) {
     debugPlacedTables.resize(1);
@@ -237,12 +239,12 @@ const PlanObjectSet& PlanState::downstreamColumns() const {
       }
     }
   }
-  if (dt->write  && !placed.contains(dt->write)) {
+  if (dt->write && !placed.contains(dt->write)) {
     for (auto i = 0; i < dt->write->columns().size(); ++i) {
       result.unionColumns(dt->write->values()[i]);
     }
   }
-  
+
   result.unionSet(targetColumns);
   return downstreamPrecomputed[placed] = std::move(result);
 }
@@ -831,12 +833,13 @@ RelationOpPtr repartitionForWrite(const RelationOpPtr& plan, PlanState& state) {
   }
 
   const auto* write = state.dt->write;
-  const auto* info = queryCtx()->optimization()-writeInfo(write->id());
+  const auto* info = queryCtx()->optimization() - writeInfo(write->id());
   if (info.info.columns().empty()) {
-    // The write is not partitioned on columns of the layout. ToVelox will add no or an arbitrary repartition regardless of plan.
+    // The write is not partitioned on columns of the layout. ToVelox will add
+    // no or an arbitrary repartition regardless of plan.
     return plan;
   }
-  
+
   ExprVector keyValues;
   for (auto i = 0; i < info->info.columns.size(); ++i) {
     // find the value for the partitioning column.
@@ -845,15 +848,20 @@ RelationOpPtr repartitionForWrite(const RelationOpPtr& plan, PlanState& state) {
     if (it == write->columns().end()) {
       // Not given. Null .
       auto type = info->rowType->childAt(info->rowType->getChildIdx(name));
-      keyValues.push_back(make<Literal>(Value(toType(type), 1), queryCtx()->registerVariant(std::make_unique<Variant>(Variant::null(type->kind())))));
+      keyValues.push_back(make<Literal>(
+          Value(toType(type), 1),
+          queryCtx()->registerVariant(
+              std::make_unique<Variant>(Variant::null(type->kind())))));
     } else {
       keyValues.push_back(write->values()[i]);
     }
   }
 
   auto partitionType = write->layout()->partitionType();
-  auto co = copartition(plan->distribution().partitionType, write->layout()->partitionType());
-  // Copartitioning is possible if the same kind of function and the destination is not narrower.
+  auto co = copartition(
+      plan->distribution().partitionType, write->layout()->partitionType());
+  // Copartitioning is possible if the same kind of function and the destination
+  // is not narrower.
   bool shuffle = !co || co == write->layout()->partitionType();
   if (!shuffle) {
     // Then chekc that the partition keys are in the same order.
@@ -861,8 +869,8 @@ RelationOpPtr repartitionForWrite(const RelationOpPtr& plan, PlanState& state) {
       auto key = keyValues[i];
       auto nthKey = position(plan->distribution().partition, *key);
       if (nthKey != i) {
-	shuffle = true;
-	break;
+        shuffle = true;
+        break;
       }
     }
   }
@@ -885,7 +893,10 @@ void Optimization::addPostprocess(
     RelationOpPtr& plan,
     PlanState& state) {
   if (dt->write) {
-    VELOX_CHECK(dt->aggregation == nullptr, dt->orderByKeys.empty() && dt->limit == -1 && dt->offset == 0, "A write does not mix with other postprocess")
+    VELOX_CHECK(
+        dt->aggregation == nullptr,
+        dt->orderByKeys.empty() && dt->limit == -1 && dt->offset == 0,
+        "A write does not mix with other postprocess")
     plan = repartitionForWrite(plan, state);
     plan = make<TableWrite>(plan, dt->write);
     return;

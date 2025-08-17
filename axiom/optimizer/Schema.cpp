@@ -125,9 +125,9 @@ SchemaTableCP Schema::findTable(
   auto findColumn = [&](const std::string& name) {
     auto interned = toName(name);
     auto it = std::find(columns.begin(), columns.end(), interned);
-    VELOX_CHECK(it != columns.end(), "Partition or order column not in layout columns");
+    VELOX_CHECK(
+        it != columns.end(), "Partition or order column not in layout columns");
     return *it;
-
   };
 
   auto layout = table->layouts()[0];
@@ -145,9 +145,15 @@ SchemaTableCP Schema::findTable(
   for (auto* column : layout->lookupColumns()) {
     order.push_back(findColumn(column->name()));
   }
-  
-  auto* pk =
-    schemaTable->addIndex(toName("pk"), layout->uniquePrifixColumns(), order.size(), order, defaultDist, partition, columns);
+
+  auto* pk = schemaTable->addIndex(
+      toName("pk"),
+      layout->uniquePrifixColumns(),
+      order.size(),
+      order,
+      defaultDist,
+      partition,
+      columns);
   pk->layout = layout;
   addTable(schemaTable);
   return schemaTable;

@@ -320,7 +320,7 @@ class TableLayout {
   virtual const PartitionType* partitionType() const {
     return nullptr;
   }
-  
+
   /// Columns on which content is ordered within the range of rows covered by a
   /// Split.
   const std::vector<const Column*>& orderColumns() const {
@@ -337,16 +337,18 @@ class TableLayout {
   /// support lookup. An index lookup has 0 or more equalities
   /// followed by up to one range. The equalities need to be on
   /// contiguous, leading parts of the column list and the range must
-  /// be on the next. This coresponds to a multipart key. This is expected to correspond to orderColumns if non-empty.
+  /// be on the next. This coresponds to a multipart key. This is expected to
+  /// correspond to orderColumns if non-empty.
   const std::vector<const Column*>& lookupKeys() const {
     return lookupKeys_;
   }
 
-  ///  Numb er of leading equalities  on orderColumns or lookupKeys needed to get exactly one or zero matches.
+  ///  Numb er of leading equalities  on orderColumns or lookupKeys needed to
+  ///  get exactly one or zero matches.
   virtual int32_t uniquePrifixColumns() const {
     return 0;
   }
-  
+
   /// True if a full table scan is supported. Some lookup sources prohibit this.
   /// At the same time the dataset may be available in a scannable form in
   /// another layout.

@@ -20,7 +20,7 @@
 #include <vector>
 
 namespace facebook::velox::connector {
-  class ConnectorSession;
+class ConnectorSession;
 }
 
 namespace facebook::velox::optimizer {
@@ -55,7 +55,7 @@ struct OptimizerOptions {
 
   /// ConnectorSession, needed for write operations.
   std::shared_ptr<connector::ConnectorSession> session{nullptr};
-  
+
   bool isMapAsStruct(const char* table, const char* column) const {
     if (allMapsAsStruct) {
       return true;

@@ -1374,17 +1374,20 @@ core::PlanNodePtr ToVelox::makeWrite(
   }
   if (!info->info.columns.empty())
     std::vector<core::FieldAccessTypedExprPtr> keys;
-  for (auto& column  : info->info.columns) {
-    auto it = std::find(write->columns().begin(), write->columns().end(), toName(column));
+  for (auto& column : info->info.columns) {
+    auto it = std::find(
+        write->columns().begin(), write->columns().end(), toName(column));
     if (it == write->columns().end()) {
       auto type = info->rowType->childAt(info->rowType->getChildIdx(column));
-      keys.push_back(temp.toFieldRef(std::make_shared<core::ConstantTypedExpr(type,, Variant::null(type->kind()))));
+      keys.push_back(temp.toFieldRef(
+          std::make_shared <
+          core::ConstantTypedExpr(type, , Variant::null(type->kind()))));
     } else {
       !!;
     }
   }
-    }
-  
+}
+
 void ToVelox::makePredictionAndHistory(
     const core::PlanNodeId& id,
     const RelationOp* op) {
@@ -1422,9 +1425,9 @@ core::PlanNodePtr ToVelox::makeFragment(
       return makeUnionAll(*op->as<UnionAll>(), fragment, stages);
     case RelType::kValues:
       return makeValues(*op->as<Values>(), fragment);
-  case RelType::kTableWrite:
+    case RelType::kTableWrite:
       return makeWrite(*op->as<TableWrite>(), fragment);
-  default:
+    default:
       VELOX_FAIL(
           "Unsupported RelationOp {}", static_cast<int32_t>(op->relType()));
   }

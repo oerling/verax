@@ -428,11 +428,9 @@ using LimitCP = const Limit*;
 struct TableWrite : public RelationOp {
   TableWrite(RelationOpPtr input, const WritePlan* write)
 
-    const WritePlan* write;
+      const WritePlan* write;
 
-    std::string toString(bool recursive, bool detail) const override;
+  std::string toString(bool recursive, bool detail) const override;
 };
 
-
-  
 } // namespace facebook::velox::optimizer

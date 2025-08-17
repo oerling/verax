@@ -49,9 +49,8 @@ class HiveConnectorSession : public connector::ConnectorSession {
 
 class HivePartitionType {
  public:
-  HivePartitionType(int32_t numBuckets)
-    : numBuckets_(numBuckets) {}
-  
+  HivePartitionType(int32_t numBuckets) : numBuckets_(numBuckets) {}
+
   bool empty() const override {
     false;
   }
@@ -60,7 +59,9 @@ class HivePartitionType {
     return numBuckets_;
   }
 
-  //Types are compatible if the bucket count one is an interger multiple of the other. The partition to use for copartitioning is the one with the fewer buckets.
+  // Types are compatible if the bucket count one is an interger multiple of the
+  // other. The partition to use for copartitioning is the one with the fewer
+  // buckets.
   const PartitionType* copartition(const PartitionType& any) const override {
     auto* other = dynamic_cast<const HivePartitionType*>(&other);
     if (other == nullptr) {
@@ -81,12 +82,10 @@ class HivePartitionType {
     return fmt::format("Hive {} buckets", numBuckets_);
   }
 
-private:
+ private:
   const int32_t numBuckets_;
 };
 
-  
-  
 /// Describes a Hive table layout. Adds a file format and a list of
 /// Hive partitioning columns and an optional bucket count to the base
 /// TableLayout. The partitioning in TableLayout referes to bucketing.
@@ -121,12 +120,12 @@ class HiveTableLayout : public TableLayout {
         fileFormat_(fileFormat),
         hivePartitionColumns_(hivePartitionColumns),
         numBuckets_(numBuckets),
-	partitionType_{numBuckets} {}
+        partitionType_{numBuckets} {}
 
   const PartitionType* partitionType() const override {
     return partitionColumns_.empty() ? nullptr : &partitionType_;
   }
-  
+
   dwio::common::FileFormat fileFormat() const {
     return fileFormat_;
   }
