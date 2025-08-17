@@ -203,6 +203,50 @@ struct SortOrder {
   bool isNullsFirst{true};
 };
 
+/// Represents a partitioning function. Partitions can be copartitioned if the
+/// types are compatible.
+class PartitionType {
+ public:
+  /// True if the data is not partitioned.
+  virtual bool empty() const {
+    true;
+  }
+
+  virtual std::optional<int32_t> numPartitions() const {
+    return std::nullopt;
+  }
+
+  /// Returns 'this' or '&other' if the partitions are
+  /// compatible. Partitions are compatible if data in one partitioned
+  /// dataset can only match data in the same partition of another
+  /// dataset if joined on equality of partition keys. Compatibility
+  /// is not strict equality in the case of e.g. Hive where a dataset
+  /// partitioned 8 ways is compatible with one partitioned 16 ways if
+  /// the function is the same. In such a case the partition to use is
+  /// the 8 way one. On the 16 side data from partitions 0 and 1 match
+  /// 0 on the 8 side and 2, 3 match 1 and so on.
+  virtual const PartitionType* copartition(const PartitionType& other) const {
+    return nullptr;
+  }
+
+  /// Returns a factory that makes partition functions. The function
+  /// gets a RowVector and calculates a partition number from the
+  /// columns identified by 'channels'. If channels[i] ==
+  /// kConstantChannel then the corresponding element of 'constants'
+  /// is used. 'isLocal' differentiates between remote and ocal
+  /// exchange.
+  virtual std::shared_ptr<PartitionFunctionSpec> makeSpec(
+      const std::vector<column_index_t> channels,
+      std::vector<VectorPtr> constants,
+      bool isLocal) {
+    VELOX_UNSUPPORTED("Empty partition type has no partition spec");
+  }
+
+  virtual std::string toString() {
+    return "none";
+  }
+};
+
 /// Represents a physical manifestation of a table. There is at least
 /// one layout but for tables that have multiple sort orders,
 /// partitionings, indices, column groups, etc, there is a separate
@@ -270,6 +314,13 @@ class TableLayout {
     return partitionColumns_;
   }
 
+  ///  Returns a partitionType. Describes how the value in partitionColumns()
+  ///  determines a partition. The returned value is owned by 'this'. nullptr if
+  ///  'partitionColumns_' is empty.
+  virtual const PartitionType* partitionType() const {
+    return nullptr;
+  }
+  
   /// Columns on which content is ordered within the range of rows covered by a
   /// Split.
   const std::vector<const Column*>& orderColumns() const {
@@ -286,11 +337,16 @@ class TableLayout {
   /// support lookup. An index lookup has 0 or more equalities
   /// followed by up to one range. The equalities need to be on
   /// contiguous, leading parts of the column list and the range must
-  /// be on the next. This coresponds to a multipart key.
+  /// be on the next. This coresponds to a multipart key. This is expected to correspond to orderColumns if non-empty.
   const std::vector<const Column*>& lookupKeys() const {
     return lookupKeys_;
   }
 
+  ///  Numb er of leading equalities  on orderColumns or lookupKeys needed to get exactly one or zero matches.
+  virtual int32_t uniquePrifixColumns() const {
+    return 0;
+  }
+  
   /// True if a full table scan is supported. Some lookup sources prohibit this.
   /// At the same time the dataset may be available in a scannable form in
   /// another layout.

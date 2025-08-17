@@ -1356,6 +1356,35 @@ core::PlanNodePtr ToVelox::makeValues(
   return valuesNode;
 }
 
+core::PlanNodePtr ToVelox::makeWrite(
+    const TableWrite& op,
+    ExecutableFragment& fragment) {
+  TempProjections projections(*this, *write.input());
+  // A partitioned write has a local exchange on the partition keys
+  // and writers after that. This is for both single node and
+  // distributed plans. Any thread can write any row for a
+  // non-partitioned write, so there is no remote or local exchange. A
+  // Presto scaled writer plan would have an arbitrary repartition but
+  // this is not supported for now.
+  auto* write = op.write;
+  auto* info = queryCtx()->optimization()->writeInfo(write->id());
+  std::vector<core::FieldAccessTypedExprPtr>;
+  for (auto value : write->values()) {
+    fields.push_back(temp.toFieldRef(value));
+  }
+  if (!info->info.columns.empty())
+    std::vector<core::FieldAccessTypedExprPtr> keys;
+  for (auto& column  : info->info.columns) {
+    auto it = std::find(write->columns().begin(), write->columns().end(), toName(column));
+    if (it == write->columns().end()) {
+      auto type = info->rowType->childAt(info->rowType->getChildIdx(column));
+      keys.push_back(temp.toFieldRef(std::make_shared<core::ConstantTypedExpr(type,, Variant::null(type->kind()))));
+    } else {
+      !!;
+    }
+  }
+    }
+  
 void ToVelox::makePredictionAndHistory(
     const core::PlanNodeId& id,
     const RelationOp* op) {
@@ -1393,7 +1422,9 @@ core::PlanNodePtr ToVelox::makeFragment(
       return makeUnionAll(*op->as<UnionAll>(), fragment, stages);
     case RelType::kValues:
       return makeValues(*op->as<Values>(), fragment);
-    default:
+  case RelType::kTableWrite:
+      return makeWrite(*op->as<TableWrite>(), fragment);
+  default:
       VELOX_FAIL(
           "Unsupported RelationOp {}", static_cast<int32_t>(op->relType()));
   }

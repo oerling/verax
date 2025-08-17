@@ -118,28 +118,37 @@ class Locus {
 
 using LocusCP = const Locus*;
 
-/// Method for determining a partition given an ordered list of partitioning
-/// keys. Hive hash is an example, range partitioning is another. Add values
-/// here for more types.
-enum class ShuffleMode { kNone, kHive };
-
-/// Distribution of data. 'numPartitions' is 1 if the data is not partitioned.
-/// There is copartitioning if the DistributionType is the same on both sides
-/// and both sides have an equal number of 1:1 type matched partitioning keys.
+/// Distribution of data. This describes a possible partition function
+/// that assigns a row of data to a partition based on some
+/// combination of partition keys. For a join to be copartitioned,
+/// both sides must have compatible partition functions and the join
+/// keys must include the partition keys.  'numPartitions' is 1 if the
+/// data is not partitioned. 
 struct DistributionType {
   bool operator==(const DistributionType& other) const {
-    return mode == other.mode && numPartitions == other.numPartitions &&
+    return typesCompatible(partitionType, other.partitionType) && numPartitions == other.numPartitions &&
         locus == other.locus && isGather == other.isGather;
   }
 
-  ShuffleMode mode{ShuffleMode::kNone};
+  static typesCompatible(PartitionType* left, PartitionType* right) {
+    if (left == nullptr && right == nullptr) {
+      return true;
+    }
+    if (left != nullptr && right != nullptr && left->copartition(*right) != nullptr) {
+      return true;
+    }
+    return false;
+  }
+
+  /// Partition function. nullptr means Velox default, copartitioned only with itself.
+  const connector::PartitionType* partitionType{nullptr};
   int32_t numPartitions{1};
   LocusCP locus{nullptr};
   bool isGather{false};
 
   static DistributionType gather() {
     static const DistributionType kGather = {
-        .mode = ShuffleMode::kNone,
+      .partitionType = nullptr,
         .numPartitions = 1,
         .locus = nullptr,
         .isGather = true};
@@ -148,8 +157,9 @@ struct DistributionType {
   }
 };
 
-// Describes output of relational operator. If base table, cardinality is
-// after filtering.
+// Describes output of relational operator. If this is partitioned on
+// some keys, distributionType gives the partition function and
+// 'partition' gives the input of the partition function.
 struct Distribution {
   Distribution() = default;
   Distribution(
@@ -244,6 +254,7 @@ enum class RelType {
   kUnionAll,
   kLimit,
   kValues,
+  kTableWrite
 };
 
 /// Represents a relation (table) that is either physically stored or is the

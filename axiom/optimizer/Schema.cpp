@@ -122,12 +122,34 @@ SchemaTableCP Schema::findTable(
     schemaTable->columns[column->name()] = column;
     columns.push_back(column);
   }
+  auto findColumn = [&](const std::string& name) {
+    auto interned = toName(name);
+    auto it = std::find(columns.begin(), columns.end(), interned);
+    VELOX_CHECK(it != columns.end(), "Partition or order column not in layout columns");
+    return *it;
+
+  };
+
+  auto layout = table->layouts()[0];
   DistributionType defaultDist;
+  defaultDist.partitionType = layout->partitionType();
+  if (defaultDist.partitionType()) {
+    defaultDist.numPartitions = defaultDist.partitionType->numPartitions();
+  }
   defaultDist.locus = defaultLocus_;
+  ColumnVector partition;
+  for (auto& part : layout->partitionColumns()) {
+    partition.push_back(findColumn(part->name()));
+  }
+  ColumnVector order;
+  for (auto* column : layout->lookupColumns()) {
+    order.push_back(findColumn(column->name()));
+  }
+  
   auto* pk =
-      schemaTable->addIndex(toName("pk"), 0, 0, {}, defaultDist, {}, columns);
+    schemaTable->addIndex(toName("pk"), layout->uniquePrifixColumns(), order.size(), order, defaultDist, partition, columns);
+  pk->layout = layout;
   addTable(schemaTable);
-  pk->layout = table->layouts()[0];
   return schemaTable;
 }
 
@@ -419,6 +441,9 @@ std::string Distribution::toString() const {
   std::stringstream out;
   if (!partition.empty()) {
     out << "P ";
+    if (distributionType.partitionType) {
+      out << " " << distributionType.partitionType->toString() << " ";
+    }
     exprsToString(partition, out);
     out << " " << distributionType.numPartitions << " ways";
   }

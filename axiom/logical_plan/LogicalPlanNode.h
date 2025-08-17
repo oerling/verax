@@ -700,16 +700,23 @@ class TableWriteNode : public LogicalPlanNode {
   TableWriteNode(
       const std::string& id,
       const LogicalPlanNodePtr& input,
+      constt std::string& connectorId,
       const std::string& tableName,
       WriteKind kind,
       const std::vector<std::string>& columnNames,
       const std::unordered_map<std::string, std::string>& options = {})
       : LogicalPlanNode(NodeKind::kTableWrite, id, {input}, makeWriteType()),
+	connectorId_(connectorId),
         tableName_(tableName),
 	kind_(kind),
         columnNames_(columnNames),
         options_(options) {}
 
+  const std::string& connectorId() const {
+    return connectorId_;
+  }
+
+  
   const std::string& tableName() const {
     return tableName_;
   }
@@ -732,6 +739,7 @@ class TableWriteNode : public LogicalPlanNode {
  private:
   static RowTypePtr makeWriteType();
 
+  const std::string connectorId_;
   const std::string tableName_;
   const WriteKind kind_;
   const std::vector<std::string> columnNames_;

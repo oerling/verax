@@ -189,6 +189,11 @@ class ToVelox {
       const Values& values,
       runner::ExecutableFragment& fragment);
 
+  core::PlanNodePtr makeWrite(
+      const TableWrite& values,
+      runner::ExecutableFragment& fragment);
+
+  
   // Makes a tree of PlanNode for a tree of
   // RelationOp. 'fragment' is the fragment that 'op'
   // belongs to. If op or children are repartitions then the

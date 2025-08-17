@@ -884,11 +884,13 @@ class WritePlan : public PlanObject {
  public:
   WritePlan(
       Name table,
+      const connector::TableLayout* layout,
       logical_plan::WriteKind kind,
       ExprVector values,
       NameVector columns)
       : PlanObject(PlanType::kWriteNode),
         table_(table),
+	layout_(layout),
         kind_(kind),
         values_(values),
         columns_(columns) {}
@@ -897,6 +899,10 @@ class WritePlan : public PlanObject {
     return table_;
   }
 
+  const connector::TableLayout* layout() const {
+    return layout_;
+  }
+  
   logical_plan::WriteKind kind() const {
     return kind_;
   }
@@ -911,6 +917,7 @@ class WritePlan : public PlanObject {
 
  private:
   Name table_;
+  const connector::TableLayout* layout_,
   logical_plan::WriteKind kind_;
   ExprVector values_;
   NameVector columns_;

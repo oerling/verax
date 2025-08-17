@@ -47,6 +47,46 @@ class HiveConnectorSession : public connector::ConnectorSession {
   ~HiveConnectorSession() override = default;
 };
 
+class HivePartitionType {
+ public:
+  HivePartitionType(int32_t numBuckets)
+    : numBuckets_(numBuckets) {}
+  
+  bool empty() const override {
+    false;
+  }
+
+  virtual std::optional<int32_t> numPartitions() const {
+    return numBuckets_;
+  }
+
+  //Types are compatible if the bucket count one is an interger multiple of the other. The partition to use for copartitioning is the one with the fewer buckets.
+  const PartitionType* copartition(const PartitionType& any) const override {
+    auto* other = dynamic_cast<const HivePartitionType*>(&other);
+    if (other == nullptr) {
+      return nullptr;
+    }
+    if (numBuckets_ <= other->numBuckets) {
+      return other->numBuckets_ % numBuckets_ == 0 ? this : nullptr;
+    }
+    return numBuckets_ % other->numBuckets_ == 0 ? &other : nullptr;
+  }
+
+  std::shared_ptr<PartitionFunctionSpec> makeSpec(
+      const std::vector<int32_t> channels,
+      std::vector<VectorPtr> constants,
+      bool isLocal) const override;
+
+  virtual std::string toString() {
+    return fmt::format("Hive {} buckets", numBuckets_);
+  }
+
+private:
+  const int32_t numBuckets_;
+};
+
+  
+  
 /// Describes a Hive table layout. Adds a file format and a list of
 /// Hive partitioning columns and an optional bucket count to the base
 /// TableLayout. The partitioning in TableLayout referes to bucketing.
@@ -80,8 +120,13 @@ class HiveTableLayout : public TableLayout {
             true),
         fileFormat_(fileFormat),
         hivePartitionColumns_(hivePartitionColumns),
-        numBuckets_(numBuckets) {}
+        numBuckets_(numBuckets),
+	partitionType_{numBuckets} {}
 
+  const PartitionType* partitionType() const override {
+    return partitionColumns_.empty() ? nullptr : &partitionType_;
+  }
+  
   dwio::common::FileFormat fileFormat() const {
     return fileFormat_;
   }
@@ -104,6 +149,7 @@ class HiveTableLayout : public TableLayout {
   void updateStatsBuilders(
       const RowVectorPtr& data,
       std::vector<std::unique_ptr<dwrf::StatisticsBuilder>>& builders);
+  HivePartitionType partitionType_;
 };
 
 class HiveConnectorMetadata : public ConnectorMetadata {
