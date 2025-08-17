@@ -43,6 +43,8 @@ set(VELOX_BUILD_VECTOR_TEST_UTILS
 
 set(VELOX_ENABLE_PARQUET ON)
 set(VELOX_ENABLE_BENCHMARKS ON)
+set(VELOX_BUILD_TEST_UTILS ON)
+set(VELOX_BUILD_TESTING OFF)
 
 set(VELOX_DEPENDENCY_SOURCE
     AUTO
@@ -135,5 +137,6 @@ include_directories(SYSTEM velox/velox/external/xxhash axiom)
 include_directories(SYSTEM ${CMAKE_BINARY_DIR}/_deps/xsimd-src/include/)
 
 add_subdirectory(velox)
-add_subdirectory(axiom/optimizer)
 add_subdirectory(axiom/logical_plan)
+add_subdirectory(axiom/runner)
+add_subdirectory(axiom/optimizer)
