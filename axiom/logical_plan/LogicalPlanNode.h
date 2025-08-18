@@ -747,8 +747,6 @@ class TableWriteNode : public LogicalPlanNode {
 
 using TableWriteNodePtr = std::shared_ptr<const TableWriteNode>;
 
-
-  
 } // namespace facebook::velox::logical_plan
 
 template <>

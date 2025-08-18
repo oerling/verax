@@ -815,11 +815,7 @@ std::string UnionAll::toString(bool recursive, bool detail) const {
 }
 
 TableWrite::TableWrite(RelationOpPtr input, const WritePlan* write)
-    : RelationOp(
-          RelType::kTableWrite,
-          input,
-          Distribution(),
-          write->output()),
+    : RelationOp(RelType::kTableWrite, input, Distribution(), write->output()),
       write(write) {
   cost_.inputCardinality = inputCardinality();
   cost_.unitCost = 0.01;

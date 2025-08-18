@@ -126,17 +126,19 @@ SchemaTableCP Schema::findTable(
     auto interned = toName(name);
     for (auto* column : columns) {
       if (column->name() == interned) {
-	return column;
+        return column;
       }
     }
-	VELOX_FAIL("Partition or order column not in layout columns");
+    VELOX_FAIL("Partition or order column not in layout columns");
   };
 
   auto layout = table->layouts()[0];
   DistributionType defaultDist;
   defaultDist.partitionType = layout->partitionType();
-  if (defaultDist.partitionType && defaultDist.partitionType->numPartitions().has_value()) {
-    defaultDist.numPartitions = defaultDist.partitionType->numPartitions().value();
+  if (defaultDist.partitionType &&
+      defaultDist.partitionType->numPartitions().has_value()) {
+    defaultDist.numPartitions =
+        defaultDist.partitionType->numPartitions().value();
   }
   defaultDist.locus = defaultLocus_;
   ColumnVector partition;

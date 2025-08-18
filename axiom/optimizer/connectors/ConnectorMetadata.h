@@ -30,7 +30,8 @@ class ITypedExpr;
 using TypedExprPtr = std::shared_ptr<const ITypedExpr>;
 
 class PartitionFunctionSpec;
-using PartitionFunctionSpecPtr =   std::shared_ptr<const core::PartitionFunctionSpec>;
+using PartitionFunctionSpecPtr =
+    std::shared_ptr<const core::PartitionFunctionSpec>;
 } // namespace facebook::velox::core
 
 /// Base classes for schema elements used in execution. A

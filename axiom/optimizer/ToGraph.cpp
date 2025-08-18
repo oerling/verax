@@ -1321,11 +1321,10 @@ PlanObjectP ToGraph::addWrite(const lp::TableWriteNode& tableWrite) {
       tableWrite.connectorId());
 
   VELOX_CHECK_EQ(
-		 schemaTable->columnGroups.size(),
+      schemaTable->columnGroups.size(),
       1,
       "Only one materialization supported for table write");
 
-  
   auto* layout = schemaTable->columnGroups[0]->layout;
 
   NameVector columns;

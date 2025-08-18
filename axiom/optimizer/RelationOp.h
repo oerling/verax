@@ -433,6 +433,6 @@ struct TableWrite : public RelationOp {
   std::string toString(bool recursive, bool detail) const override;
 };
 
-  using TableWriteCP = const TableWrite*;
-  
+using TableWriteCP = const TableWrite*;
+
 } // namespace facebook::velox::optimizer

@@ -1421,7 +1421,8 @@ core::PlanNodePtr ToVelox::makeWrite(
       input->outputType(),
       columnNames,
       nullptr,
-      std::make_shared<const core::InsertTableHandle>(write->layout()->connector()->connectorId(), info->handle),
+      std::make_shared<const core::InsertTableHandle>(
+          write->layout()->connector()->connectorId(), info->handle),
       false,
       outputType,
       connector::CommitStrategy::kNoCommit,

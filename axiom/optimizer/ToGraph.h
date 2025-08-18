@@ -178,7 +178,7 @@ struct WriteInfo {
       logical_plan::WriteKind kind,
       connector::WritePartitionInfo info,
       const RowTypePtr& rowType)
-    : handle(handle), kind(kind), info(std::move(info)), rowType(rowType) {}
+      : handle(handle), kind(kind), info(std::move(info)), rowType(rowType) {}
 
   connector::ConnectorInsertTableHandlePtr handle;
   logical_plan::WriteKind kind;

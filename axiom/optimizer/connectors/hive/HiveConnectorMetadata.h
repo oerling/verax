@@ -47,12 +47,11 @@ class HiveConnectorSession : public connector::ConnectorSession {
   ~HiveConnectorSession() override = default;
 };
 
-  class HivePartitionType : public connector::PartitionType {
+class HivePartitionType : public connector::PartitionType {
  public:
   HivePartitionType(int32_t numBuckets) : numBuckets_(numBuckets) {}
 
-
- virtual std::optional<int32_t> numPartitions() const {
+  virtual std::optional<int32_t> numPartitions() const {
     return numBuckets_;
   }
 
