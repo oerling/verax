@@ -127,14 +127,11 @@ using LocusCP = const Locus*;
 struct DistributionType {
   bool operator==(const DistributionType& other) const {
     return typesCompatible(partitionType, other.partitionType) &&
-        numPartitions == other.numPartitions && locus == other.locus &&
+      locus == other.locus &&
         isGather == other.isGather;
   }
 
-  static typesCompatible(PartitionType* left, PartitionType* right) {
-    if (left == nullptr && right == nullptr) {
-      return true;
-    }
+  static bool typesCompatible(const connector::PartitionType* left, const connector::PartitionType* right) {
     if (left != nullptr && right != nullptr &&
         left->copartition(*right) != nullptr) {
       return true;

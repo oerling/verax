@@ -888,13 +888,15 @@ class WritePlan : public PlanObject {
       const connector::TableLayout* layout,
       logical_plan::WriteKind kind,
       ExprVector values,
-      NameVector columns)
+      NameVector columns,
+	    ColumnVector output)
       : PlanObject(PlanType::kWriteNode),
         table_(table),
         layout_(layout),
         kind_(kind),
         values_(values),
-        columns_(columns) {}
+        columns_(columns),
+	output_(output) {}
 
   Name table() const {
     return table_;
@@ -916,11 +918,17 @@ class WritePlan : public PlanObject {
     return columns_;
   }
 
+  const ColumnVector& output() const {
+    return output_;
+  }
+  
  private:
   Name table_;
-  const connector::TableLayout *layout_, logical_plan::WriteKind kind_;
+  const connector::TableLayout *layout_;
+  logical_plan::WriteKind kind_;
   ExprVector values_;
   NameVector columns_;
+  ColumnVector output_;
 };
 
 } // namespace facebook::velox::optimizer

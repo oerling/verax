@@ -191,7 +191,8 @@ class ToVelox {
 
   core::PlanNodePtr makeWrite(
       const TableWrite& values,
-      runner::ExecutableFragment& fragment);
+      axiom::runner::ExecutableFragment& fragment,
+      std::vector<axiom::runner::ExecutableFragment>& stages);
 
   // Makes a tree of PlanNode for a tree of
   // RelationOp. 'fragment' is the fragment that 'op'

@@ -122,19 +122,21 @@ SchemaTableCP Schema::findTable(
     schemaTable->columns[column->name()] = column;
     columns.push_back(column);
   }
-  auto findColumn = [&](const std::string& name) {
+  auto findColumn = [&](const std::string& name) -> ColumnCP {
     auto interned = toName(name);
-    auto it = std::find(columns.begin(), columns.end(), interned);
-    VELOX_CHECK(
-        it != columns.end(), "Partition or order column not in layout columns");
-    return *it;
+    for (auto* column : columns) {
+      if (column->name() == interned) {
+	return column;
+      }
+    }
+	VELOX_FAIL("Partition or order column not in layout columns");
   };
 
   auto layout = table->layouts()[0];
   DistributionType defaultDist;
   defaultDist.partitionType = layout->partitionType();
-  if (defaultDist.partitionType()) {
-    defaultDist.numPartitions = defaultDist.partitionType->numPartitions();
+  if (defaultDist.partitionType && defaultDist.partitionType->numPartitions().has_value()) {
+    defaultDist.numPartitions = defaultDist.partitionType->numPartitions().value();
   }
   defaultDist.locus = defaultLocus_;
   ColumnVector partition;
@@ -142,7 +144,7 @@ SchemaTableCP Schema::findTable(
     partition.push_back(findColumn(part->name()));
   }
   ColumnVector order;
-  for (auto* column : layout->lookupColumns()) {
+  for (auto* column : layout->orderColumns()) {
     order.push_back(findColumn(column->name()));
   }
 

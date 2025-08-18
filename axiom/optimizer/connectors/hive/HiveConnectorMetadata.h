@@ -47,15 +47,12 @@ class HiveConnectorSession : public connector::ConnectorSession {
   ~HiveConnectorSession() override = default;
 };
 
-class HivePartitionType {
+  class HivePartitionType : public connector::PartitionType {
  public:
   HivePartitionType(int32_t numBuckets) : numBuckets_(numBuckets) {}
 
-  bool empty() const override {
-    false;
-  }
 
-  virtual std::optional<int32_t> numPartitions() const {
+ virtual std::optional<int32_t> numPartitions() const {
     return numBuckets_;
   }
 
@@ -63,22 +60,22 @@ class HivePartitionType {
   // other. The partition to use for copartitioning is the one with the fewer
   // buckets.
   const PartitionType* copartition(const PartitionType& any) const override {
-    auto* other = dynamic_cast<const HivePartitionType*>(&other);
+    auto* other = dynamic_cast<const HivePartitionType*>(&any);
     if (other == nullptr) {
       return nullptr;
     }
-    if (numBuckets_ <= other->numBuckets) {
+    if (numBuckets_ <= other->numBuckets_) {
       return other->numBuckets_ % numBuckets_ == 0 ? this : nullptr;
     }
-    return numBuckets_ % other->numBuckets_ == 0 ? &other : nullptr;
+    return numBuckets_ % other->numBuckets_ == 0 ? &any : nullptr;
   }
 
-  std::shared_ptr<PartitionFunctionSpec> makeSpec(
-      const std::vector<int32_t> channels,
-      std::vector<VectorPtr> constants,
+  core::PartitionFunctionSpecPtr makeSpec(
+      const std::vector<column_index_t>& channels,
+      const std::vector<VectorPtr>& constants,
       bool isLocal) const override;
 
-  virtual std::string toString() {
+  std::string toString() const override {
     return fmt::format("Hive {} buckets", numBuckets_);
   }
 
@@ -120,10 +117,10 @@ class HiveTableLayout : public TableLayout {
         fileFormat_(fileFormat),
         hivePartitionColumns_(hivePartitionColumns),
         numBuckets_(numBuckets),
-        partitionType_{numBuckets} {}
+        partitionType_{numBuckets.has_value() ? numBuckets.value() : 0} {}
 
   const PartitionType* partitionType() const override {
-    return partitionColumns_.empty() ? nullptr : &partitionType_;
+    return partitionColumns().empty() ? nullptr : &partitionType_;
   }
 
   dwio::common::FileFormat fileFormat() const {

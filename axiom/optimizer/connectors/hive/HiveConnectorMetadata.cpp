@@ -22,11 +22,11 @@
 
 namespace facebook::velox::connector::hive {
 
-std::shared_ptr<PartitionFunctionSpec> HiveConnectorMetadata::makeSpec(
-    const std::vector<column_index_t> channels,
-    std::vector<VectorPtr> constants,
+core::PartitionFunctionSpecPtr HivePartitionType::makeSpec(
+    const std::vector<column_index_t>& channels,
+    const std::vector<VectorPtr>& constants,
     bool isLocal) const {
-  return std::make_share<HivePartitionFunctionSpec>(
+  return std::make_shared<HivePartitionFunctionSpec>(
       numBuckets_, channels, constants);
 }
 

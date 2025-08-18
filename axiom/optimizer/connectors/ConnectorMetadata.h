@@ -30,6 +30,7 @@ class ITypedExpr;
 using TypedExprPtr = std::shared_ptr<const ITypedExpr>;
 
 class PartitionFunctionSpec;
+using PartitionFunctionSpecPtr =   std::shared_ptr<const core::PartitionFunctionSpec>;
 } // namespace facebook::velox::core
 
 /// Base classes for schema elements used in execution. A
@@ -207,11 +208,6 @@ struct SortOrder {
 /// types are compatible.
 class PartitionType {
  public:
-  /// True if the data is not partitioned.
-  virtual bool empty() const {
-    true;
-  }
-
   virtual std::optional<int32_t> numPartitions() const {
     return std::nullopt;
   }
@@ -235,14 +231,14 @@ class PartitionType {
   /// kConstantChannel then the corresponding element of 'constants'
   /// is used. 'isLocal' differentiates between remote and ocal
   /// exchange.
-  virtual std::shared_ptr<PartitionFunctionSpec> makeSpec(
-      const std::vector<column_index_t> channels,
-      std::vector<VectorPtr> constants,
-      bool isLocal) {
+  virtual core::PartitionFunctionSpecPtr makeSpec(
+      const std::vector<column_index_t>& channels,
+      const std::vector<VectorPtr>& constants,
+      bool isLocal) const {
     VELOX_UNSUPPORTED("Empty partition type has no partition spec");
   }
 
-  virtual std::string toString() {
+  virtual std::string toString() const {
     return "none";
   }
 };

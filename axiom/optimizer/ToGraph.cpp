@@ -1307,7 +1307,7 @@ PlanObjectP ToGraph::addLimit(const lp::LimitNode& limitNode) {
 
 PlanObjectP ToGraph::addWrite(const lp::TableWriteNode& tableWrite) {
   VELOX_CHECK_NULL(currentDt_->write, "Only one TableWrite allowed");
-  auto* connector = connector::getConnector(tableWrite.connectorId());
+  auto connector = connector::getConnector(tableWrite.connectorId());
   VELOX_CHECK_NOT_NULL(connector);
   auto* metadata = connector->metadata();
   VELOX_CHECK_NOT_NULL(metadata);
@@ -1320,6 +1320,12 @@ PlanObjectP ToGraph::addWrite(const lp::TableWriteNode& tableWrite) {
       tableWrite.tableName(),
       tableWrite.connectorId());
 
+  VELOX_CHECK_EQ(
+		 schemaTable->columnGroups.size(),
+      1,
+      "Only one materialization supported for table write");
+
+  
   auto* layout = schemaTable->columnGroups[0]->layout;
 
   NameVector columns;
@@ -1329,34 +1335,43 @@ PlanObjectP ToGraph::addWrite(const lp::TableWriteNode& tableWrite) {
     values.push_back(
         translateColumn(tableWrite.onlyInput()->outputType()->nameOf(i)));
   }
+  ColumnVector outputColumns = {
+      make<Column>(
+          toName("numWrittenRows"), currentDt_, Value(toType(BIGINT()), 1)),
+      make<Column>(
+          toName("fragment"), currentDt_, Value(toType(VARBINARY()), 1)),
+      make<Column>(
+          toName("tableCommitContext"),
+          currentDt_,
+          Value(toType(VARBINARY()), 1))};
+
   currentDt_->write = make<WritePlan>(
       toName(tableWrite.tableName()),
       layout,
-      tableWriteNode.kind(),
+      tableWrite.writeKind(),
       std::move(values),
-      std::move(columns));
+      std::move(columns),
+      outputColumns);
+  currentDt_->columns = outputColumns;
 
-  auto& options = queryCtx()->optimization()->opts();
+  auto& options = queryCtx()->optimization()->options();
   VELOX_CHECK_NOT_NULL(
-      options.session, "Need a ConnectorSession for write operations");
+      options.session, "Must have a ConnectorSession for write operations");
 
-  VELOX_CHECK_EQ(
-      table->columnGroups.size(),
-      1,
-      "Only one materialization supported for table write");
-  auto* layout = table->columnGroups[0]->layout;
-  VELOX_CHECK_EQ(tabelWrite.writeKind(), lp::WriteKind::kInsert);
+  VELOX_CHECK_EQ(tableWrite.writeKind(), lp::WriteKind::kInsert);
 
   auto handle = metadata->createInsertTableHandle(
       *layout,
       tableWrite.onlyInput()->outputType(),
       tableWrite.options(),
-      connector::WriteKind::kWrite,
+      connector::WriteKind::kInsert,
       options.session);
   writeInfos_[currentDt_->write->id()] = std::make_unique<WriteInfo>(
       handle,
       logical_plan::WriteKind::kInsert,
-      metadata->writePartitionInfo(handle));
+      metadata->writePartitionInfo(handle),
+      layout->rowType());
+
   return currentDt_;
 }
 
@@ -1695,7 +1710,7 @@ std::string leString(const lp::Expr* e) {
   return lp::ExprPrinter::toText(*e);
 }
 
-std::string pString(const lp::LogicalPlanNode* p) {
+std::string lpString(const lp::LogicalPlanNode* p) {
   return lp::PlanPrinter::toText(*p);
 }
 

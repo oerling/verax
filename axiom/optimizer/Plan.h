@@ -469,8 +469,8 @@ class Optimization {
   /// Produces trace output if event matches 'traceFlags_'.
   void trace(int32_t event, int32_t id, const Cost& cost, RelationOp& plan);
 
-  WriteInfo* writeInfo(int32_t id) const {
-    return toGraph_.writeInfo().at(id).get();
+  WriteInfo* writeInfo(int32_t id) {
+    return toGraph_.writeInfos().at(id).get();
   }
 
  private:
@@ -635,7 +635,7 @@ const JoinEdgeVector& joinedBy(PlanObjectCP table);
 /// the repartition partitioning to do copartition with the two. If
 /// there is no copartition possibility or if either or both are
 /// nullptr, returns nullptr.
-connector::PartitionType* coPartitionType(
+const connector::PartitionType* copartitionType(
     const connector::PartitionType* first,
     const connector::PartitionType* second);
 

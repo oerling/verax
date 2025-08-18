@@ -818,8 +818,8 @@ TableWrite::TableWrite(RelationOpPtr input, const WritePlan* write)
     : RelationOp(
           RelType::kTableWrite,
           input,
-          input->distribution(),
-          write->resultColumns()),
+          Distribution(),
+          write->output()),
       write(write) {
   cost_.inputCardinality = inputCardinality();
   cost_.unitCost = 0.01;
@@ -832,8 +832,7 @@ std::string TableWrite::toString(bool recursive, bool detail) const {
   }
 
   out << fmt::format(
-      "Writer {} {}",
-      write->kind(),
+      "Writer {}",
       itemsToString(write->values().data(), write->values().size()));
   return out.str();
 }

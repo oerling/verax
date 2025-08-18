@@ -176,9 +176,9 @@ struct WriteInfo {
   WriteInfo(
       connector::ConnectorInsertTableHandlePtr handle,
       logical_plan::WriteKind kind,
-      WritePartitionInfo& info,
+      connector::WritePartitionInfo info,
       const RowTypePtr& rowType)
-      : handle(handl), kind(kind), info(info), rowType(rowType) {}
+    : handle(handle), kind(kind), info(std::move(info)), rowType(rowType) {}
 
   connector::ConnectorInsertTableHandlePtr handle;
   logical_plan::WriteKind kind;
@@ -525,7 +525,7 @@ class ToGraph {
       planLeaves_;
 
   std::unique_ptr<BuiltinNames> builtinNames_;
-  std::unordered_map<int32_t, std::unique_ptr<WriteInfo>>& writeInfos_;
+  std::unordered_map<int32_t, std::unique_ptr<WriteInfo>> writeInfos_;
 };
 
 } // namespace facebook::velox::optimizer

@@ -700,7 +700,7 @@ class TableWriteNode : public LogicalPlanNode {
   TableWriteNode(
       const std::string& id,
       const LogicalPlanNodePtr& input,
-      constt std::string& connectorId,
+      const std::string& connectorId,
       const std::string& tableName,
       WriteKind kind,
       const std::vector<std::string>& columnNames,
@@ -708,7 +708,7 @@ class TableWriteNode : public LogicalPlanNode {
       : LogicalPlanNode(NodeKind::kTableWrite, id, {input}, makeWriteType()),
         connectorId_(connectorId),
         tableName_(tableName),
-        kind_(kind),
+        writeKind_(kind),
         columnNames_(columnNames),
         options_(options) {}
 
@@ -720,8 +720,8 @@ class TableWriteNode : public LogicalPlanNode {
     return tableName_;
   }
 
-  WriteKind kind() const {
-    return kind_;
+  WriteKind writeKind() const {
+    return writeKind_;
   }
 
   const std::vector<std::string> columnNames() const {
@@ -740,11 +740,24 @@ class TableWriteNode : public LogicalPlanNode {
 
   const std::string connectorId_;
   const std::string tableName_;
-  const WriteKind kind_;
+  const WriteKind writeKind_;
   const std::vector<std::string> columnNames_;
   const std::unordered_map<std::string, std::string> options_;
 };
 
 using TableWriteNodePtr = std::shared_ptr<const TableWriteNode>;
 
+
+  
 } // namespace facebook::velox::logical_plan
+
+template <>
+struct fmt::formatter<facebook::velox::logical_plan::WriteKind>
+    : fmt::formatter<string_view> {
+  template <typename FormatContext>
+  auto format(facebook::velox::logical_plan::WriteKind k, FormatContext& ctx)
+      const {
+    return formatter<string_view>::format(
+        facebook::velox::logical_plan::WriteKindName::toName(k), ctx);
+  }
+};
