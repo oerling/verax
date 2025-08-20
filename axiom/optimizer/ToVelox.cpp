@@ -150,7 +150,7 @@ void ToVelox::filterUpdated(BaseTableCP table, bool updateSelectivity) {
       remainingFilter = std::make_shared<core::CallTypedExpr>(
           BOOLEAN(),
           std::vector<core::TypedExprPtr>{remainingFilter, conjunct},
-          "and");
+          SpecialFormCallNames::kAnd);
     }
   }
 
@@ -228,7 +228,7 @@ RowTypePtr ToVelox::makeOutputType(const ColumnVector& columns) {
         continue;
       }
 
-      auto* runnerTable = schemaTable->connectorTable;
+      auto runnerTable = schemaTable->connectorTable;
       if (runnerTable) {
         auto* runnerColumn = runnerTable->findColumn(std::string(
             column->topColumn() ? column->topColumn()->name()
@@ -245,6 +245,10 @@ RowTypePtr ToVelox::makeOutputType(const ColumnVector& columns) {
 }
 
 core::TypedExprPtr ToVelox::toAnd(const ExprVector& exprs) {
+  if (exprs.size() == 1) {
+    return toTypedExpr(exprs[0]);
+  }
+
   core::TypedExprPtr result;
   for (auto expr : exprs) {
     auto conjunct = toTypedExpr(expr);
@@ -252,7 +256,9 @@ core::TypedExprPtr ToVelox::toAnd(const ExprVector& exprs) {
       result = conjunct;
     } else {
       result = std::make_shared<core::CallTypedExpr>(
-          BOOLEAN(), std::vector<core::TypedExprPtr>{result, conjunct}, "and");
+          BOOLEAN(),
+          std::vector<core::TypedExprPtr>{result, conjunct},
+          SpecialFormCallNames::kAnd);
     }
   }
   return result;
@@ -403,8 +409,9 @@ core::TypedExprPtr ToVelox::toTypedExpr(ExprCP expr) {
     case PlanType::kCallExpr: {
       std::vector<core::TypedExprPtr> inputs;
       auto call = expr->as<Call>();
+      const auto& builtinNames = queryCtx()->optimization()->builtinNames();
 
-      if (call->name() == toName("in")) {
+      if (call->name() == builtinNames.in) {
         VELOX_USER_CHECK_GE(call->args().size(), 2);
         inputs.push_back(toTypedExpr(call->args().at(0)));
         inputs.push_back(createArrayForInList(*call, inputs.back()->type()));
@@ -414,9 +421,14 @@ core::TypedExprPtr ToVelox::toTypedExpr(ExprCP expr) {
         }
       }
 
-      if (call->name() == toName("cast")) {
+      if (call->name() == builtinNames.cast) {
         return std::make_shared<core::CastTypedExpr>(
             toTypePtr(expr->value().type), std::move(inputs), false);
+      }
+
+      if (call->name() == builtinNames.tryCast) {
+        return std::make_shared<core::CastTypedExpr>(
+            toTypePtr(expr->value().type), std::move(inputs), true);
       }
 
       return std::make_shared<core::CallTypedExpr>(
@@ -983,7 +995,10 @@ namespace {
 core::TypedExprPtr toAndWithAliases(
     const std::vector<core::TypedExprPtr>& exprs,
     const BaseTable* baseTable) {
-  auto result = std::make_shared<core::CallTypedExpr>(BOOLEAN(), exprs, "and");
+  auto result = exprs.size() == 1
+      ? exprs.at(0)
+      : std::make_shared<core::CallTypedExpr>(
+            BOOLEAN(), exprs, SpecialFormCallNames::kAnd);
 
   std::unordered_map<std::string, core::TypedExprPtr> mapping;
   for (const auto& column : baseTable->columns) {
@@ -1421,14 +1436,16 @@ core::PlanNodePtr ToVelox::makeValues(
       write->columns().begin(),
       columnNames.end(),
       [](auto x) { return std::string(x); });
-  auto outputType =
-      ROW({"numWrittenRows", "fragment", "tableCommitContext"},
-          {BIGINT(), VARBINARY(), VARBINARY()});
   auto* metadata = write->layout()->connector()->metadata();
   auto session = queryCtx()->optimization()->options().session;
-  finishWrites_.push_back([handle = info->handle, metadata, session](bool success, const std::vector<RowVectorPtr>& results) {
-    metadata->finishWrite(handle, success, results, connector::WriteKind::kInsert, session);
+  std::unordered_set<connector::ConnectorTablePtr> retainedTables = queryCtx()->optimization()->retainedTables();
+  auto* layout = write->layout();
+  // The finish function needs to capture the retained tables, which also keeps layout live past the Optimization.
+  finishWrites_.push_back([handle = info->handle, metadata, layout, session, retainedTables](bool success, const std::vector<RowVectorPtr>& results) {
+    metadata->finishWrite(*layout, handle, success, results, connector::WriteKind::kInsert, session);
   });
+
+  auto outputType = metadata->tableWriteOutputType(layout->rowType());
   return std::make_shared<core::TableWriteNode>(
       nextId(),
       input->outputType(),

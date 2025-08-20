@@ -12,18 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-add_subdirectory(tests)
-
-find_package(antlr4-runtime REQUIRED)
-
-add_library(
-  velox_presto_grammar_lib
-  PrestoSqlBaseListener.cpp
-  PrestoSqlBaseVisitor.cpp
-  PrestoSqlLexer.cpp
-  PrestoSqlListener.cpp
-  PrestoSqlParser.cpp
-  PrestoSqlVisitor.cpp)
-
-target_link_libraries(
-  velox_presto_grammar_lib antlr4_shared)
+# Currently this config mostly mirrors the default
+format:
+  line_width: 80
+  tab_size: 2
+  use_tabchars: false
+  max_pargs_hwrap: 4
+  max_subgroups_hwrap: 2
+  min_prefix_chars: 4
+  max_prefix_chars: 6
+  separate_ctrl_name_with_space: false
+  separate_fn_name_with_space: false
+  dangle_parens: false
+  command_case: canonical
+  keyword_case: unchanged
+  always_wrap:
+    - set_target_properties
+    - target_sources
+    - target_link_libraries
+parse:
+  # No custom functions defined - verax uses standard CMake functions
+  additional_commands: {}
+markup:
+  first_comment_is_literal: true

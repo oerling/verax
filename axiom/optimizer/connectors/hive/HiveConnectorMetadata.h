@@ -175,6 +175,8 @@ class HiveConnectorMetadata : public ConnectorMetadata {
       WriteKind kind,
       const ConnectorSessionPtr& session) override;
 
+  RowTypePtr tableWriteOutputType(const RowTypePtr& rowType) const override;
+  
   virtual dwio::common::FileFormat fileFormat() const {
     VELOX_UNSUPPORTED();
   }

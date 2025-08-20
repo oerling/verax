@@ -206,4 +206,9 @@ void HiveConnectorMetadata::validateOptions(
   }
 }
 
+RowTypePtr HiveConnectorMetadata::tableWriteOutputType(const RowTypePtr& /*rowType*/) const {
+  return ROW({"numWrittenRows", "fragment", "tableCommitContext"},
+	     {BIGINT(), VARBINARY(), VARBINARY()});
+}
+  
 } // namespace facebook::velox::connector::hive

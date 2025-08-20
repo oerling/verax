@@ -405,7 +405,9 @@ class TableLayout {
 class Schema;
 
 /// Base class for table. This is used for name resolution. A TableLayout is
-/// used for accessing physical organization like partitioning  and sort order.
+/// used for accessing physical organization like partitioning and sort order.
+/// The Table object maintains ownership over the objects it contains,
+/// including the TableLayout and Columns contained in the Table.
 class Table {
  public:
   virtual ~Table() = default;
@@ -458,6 +460,8 @@ class Table {
 
   std::unordered_map<std::string, std::string> options_;
 };
+
+using ConnectorTablePtr = std::shared_ptr<const Table>;
 
 /// Describes a single partition of a TableLayout. A TableLayout has at least
 /// one partition, even if it has no partitioning columns.
@@ -686,7 +690,16 @@ class ConnectorMetadata {
     VELOX_UNSUPPORTED();
   }
 
-  virtual const Table* findTable(const std::string& name) = 0;
+  /// Return a ConnectorTablePtr given the table name. Table name is provided
+  /// without the connector ID prefix for the connector. The returned Table
+  /// object is immutable. If updates to the Table object are required, the
+  /// ConnectorMetadata is required to drop its reference to the existing
+  /// Table and return a reference to a newly created Table object for
+  /// subsequent calls to findTable. The ConnectorMetadata may drop its
+  /// reference ot the Table object at any time, and callers are required
+  /// to retain a reference to the Table to prevent it from being reclaimed
+  /// in the case of Table removal by the ConnectorMetadata.
+  virtual ConnectorTablePtr findTable(const std::string& name) = 0;
 
   /// Returns a SplitManager for split enumeration for TableLayouts accessed
   /// through 'this'.
@@ -767,7 +780,8 @@ class ConnectorMetadata {
   /// RowType is given by the outputType() of the TableWriter. If 'success' is
   /// false, the write should be cancelled and possible partial results deleted. In this case 'writerResult' may be empty.
   virtual void finishWrite(
-      const ConnectorInsertTableHandlePtr& handle,
+			   const TableLayout& layout,
+			   const ConnectorInsertTableHandlePtr& handle,
       bool success,
       const std::vector<RowVectorPtr>& writerResult,
       WriteKind kind,
@@ -775,6 +789,11 @@ class ConnectorMetadata {
     VELOX_UNSUPPORTED();
   }
 
+  /// Returns the output type of TableWrite operator for a row with columns as in 'rowType'.
+  virtual RowTypePtr tableWriteOutputType(const RowTypePtr& rowType) const {
+    VELOX_UNSUPPORTED();
+  }
+  
   /// Returns column handles whose value uniquely identifies a row for creating
   /// an update or delete record. These may be for example some connector
   /// specific opaque row id or primary key columns.

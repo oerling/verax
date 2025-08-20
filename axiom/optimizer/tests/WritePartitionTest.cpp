@@ -17,6 +17,7 @@
 #include "axiom/logical_plan/PlanBuilder.h"
 #include "axiom/optimizer/tests/HiveQueriesTestBase.h"
 #include "velox/exec/tests/utils/PlanBuilder.h"
+#include "axiom/optimizer/connectors/hive/HiveConnectorMetadata.h"
 
 namespace lp = facebook::velox::logical_plan;
 
@@ -24,22 +25,39 @@ namespace facebook::velox::optimizer {
 namespace {
 
 class WritePartitionTest : public test::HiveQueriesTestBase {
+protected:
   void SetUp() override {
-    connector_ = getConnector(velox::exec::test::kHiveConnectorId);
+    connector_ = connector::getConnector(velox::exec::test::kHiveConnectorId);
     metadata_ = dynamic_cast<connector::hive::HiveConnectorMetadata*>(
-      connector->metadata());
+								      connector_->metadata());
   }
 
-  connector::Connector* connector_;
+  std::vector<RowVectorPtr> makeTestData(int32_t numBatches, int32_t batchSize, int32_t dayOffset = 0) {
+    std::vector<RowVectorPtr> data;
+    for (auto i = 0; i < numBatches; ++i) {
+      auto start = i * batchSize;
+      data .push_back(makeRowVector({
+      makeFlatVector<int64_t>(batchSize, [](auto row) { return row + start; }),
+      makeFlatVector<int32_t>(batchSize, [](auto row) { return (row + start)% 19; }),
+      makeFlatVector<int64_t>(batchSize, [](auto row) { return row + start + 2; }),
+      makeFlatVector<StringView>(
+          kTestSize,
+          [](auto row) { return fmt::format("2025-09-{}", dayOffset + ((row + start) % 2)); }
+	  })));
+    }
+    return data;
+  }
+  
+  std::shared_ptr<connector::Connector> connector_;
   connector::ConnectorMetadata* metadata_;
-  connector::ConnectorSessionPtr session{std:make_shared<connector::hive::HiveConnectorSession>()};
+  connector::ConnectorSessionPtr session{std::make_shared<connector::hive::HiveConnectorSession>()};
 
 };
 
 TEST_F(WritePartitionTest, copartition) {
   lp::PlanBuilder::Context context(exec::test::kHiveConnectorId);
 
-    constexpr int32_t kTestSize = 20480;
+    constexpr int32_t kTestBatchSize = 2048;
 
   auto tableType = ROW(
       {{"key1", BIGINT()},
@@ -57,21 +75,14 @@ TEST_F(WritePartitionTest, copartition) {
 
   metadata_->createTableWithOptions("test", tableType, options, session, false);
 
-  
+  auto data = makeTestData(10, kTestBatchSize);
 
-  auto data = makeRowVector({
-      makeFlatVector<int64_t>(kTestSize, [](auto row) { return row; }),
-      makeFlatVector<int32_t>(kTestSize, [](auto row) { return row % 10; }),
-      makeFlatVector<int64_t>(kTestSize, [](auto row) { return row + 2; }),
-      makeFlatVector<StringView>(
-          kTestSize,
-          [](auto row) { return row % 2 == 0 ? "2022-09-01" : "2025-09-02"; }),
-  });
 
-  auto write1 = lp::PlanBuilder(ctx)
+  auto write1 = lp::PlanBuilder(context)
     .values({data})
-    .tableWrite("test", {"key1", "key2", "data", "ds"})
+    .tableWrite(kHiveConnectorId, "test", lp::WriteKind::kInsert, {"key1", "key2", "data", "ds"})
     .build();
+  runVelox(write1);
   
   
 
