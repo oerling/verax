@@ -423,11 +423,34 @@ std::string toString(
   return out.str();
 }
 
+void applyCoersions(
+    std::vector<ExprPtr>& inputs,
+    const std::vector<TypePtr>& coersions) {
+  if (coersions.empty()) {
+    return;
+  }
+
+  for (auto i = 0; i < inputs.size(); ++i) {
+    if (const auto& coersion = coersions.at(i)) {
+      inputs[i] = std::make_shared<SpecialFormExpr>(
+          coersion, SpecialForm::kCast, inputs[i]);
+    }
+  }
+}
+
 TypePtr resolveScalarFunction(
     const std::string& name,
-    const std::vector<TypePtr>& argTypes) {
-  if (auto type = resolveFunction(name, argTypes)) {
-    return type;
+    const std::vector<TypePtr>& argTypes,
+    bool allowCoersions,
+    std::vector<TypePtr>& coercions) {
+  if (allowCoersions) {
+    if (auto type = resolveFunctionWithCoercions(name, argTypes, coercions)) {
+      return type;
+    }
+  } else {
+    if (auto type = resolveFunction(name, argTypes)) {
+      return type;
+    }
   }
 
   auto allSignatures = getFunctionSignatures();
@@ -702,7 +725,10 @@ ExprPtr ExprResolver::tryResolveCallWithLambdas(
     types.push_back(child->type());
   }
 
-  auto returnType = resolveScalarFunction(callExpr->name(), types);
+  std::vector<TypePtr> coersions;
+  auto returnType = resolveScalarFunction(
+      callExpr->name(), types, enableCoersions_, coersions);
+  applyCoersions(children, coersions);
 
   return std::make_shared<CallExpr>(returnType, callExpr->name(), children);
 }
@@ -732,6 +758,7 @@ ExprPtr ExprResolver::tryFoldCall(
     }
   }
   std::vector<core::TypedExprPtr> args;
+  args.reserve(inputs.size());
   for (const auto& arg : inputs) {
     args.push_back(makeConstantTypedExpr(arg));
   }
@@ -859,7 +886,12 @@ ExprPtr ExprResolver::resolveScalarTypes(
       inputTypes.push_back(input->type());
     }
 
-    auto type = resolveScalarFunction(name, inputTypes);
+    std::vector<TypePtr> coersions;
+    auto type =
+        resolveScalarFunction(name, inputTypes, enableCoersions_, coersions);
+
+    applyCoersions(inputs, coersions);
+
     auto folded = tryFoldCall(type, name, inputs);
     if (folded != nullptr) {
       return folded;

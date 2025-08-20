@@ -413,7 +413,7 @@ TEST_F(PlanPrinterTest, subquery) {
           .with({
               Col("a") + 1,
               Subquery(
-                  PlanBuilder(context, scope)
+                  PlanBuilder(context, false, scope)
                       .values(ROW({"a", "b"}, {INTEGER(), INTEGER()}), lookup)
                       .as("r")
                       .filter("l.a = r.a")
@@ -474,7 +474,7 @@ TEST_F(PlanPrinterTest, subquery) {
           .filter(
               Col("a") >
               Subquery(
-                  PlanBuilder(context, scope)
+                  PlanBuilder(context, false, scope)
                       .values(ROW({"a", "b"}, {INTEGER(), INTEGER()}), lookup)
                       .as("r")
                       .filter("l.a = r.a")
@@ -540,7 +540,7 @@ TEST_F(PlanPrinterTest, inSubquery) {
           .filter(In(
               Col("a"),
               Subquery(
-                  PlanBuilder(context, scope)
+                  PlanBuilder(context, false, scope)
                       .values(ROW({"a", "b"}, {INTEGER(), INTEGER()}), lookup)
                       .as("r")
                       .filter("l.a = r.a")
@@ -604,7 +604,7 @@ TEST_F(PlanPrinterTest, existsSubquery) {
           .as("l")
           .captureScope(scope)
           .filter(Exists(Subquery(
-              PlanBuilder(context, scope)
+              PlanBuilder(context, false, scope)
                   .values(ROW({"a", "b"}, {INTEGER(), INTEGER()}), lookup)
                   .as("r")
                   .filter("l.a = r.a")
@@ -951,6 +951,30 @@ TEST_F(PlanPrinterTest, lambda) {
       lines,
       testing::ElementsAre(
           testing::Eq("- VALUES [0]: 2 fields"), testing::Eq("")));
+}
+
+TEST_F(PlanPrinterTest, coercions) {
+  auto rowType = ROW({"a", "b"}, {INTEGER(), BIGINT()});
+  std::vector<Variant> data{
+      Variant::row({1, 10L}),
+      Variant::row({2, 20L}),
+  };
+
+  auto plan = PlanBuilder(/* enableCoersions */ true)
+                  .values(rowType, data)
+                  .map({"a * 0.5", "a + b"})
+                  .build();
+
+  auto lines = toLines(plan);
+
+  EXPECT_THAT(
+      lines,
+      testing::ElementsAre(
+          testing::StartsWith("- Project"),
+          testing::StartsWith("    expr := multiply(CAST(a AS DOUBLE), 0.5)"),
+          testing::StartsWith("    expr_0 := plus(CAST(a AS BIGINT), b)"),
+          testing::StartsWith("  - Values"),
+          testing::Eq("")));
 }
 
 } // namespace
