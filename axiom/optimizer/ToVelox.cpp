@@ -214,7 +214,7 @@ RowTypePtr ToVelox::makeOutputType(const ColumnVector& columns) {
   for (auto i = 0; i < columns.size(); ++i) {
     auto* column = columns[i];
     auto relation = column->relation();
-    if (relation && relation->type() == PlanType::kTableNode) {
+    if (relation && relation->is(PlanType::kTableNode)) {
       auto* schemaTable = relation->as<BaseTable>()->schemaTable;
       if (!schemaTable) {
         continue;
@@ -269,7 +269,7 @@ core::TypedExprPtr createArrayForInList(
         "All elements of the IN list must have the same type got {} and {}",
         elementType->toString(),
         arg->value().type->toString());
-    VELOX_USER_CHECK(arg->type() == PlanType::kLiteralExpr);
+    VELOX_USER_CHECK(arg->is(PlanType::kLiteralExpr));
     arrayElements.push_back(arg->as<Literal>()->literal());
   }
   auto arrayVector = variantToVector(
@@ -341,7 +341,7 @@ ToVelox::pathToGetter(ColumnCP column, PathCP path, core::TypedExprPtr field) {
   // becomes a struct getter.
   auto alterStep = [&](ColumnCP, const Step& step, Step& newStep) {
     auto* rel = column->relation();
-    if (rel->type() == PlanType::kTableNode &&
+    if (rel->is(PlanType::kTableNode) &&
         isMapAsStruct(
             rel->as<BaseTable>()->schemaTable->name, column->name())) {
       // This column is a map to project out as struct.

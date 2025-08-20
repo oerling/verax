@@ -551,7 +551,7 @@ HashBuild::HashBuild(
     RelationOpPtr input,
     int32_t id,
     ExprVector _keys,
-    PlanPtr plan)
+    PlanP plan)
     : RelationOp(
           RelType::kHashBuild,
           input,

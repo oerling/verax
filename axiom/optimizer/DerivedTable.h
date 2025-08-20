@@ -218,7 +218,7 @@ struct DerivedTable : public PlanObject {
   /// a cardinality guess.
   void makeInitialPlan();
 
-  PlanPtr bestInitialPlan() const;
+  PlanP bestInitialPlan() const;
 
   std::string toString() const override;
 

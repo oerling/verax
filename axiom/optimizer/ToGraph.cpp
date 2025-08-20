@@ -165,7 +165,7 @@ bool ToGraph::isSubfield(const lp::Expr* expr, Step& step, lp::ExprPtr& input) {
     auto name = call->name();
     if (name == "subscript" || name == "element_at") {
       auto subscript = translateExpr(call->inputAt(1));
-      if (subscript->type() == PlanType::kLiteralExpr) {
+      if (subscript->is(PlanType::kLiteralExpr)) {
         step.kind = StepKind::kSubscript;
         auto& literal = subscript->as<Literal>()->literal();
         switch (subscript->value().type->kind()) {
@@ -221,14 +221,14 @@ void ToGraph::getExprForField(
       auto it = renames_.find(name);
       VELOX_CHECK(it != renames_.end());
       auto maybeColumn = it->second;
-      VELOX_CHECK(maybeColumn->type() == PlanType::kColumnExpr);
+      VELOX_CHECK(maybeColumn->is(PlanType::kColumnExpr));
       resultColumn = maybeColumn->as<Column>();
       resultExpr = nullptr;
       context = nullptr;
       const auto* relation = resultColumn->relation();
       VELOX_CHECK_NOT_NULL(relation);
-      if (relation->type() == PlanType::kTableNode ||
-          relation->type() == PlanType::kValuesTableNode) {
+      if (relation->is(PlanType::kTableNode) ||
+          relation->is(PlanType::kValuesTableNode)) {
         VELOX_CHECK(leaf == relation);
       }
       return;
@@ -538,7 +538,7 @@ namespace {
 ///
 ///  #2. If none are literal, but the id on the left is higher.
 bool shouldInvert(ExprCP left, ExprCP right) {
-  if (left->type() == PlanType::kLiteralExpr &&
+  if (left->is(PlanType::kLiteralExpr) &&
       right->type() != PlanType::kLiteralExpr) {
     return true;
   } else if (
@@ -684,9 +684,9 @@ ExprCP ToGraph::translateExpr(const lp::ExprPtr& expr) {
 
   for (auto i = 0; i < inputs.size(); ++i) {
     args[i] = translateExpr(inputs[i]);
-    allConstant &= args[i]->type() == PlanType::kLiteralExpr;
+    allConstant &= args[i]->is(PlanType::kLiteralExpr);
     cardinality = std::max(cardinality, args[i]->value().cardinality);
-    if (args[i]->type() == PlanType::kCallExpr) {
+    if (args[i]->is(PlanType::kCallExpr)) {
       funcs = funcs | args[i]->as<Call>()->functions();
     }
   }
@@ -789,7 +789,7 @@ std::optional<ExprCP> ToGraph::translateSubfieldFunction(
     if (allUsed || usedArgs.contains(i)) {
       args[i] = translateExpr(call->inputs()[i]);
       cardinality = std::max(cardinality, args[i]->value().cardinality);
-      if (args[i]->type() == PlanType::kCallExpr) {
+      if (args[i]->is(PlanType::kCallExpr)) {
         funcs = funcs | args[i]->as<Call>()->functions();
       }
     } else {
@@ -854,7 +854,7 @@ AggregationPlanCP ToGraph::translateAggregation(
     auto name = toName(logicalAgg.outputType()->nameOf(i));
     auto* key = groupingKeys[i];
 
-    if (key->type() == PlanType::kColumnExpr) {
+    if (key->is(PlanType::kColumnExpr)) {
       columns.push_back(key->as<Column>());
     } else {
       toType(logicalAgg.outputType()->childAt(i));

@@ -155,8 +155,9 @@ bool Path::operator==(const Path& other) const {
   if (steps_.size() != other.steps_.size()) {
     return false;
   }
+
   for (auto i = 0; i < steps_.size(); ++i) {
-    if (!(steps_[i] == other.steps_[i])) {
+    if (steps_[i] != other.steps_[i]) {
       return false;
     }
   }
@@ -176,8 +177,9 @@ bool Path::hasPrefix(const Path& prefix) const {
   if (prefix.steps_.size() >= steps_.size()) {
     return false;
   }
+
   for (auto i = 0; i < prefix.steps_.size(); ++i) {
-    if (!(steps_[i] == prefix.steps_[i])) {
+    if (steps_[i] != prefix.steps_[i]) {
       return false;
     }
   }
@@ -201,9 +203,9 @@ std::string Path::toString() const {
       case StepKind::kSubscript:
         if (step.field) {
           out << "[" << step.field << "]";
-          break;
+        } else {
+          out << "[" << step.id << "]";
         }
-        out << "[" << step.id << "]";
         break;
     }
   }
@@ -223,11 +225,13 @@ PathCP QueryGraphContext::toPath(PathCP path) {
 }
 
 void Path::subfieldSkyline(BitSet& subfields) {
-  // Expand the ids to fields and  remove subfields where there exists a shorter
-  // prefix.
   if (subfields.empty()) {
     return;
   }
+
+  // Expand the ids to fields and remove subfields where there exists a shorter
+  // prefix.
+
   auto ctx = queryCtx();
   bool allFields = false;
   std::vector<std::vector<PathCP>> bySize;
@@ -245,15 +249,18 @@ void Path::subfieldSkyline(BitSet& subfields) {
       bySize[size].push_back(path);
     }
   });
+
   if (allFields) {
     subfields = BitSet();
     return;
   }
+
   for (auto& set : bySize) {
     std::sort(set.begin(), set.end(), [](PathCP left, PathCP right) {
       return *left < *right;
     });
   }
+
   for (int32_t i = 0; i < bySize.size() - 1; ++i) {
     for (auto path : bySize[i]) {
       // Delete paths where 'path' is a prefix.

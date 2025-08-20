@@ -82,6 +82,10 @@ class PlanObject {
     return type_ == PlanType::kColumnExpr;
   }
 
+  bool is(PlanType type) const {
+    return type_ == type;
+  }
+
   template <typename T>
   T* as() {
     return reinterpret_cast<T*>(this);

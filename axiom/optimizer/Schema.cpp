@@ -168,21 +168,21 @@ void Schema::addTable(SchemaTableCP table) const {
 }
 
 float tableCardinality(PlanObjectCP table) {
-  if (table->type() == PlanType::kTableNode) {
+  if (table->is(PlanType::kTableNode)) {
     return table->as<BaseTable>()
         ->schemaTable->columnGroups[0]
         ->table->cardinality;
-  } else if (table->type() == PlanType::kValuesTableNode) {
+  } else if (table->is(PlanType::kValuesTableNode)) {
     return table->as<ValuesTable>()->cardinality();
   }
-  VELOX_CHECK(table->type() == PlanType::kDerivedTableNode);
+  VELOX_CHECK(table->is(PlanType::kDerivedTableNode));
   return table->as<DerivedTable>()->cardinality;
 }
 
 // The fraction of rows of a base table selected by non-join filters. 0.2
 // means 1 in 5 are selected.
 float baseSelectivity(PlanObjectCP object) {
-  if (object->type() == PlanType::kTableNode) {
+  if (object->is(PlanType::kTableNode)) {
     return object->as<BaseTable>()->filterSelectivity;
   }
   return 1;
@@ -192,7 +192,7 @@ namespace {
 template <typename T>
 ColumnCP findColumnByName(const T& columns, Name name) {
   for (auto column : columns) {
-    if (column->type() == PlanType::kColumnExpr &&
+    if (column->is(PlanType::kColumnExpr) &&
         column->template as<Column>()->name() == name) {
       return column->template as<Column>();
     }
@@ -338,7 +338,7 @@ IndexInfo SchemaTable::indexByColumns(CPSpan<Column> columns) const {
 }
 
 IndexInfo joinCardinality(PlanObjectCP table, CPSpan<Column> keys) {
-  if (table->type() == PlanType::kTableNode) {
+  if (table->is(PlanType::kTableNode)) {
     auto schemaTable = table->as<BaseTable>()->schemaTable;
     return schemaTable->indexByColumns(keys);
   }
@@ -352,12 +352,12 @@ IndexInfo joinCardinality(PlanObjectCP table, CPSpan<Column> keys) {
     }
   };
 
-  if (table->type() == PlanType::kValuesTableNode) {
+  if (table->is(PlanType::kValuesTableNode)) {
     const auto* valuesTable = table->as<ValuesTable>();
     computeCardinalities(valuesTable->cardinality());
     return result;
   }
-  VELOX_CHECK(table->type() == PlanType::kDerivedTableNode);
+  VELOX_CHECK(table->is(PlanType::kDerivedTableNode));
   const auto* dt = table->as<DerivedTable>();
   computeCardinalities(dt->cardinality);
   result.unique =

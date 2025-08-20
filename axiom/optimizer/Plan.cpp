@@ -368,15 +368,15 @@ PlanP PlanSet::best(const Distribution& distribution, bool& needsShuffle) {
 }
 
 const JoinEdgeVector& joinedBy(PlanObjectCP table) {
-  if (table->type() == PlanType::kTableNode) {
+  if (table->is(PlanType::kTableNode)) {
     return table->as<BaseTable>()->joinedBy;
   }
 
-  if (table->type() == PlanType::kValuesTableNode) {
+  if (table->is(PlanType::kValuesTableNode)) {
     return table->as<ValuesTable>()->joinedBy;
   }
 
-  VELOX_DCHECK(table->type() == PlanType::kDerivedTableNode);
+  VELOX_DCHECK(table->is(PlanType::kDerivedTableNode));
   return table->as<DerivedTable>()->joinedBy;
 }
 
@@ -1027,7 +1027,7 @@ RelationOpPtr repartitionForIndex(
     auto nthKey = position(
         info.lookupKeys,
         [](auto c) {
-          return c->type() == PlanType::kColumnExpr
+          return c->is(PlanType::kColumnExpr)
               ? c->template as<Column>()->schemaColumn()
               : c;
         },
@@ -1152,15 +1152,15 @@ std::vector<uint32_t> joinKeyPartition(
 namespace {
 PlanObjectSet availableColumns(PlanObjectCP object) {
   PlanObjectSet set;
-  if (object->type() == PlanType::kTableNode) {
+  if (object->is(PlanType::kTableNode)) {
     for (auto& c : object->as<BaseTable>()->columns) {
       set.add(c);
     }
-  } else if (object->type() == PlanType::kValuesTableNode) {
+  } else if (object->is(PlanType::kValuesTableNode)) {
     for (auto& c : object->as<ValuesTable>()->columns) {
       set.add(c);
     }
-  } else if (object->type() == PlanType::kDerivedTableNode) {
+  } else if (object->is(PlanType::kDerivedTableNode)) {
     for (auto& c : object->as<DerivedTable>()->columns) {
       set.add(c);
     }
@@ -1269,7 +1269,7 @@ void Optimization::joinByHash(
   // The build side tables are all joined if the first build is a
   // table but if it is a derived table (most often with aggregation),
   // only some of the tables may be fully joined.
-  if (candidate.tables[0]->type() == PlanType::kDerivedTableNode) {
+  if (candidate.tables[0]->is(PlanType::kDerivedTableNode)) {
     state.placed.add(candidate.tables[0]);
     state.placed.unionSet(buildPlan->fullyImported);
   } else {
@@ -1739,11 +1739,11 @@ bool Optimization::placeConjuncts(
 namespace {
 
 float startingScore(PlanObjectCP table) {
-  if (table->type() == PlanType::kTableNode) {
+  if (table->is(PlanType::kTableNode)) {
     return table->as<BaseTable>()->schemaTable->cardinality;
   }
 
-  if (table->type() == PlanType::kValuesTableNode) {
+  if (table->is(PlanType::kValuesTableNode)) {
     return table->as<ValuesTable>()->cardinality();
   }
 
@@ -1769,7 +1769,7 @@ void Optimization::makeJoins(RelationOpPtr plan, PlanState& state) {
     });
     for (auto i : ids) {
       auto from = firstTables.at(i);
-      if (from->type() == PlanType::kTableNode) {
+      if (from->is(PlanType::kTableNode)) {
         auto table = from->as<BaseTable>();
         auto indices = table->as<BaseTable>()->chooseLeafIndex();
         // Make plan starting with each relevant index of the table.
@@ -1792,7 +1792,7 @@ void Optimization::makeJoins(RelationOpPtr plan, PlanState& state) {
           state.addCost(*scan);
           makeJoins(scan, state);
         }
-      } else if (from->type() == PlanType::kValuesTableNode) {
+      } else if (from->is(PlanType::kValuesTableNode)) {
         const auto* valuesTable = from->as<ValuesTable>();
         ColumnVector columns;
         state.downstreamColumns().forEach([&](PlanObjectCP object) {
@@ -1931,7 +1931,7 @@ PlanP Optimization::makePlan(
     PlanState& state,
     bool& needsShuffle) {
   VELOX_DCHECK(!needsShuffle);
-  if (key.firstTable->type() == PlanType::kDerivedTableNode &&
+  if (key.firstTable->is(PlanType::kDerivedTableNode) &&
       key.firstTable->as<DerivedTable>()->setOp.has_value()) {
     return makeUnionPlan(
         key, distribution, boundColumns, existsFanout, state, needsShuffle);
@@ -2031,7 +2031,7 @@ PlanP Optimization::makeDtPlan(
         *state.dt, key.firstTable, key.tables, key.existences, existsFanout);
 
     PlanState inner(*this, &dt);
-    if (key.firstTable->type() == PlanType::kDerivedTableNode) {
+    if (key.firstTable->is(PlanType::kDerivedTableNode)) {
       inner.setTargetColumnsForDt(key.columns);
     } else {
       inner.targetColumns = key.columns;

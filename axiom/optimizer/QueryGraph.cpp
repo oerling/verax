@@ -329,14 +329,14 @@ bool Expr::sameOrEqual(const Expr& other) const {
 }
 
 PlanObjectCP Expr::singleTable() const {
-  if (type() == PlanType::kColumnExpr) {
+  if (is(PlanType::kColumnExpr)) {
     return as<Column>()->relation();
   }
 
   PlanObjectCP table = nullptr;
   bool multiple = false;
   columns_.forEach([&](PlanObjectCP object) {
-    VELOX_CHECK(object->type() == PlanType::kColumnExpr);
+    VELOX_CHECK(object->is(PlanType::kColumnExpr));
     if (!table) {
       table = object->as<Column>()->relation();
     } else if (table != object->as<Column>()->relation()) {
@@ -370,7 +370,7 @@ Column::Column(
       path_(path) {
   columns_.add(this);
   subexpressions_.add(this);
-  if (relation_ && relation_->type() == PlanType::kTableNode) {
+  if (relation_ && relation_->is(PlanType::kTableNode)) {
     if (topColumn_) {
       schemaColumn_ = topColumn_->schemaColumn_;
     } else {
