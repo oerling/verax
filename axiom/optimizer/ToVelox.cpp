@@ -201,9 +201,17 @@ PlanAndStats ToVelox::toVeloxPlan(
   top.fragment.planNode = makeFragment(std::move(plan), top, stages);
 
   stages.push_back(std::move(top));
+  axiom::runner::FinishWrite finishWrites = nullptr;
+  if (!finishWrites_.empty()) {
+    finishWrites = [finishes = std::move(finishWrites_)](bool success, const std::vector<RowVectorPtr>& results) {
+      for (auto& finish : finishes) {
+	finish(success, results);
+      }
+    };
+  }
   return PlanAndStats{
       std::make_shared<axiom::runner::MultiFragmentPlan>(
-          std::move(stages), options),
+							 std::move(stages), options, finishWrites),
       std::move(nodeHistory_),
       std::move(prediction_)};
 }
@@ -1360,7 +1368,7 @@ core::PlanNodePtr ToVelox::makeValues(
   return valuesNode;
 }
 
-core::PlanNodePtr ToVelox::makeWrite(
+  core::PlanNodePtr ToVelox::makeWrite(
     const TableWrite& op,
     ExecutableFragment& fragment,
     std::vector<axiom::runner::ExecutableFragment>& stages) {
@@ -1416,6 +1424,11 @@ core::PlanNodePtr ToVelox::makeWrite(
   auto outputType =
       ROW({"numWrittenRows", "fragment", "tableCommitContext"},
           {BIGINT(), VARBINARY(), VARBINARY()});
+  auto* metadata = write->layout()->connector()->metadata();
+  auto session = queryCtx()->optimization()->options().session;
+  finishWrites_.push_back([handle = info->handle, metadata, session](bool success, const std::vector<RowVectorPtr>& results) {
+    metadata->finishWrite(handle, success, results, connector::WriteKind::kInsert, session);
+  });
   return std::make_shared<core::TableWriteNode>(
       nextId(),
       input->outputType(),

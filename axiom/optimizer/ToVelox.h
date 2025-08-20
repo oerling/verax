@@ -277,6 +277,7 @@ class ToVelox {
 
   // Serial number for stages in executable plan.
   int32_t stageCounter_{0};
+  std::vector<axiom::runner::FinishWrite> finishWrites_;
 };
 
 } // namespace facebook::velox::optimizer

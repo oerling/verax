@@ -181,7 +181,7 @@ ConnectorInsertTableHandlePtr HiveConnectorMetadata::createInsertTableHandle(
       inputColumns,
       makeLocationHandle(
           fmt::format("{}/{}", dataPath(), layout.table()->name()),
-          std::nullopt),
+          makeStagingDirectory()),
       storageFormat,
       bucketProperty,
       compressionKind,

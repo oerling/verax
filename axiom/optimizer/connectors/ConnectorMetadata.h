@@ -764,10 +764,11 @@ class ConnectorMetadata {
   /// Finalizes a table write. This runs once after all the table writers have
   /// finished. The result sets from the table writer fragments are passed as
   /// 'writerResults'. Their format and meaning is connector specific. the
-  /// RowType is given by the outputType() of the TableWriter.
+  /// RowType is given by the outputType() of the TableWriter. If 'success' is
+  /// false, the write should be cancelled and possible partial results deleted. In this case 'writerResult' may be empty.
   virtual void finishWrite(
-      const TableLayout& layout,
       const ConnectorInsertTableHandlePtr& handle,
+      bool success,
       const std::vector<RowVectorPtr>& writerResult,
       WriteKind kind,
       const ConnectorSessionPtr& session) {

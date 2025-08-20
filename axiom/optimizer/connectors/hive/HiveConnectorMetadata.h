@@ -200,6 +200,10 @@ class HiveConnectorMetadata : public ConnectorMetadata {
     VELOX_UNSUPPORTED();
   }
 
+  virtual std::string makeStagingDirectory() {
+    VELOX_UNSUPPORTED();
+  }
+  
   HiveConnector* const hiveConnector_;
 };
 
