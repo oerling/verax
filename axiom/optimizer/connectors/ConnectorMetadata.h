@@ -139,7 +139,13 @@ class Column {
  public:
   virtual ~Column() = default;
 
-  Column(const std::string& name, TypePtr type, std::optional<Variant> defaultValue = std::nullopt) : name_(name), type_(type), defaultValue_(makeDefaultValue(type_, defaultValue)) {}
+  Column(
+      const std::string& name,
+      TypePtr type,
+      std::optional<Variant> defaultValue = std::nullopt)
+      : name_(name),
+        type_(type),
+        defaultValue_(makeDefaultValue(type_, defaultValue)) {}
 
   const ColumnStatistics* stats() const {
     return latestStats_;
@@ -172,7 +178,7 @@ class Column {
   const Variant& defaultValue() const {
     return defaultValue_;
   }
-  
+
   /// Returns approximate number of distinct values. Returns 'deflt' if no
   /// information.
   int64_t approxNumDistinct(int64_t deflt = 1000) const {
@@ -192,7 +198,9 @@ class Column {
   std::vector<std::unique_ptr<ColumnStatistics>> allStats_;
 
  private:
-  static Variant makeDefaultValue(const TypePtr& type, std::optional<Variant>& value);
+  static Variant makeDefaultValue(
+      const TypePtr& type,
+      std::optional<Variant>& value);
 
   // Serializes changes to statistics.
   std::mutex mutex_;
@@ -763,10 +771,11 @@ class ConnectorMetadata {
   /// finished. The result sets from the table writer fragments are passed as
   /// 'writerResults'. Their format and meaning is connector specific. the
   /// RowType is given by the outputType() of the TableWriter. If 'success' is
-  /// false, the write should be cancelled and possible partial results deleted. In this case 'writerResult' may be empty.
+  /// false, the write should be cancelled and possible partial results deleted.
+  /// In this case 'writerResult' may be empty.
   virtual void finishWrite(
-			   const TableLayout& layout,
-			   const ConnectorInsertTableHandlePtr& handle,
+      const TableLayout& layout,
+      const ConnectorInsertTableHandlePtr& handle,
       bool success,
       const std::vector<RowVectorPtr>& writerResult,
       WriteKind kind,
@@ -774,11 +783,12 @@ class ConnectorMetadata {
     VELOX_UNSUPPORTED();
   }
 
-  /// Returns the output type of TableWrite operator for a row with columns as in 'rowType'.
+  /// Returns the output type of TableWrite operator for a row with columns as
+  /// in 'rowType'.
   virtual RowTypePtr tableWriteOutputType(const RowTypePtr& rowType) const {
     VELOX_UNSUPPORTED();
   }
-  
+
   /// Returns column handles whose value uniquely identifies a row for creating
   /// an update or delete record. These may be for example some connector
   /// specific opaque row id or primary key columns.

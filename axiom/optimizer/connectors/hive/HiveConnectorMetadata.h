@@ -176,7 +176,7 @@ class HiveConnectorMetadata : public ConnectorMetadata {
       const ConnectorSessionPtr& session) override;
 
   RowTypePtr tableWriteOutputType(const RowTypePtr& rowType) const override;
-  
+
   virtual dwio::common::FileFormat fileFormat() const {
     VELOX_UNSUPPORTED();
   }
@@ -205,7 +205,7 @@ class HiveConnectorMetadata : public ConnectorMetadata {
   virtual std::string makeStagingDirectory() {
     VELOX_UNSUPPORTED();
   }
-  
+
   HiveConnector* const hiveConnector_;
 };
 

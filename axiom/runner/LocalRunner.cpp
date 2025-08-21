@@ -103,39 +103,38 @@ LocalRunner::LocalRunner(
   params_.outputPool = outputPool;
 }
 
-  void LocalRunner::runWrite() {
-    std::vector<velox::RowVectorPtr> result;
-    try {
-      start();
-      while (cursor_->moveNext()) {
-	result.push_back(cursor_->current());
-      }
-      finishWrite_(true, result);
-      state_ = State::kFinished;
-
-    } catch (const std::exception& e) {
-      finishWrite_(false, result);
-      throw;
+void LocalRunner::runWrite() {
+  std::vector<velox::RowVectorPtr> result;
+  try {
+    start();
+    while (cursor_->moveNext()) {
+      result.push_back(cursor_->current());
     }
-  }
+    finishWrite_(true, result);
+    state_ = State::kFinished;
 
-  velox::RowVectorPtr LocalRunner::next() {
+  } catch (const std::exception& e) {
+    finishWrite_(false, result);
+    throw;
+  }
+}
+
+velox::RowVectorPtr LocalRunner::next() {
   if (finishWrite_ != nullptr) {
     runWrite();
     return nullptr;
   }
 
+  if (!cursor_) {
+    start();
+  }
+  bool hasNext = cursor_->moveNext();
+  if (!hasNext) {
+    state_ = State::kFinished;
+    return nullptr;
+  }
 
-    if (!cursor_) {
-      start();
-    }
-    bool hasNext = cursor_->moveNext();
-    if (!hasNext) {
-      state_ = State::kFinished;
-      return nullptr;
-    }
-    
-    return cursor_->current();
+  return cursor_->current();
 }
 
 void LocalRunner::start() {

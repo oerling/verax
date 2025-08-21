@@ -82,7 +82,8 @@ class LocalRunner : public Runner,
   }
 
  private:
-  // Reads all results and calls 'finishWrite_'  on the results. Calls 'finishWrite_' with false and rethrows if exception.
+  // Reads all results and calls 'finishWrite_'  on the results. Calls
+  // 'finishWrite_' with false and rethrows if exception.
   void runWrite();
 
   void start();

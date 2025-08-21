@@ -203,15 +203,16 @@ PlanAndStats ToVelox::toVeloxPlan(
   stages.push_back(std::move(top));
   axiom::runner::FinishWrite finishWrites = nullptr;
   if (!finishWrites_.empty()) {
-    finishWrites = [finishes = std::move(finishWrites_)](bool success, const std::vector<RowVectorPtr>& results) {
+    finishWrites = [finishes = std::move(finishWrites_)](
+                       bool success, const std::vector<RowVectorPtr>& results) {
       for (auto& finish : finishes) {
-	finish(success, results);
+        finish(success, results);
       }
     };
   }
   return PlanAndStats{
       std::make_shared<axiom::runner::MultiFragmentPlan>(
-							 std::move(stages), options, finishWrites),
+          std::move(stages), options, finishWrites),
       std::move(nodeHistory_),
       std::move(prediction_)};
 }
@@ -1383,7 +1384,7 @@ core::PlanNodePtr ToVelox::makeValues(
   return valuesNode;
 }
 
-  core::PlanNodePtr ToVelox::makeWrite(
+core::PlanNodePtr ToVelox::makeWrite(
     const TableWrite& op,
     ExecutableFragment& fragment,
     std::vector<axiom::runner::ExecutableFragment>& stages) {
@@ -1412,7 +1413,10 @@ core::PlanNodePtr ToVelox::makeValues(
       auto* column = layout->table()->findColumn(name);
       channels.push_back(kConstantChannel);
       constants.push_back(BaseVector::createConstant(
-						     column->type(), column->defaultValue(), 1, queryCtx()->optimization()->evaluator()->pool()));
+          column->type(),
+          column->defaultValue(),
+          1,
+          queryCtx()->optimization()->evaluator()->pool()));
     } else {
       channels.push_back(it - write->columns().begin());
       constants.push_back(nullptr);
@@ -1439,11 +1443,21 @@ core::PlanNodePtr ToVelox::makeValues(
       [](auto x) { return std::string(x); });
   auto* metadata = write->layout()->connector()->metadata();
   auto session = queryCtx()->optimization()->options().session;
-  std::unordered_set<connector::ConnectorTablePtr> retainedTables = queryCtx()->optimization()->retainedTables();
-  // The finish function needs to capture the retained tables, which also keeps layout live past the Optimization.
-  finishWrites_.push_back([handle, metadata, layout, session, retainedTables](bool success, const std::vector<RowVectorPtr>& results) {
-    metadata->finishWrite(*layout, handle, success, results, connector::WriteKind::kInsert, session);
-  });
+  std::unordered_set<connector::ConnectorTablePtr> retainedTables =
+      queryCtx()->optimization()->retainedTables();
+  // The finish function needs to capture the retained tables, which also keeps
+  // layout live past the Optimization.
+  finishWrites_.push_back(
+      [handle, metadata, layout, session, retainedTables](
+          bool success, const std::vector<RowVectorPtr>& results) {
+        metadata->finishWrite(
+            *layout,
+            handle,
+            success,
+            results,
+            connector::WriteKind::kInsert,
+            session);
+      });
 
   auto outputType = metadata->tableWriteOutputType(layout->rowType());
   return std::make_shared<core::TableWriteNode>(

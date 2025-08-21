@@ -854,9 +854,9 @@ RelationOpPtr repartitionForWrite(const RelationOpPtr& plan, PlanState& state) {
       // Not given. column default.
       auto* column = write->layout()->table()->findColumn(name);
       keyValues.push_back(make<Literal>(
-					Value(toType(column->type()), 1),
+          Value(toType(column->type()), 1),
           queryCtx()->registerVariant(
-				      std::make_unique<Variant>(column->defaultValue()))));
+              std::make_unique<Variant>(column->defaultValue()))));
     } else {
       keyValues.push_back(write->values()[i]);
     }

@@ -453,10 +453,11 @@ class Optimization {
     retainedTables_.insert(std::move(table));
   }
 
-  const std::unordered_set<connector::ConnectorTablePtr> retainedTables() const {
+  const std::unordered_set<connector::ConnectorTablePtr> retainedTables()
+      const {
     return retainedTables_;
   }
-  
+
   /// If false, correlation names are not included in Column::toString(). Used
   /// for canonicalizing join cache keys.
   bool& cnamesInExpr() {

@@ -19,7 +19,6 @@
 #include "velox/core/PlanFragment.h"
 #include "velox/vector/ComplexVector.h"
 
-
 namespace facebook::axiom::runner {
 
 /// Describes an exchange source for an ExchangeNode a non-leaf stage.
@@ -36,8 +35,8 @@ struct InputStage {
 /// 'results' must be the concatenation of the results from tableWrite
 /// operators. if 'success' is false, the write should not be persisted and
 /// 'results' can be empty. Possible ACID properties depend on the connector.
-using FinishWrite =
-  std::function<void(bool success, const std::vector<velox::RowVectorPtr>& result)>;
+using FinishWrite = std::function<
+    void(bool success, const std::vector<velox::RowVectorPtr>& result)>;
 
 /// Describes a fragment of a distributed plan. This allows a run
 /// time to distribute fragments across workers and to set up

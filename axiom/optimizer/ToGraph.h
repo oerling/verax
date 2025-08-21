@@ -224,7 +224,8 @@ class ToGraph {
     }
   }
 
-  std::unordered_map<int32_t, connector::ConnectorInsertTableHandlePtr>& writeHandles() {
+  std::unordered_map<int32_t, connector::ConnectorInsertTableHandlePtr>&
+  writeHandles() {
     return writeHandles_;
   }
 
@@ -519,7 +520,8 @@ class ToGraph {
       planLeaves_;
 
   std::unique_ptr<BuiltinNames> builtinNames_;
-  std::unordered_map<int32_t, connector::ConnectorInsertTableHandlePtr> writeHandles_;
+  std::unordered_map<int32_t, connector::ConnectorInsertTableHandlePtr>
+      writeHandles_;
 };
 
 } // namespace facebook::velox::optimizer
