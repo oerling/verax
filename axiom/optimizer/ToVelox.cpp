@@ -1390,13 +1390,14 @@ core::PlanNodePtr ToVelox::makeValues(
   core::PlanNodePtr input = makeFragment(op.input(), fragment, stages);
   TempProjections projections(*this, *op.input());
   auto* write = op.write;
-  auto* info = queryCtx()->optimization()->writeInfo(write->id());
+  auto* layout = write->layout();
+  auto handle = queryCtx()->optimization()->writeHandle(write->id());
   std::vector<core::FieldAccessTypedExprPtr> fields;
   for (auto value : write->values()) {
     fields.push_back(projections.toFieldRef(value));
   }
-  auto* partitionType = write->layout()->partitionType();
-  auto& partitionColumns = write->layout()->partitionColumns();
+  auto* partitionType = layout->partitionType();
+  auto& partitionColumns = layout->partitionColumns();
   NameVector partition;
   for (auto& column : partitionColumns) {
     partition.push_back(toName(column->name()));
@@ -1408,10 +1409,10 @@ core::PlanNodePtr ToVelox::makeValues(
     auto* name = partition[i];
     auto it = std::find(write->columns().begin(), write->columns().end(), name);
     if (it == write->columns().end()) {
-      auto type = info->rowType->childAt(info->rowType->getChildIdx(name));
+      auto* column = layout->table()->findColumn(name);
       channels.push_back(kConstantChannel);
-      constants.push_back(BaseVector::createNullConstant(
-          type, 1, queryCtx()->optimization()->evaluator()->pool()));
+      constants.push_back(BaseVector::createConstant(
+						     column->type(), column->defaultValue(), 1, queryCtx()->optimization()->evaluator()->pool()));
     } else {
       channels.push_back(it - write->columns().begin());
       constants.push_back(nullptr);
@@ -1439,9 +1440,8 @@ core::PlanNodePtr ToVelox::makeValues(
   auto* metadata = write->layout()->connector()->metadata();
   auto session = queryCtx()->optimization()->options().session;
   std::unordered_set<connector::ConnectorTablePtr> retainedTables = queryCtx()->optimization()->retainedTables();
-  auto* layout = write->layout();
   // The finish function needs to capture the retained tables, which also keeps layout live past the Optimization.
-  finishWrites_.push_back([handle = info->handle, metadata, layout, session, retainedTables](bool success, const std::vector<RowVectorPtr>& results) {
+  finishWrites_.push_back([handle, metadata, layout, session, retainedTables](bool success, const std::vector<RowVectorPtr>& results) {
     metadata->finishWrite(*layout, handle, success, results, connector::WriteKind::kInsert, session);
   });
 
@@ -1452,7 +1452,7 @@ core::PlanNodePtr ToVelox::makeValues(
       columnNames,
       nullptr,
       std::make_shared<const core::InsertTableHandle>(
-          write->layout()->connector()->connectorId(), info->handle),
+          write->layout()->connector()->connectorId(), handle),
       false,
       outputType,
       connector::CommitStrategy::kNoCommit,

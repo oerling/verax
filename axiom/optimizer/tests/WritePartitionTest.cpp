@@ -22,7 +22,7 @@
 namespace lp = facebook::velox::logical_plan;
 
 namespace facebook::velox::optimizer {
-
+namespace {
 
 class WritePartitionTest : public test::HiveQueriesTestBase {
  protected:
@@ -38,19 +38,18 @@ class WritePartitionTest : public test::HiveQueriesTestBase {
     for (auto i = 0; i < numBatches; ++i) {
       auto start = i * batchSize;
       std::string str;
-      data .push_back(makeRowVector({
-      makeFlatVector<int64_t>(batchSize, [&](auto row) {
-        return row + start; }),
-      makeFlatVector<int32_t>(batchSize, [&](auto row) {
-        return (row + start) % 19; }),
-      makeFlatVector<int64_t>(batchSize, [&](auto row) {
-        return row + start + 2; }),
-      makeFlatVector<StringView>(
-          batchSize,
-          [&](auto row) {
-	    str = fmt::format("2025-09-{}", dayOffset + ((row + start) % 2));
-	    return StringView(str);; })
-	  }));
+      data.push_back(makeRowVector(
+          {makeFlatVector<int64_t>(
+               batchSize, [&](auto row) { return row + start; }),
+           makeFlatVector<int32_t>(
+               batchSize, [&](auto row) { return (row + start) % 19; }),
+           makeFlatVector<int64_t>(
+               batchSize, [&](auto row) { return row + start + 2; }),
+           makeFlatVector<StringView>(batchSize, [&](auto row) {
+             str = fmt::format("2025-09-{}", dayOffset + ((row + start) % 2));
+             return StringView(str);
+             ;
+           })}));
     }
     return data;
   }
@@ -61,7 +60,6 @@ class WritePartitionTest : public test::HiveQueriesTestBase {
       std::make_shared<connector::hive::HiveConnectorSession>()};
 };
 
-  
 TEST_F(WritePartitionTest, write) {
   lp::PlanBuilder::Context context(exec::test::kHiveConnectorId);
 
@@ -87,17 +85,18 @@ TEST_F(WritePartitionTest, write) {
   auto write1 = lp::PlanBuilder(context)
                     .values({data})
                     .tableWrite(
-				exec::test::kHiveConnectorId,
+                        exec::test::kHiveConnectorId,
                         "test",
                         lp::WriteKind::kInsert,
                         {"key1", "key2", "data", "ds"})
                     .build();
   auto insertResult = runVelox(write1);
 
-  auto countPlan = lp::PlanBuilder(context)
-    .tableScan(exec::test::kHiveConnectorId, "test", {"key1"})
-                       .aggregate({}, {"count(1)"})
-                       .build();
+  auto countPlan =
+      lp::PlanBuilder(context)
+          .tableScan(exec::test::kHiveConnectorId, "test", {"key1"})
+          .aggregate({}, {"count(1)"})
+          .build();
 
   auto result = runVelox(countPlan);
   EXPECT_EQ(
@@ -109,17 +108,17 @@ TEST_F(WritePartitionTest, write) {
                        .values(errorData)
                        .with({"key1 % (key1 - 200000) as div0"})
                        .tableWrite(
-				   exec::test::kHiveConnectorId,
+                           exec::test::kHiveConnectorId,
                            "test",
                            lp::WriteKind::kInsert,
                            {"key1", "key2", "div0", "ds"})
-    .build();
+                       .build();
   EXPECT_THROW(runVelox(errorPlan), VeloxException);
 
   result = runVelox(countPlan);
   EXPECT_EQ(
       kTestBatchSize * 10,
-      result.results[0]->childAt(0)->as < FlatVector<int64_t>>()->valueAt(0));
+      result.results[0]->childAt(0)->as<FlatVector<int64_t>>()->valueAt(0));
 }
-
+} // namespace
 } // namespace facebook::velox::optimizer

@@ -480,8 +480,8 @@ class Optimization {
   /// Produces trace output if event matches 'traceFlags_'.
   void trace(int32_t event, int32_t id, const Cost& cost, RelationOp& plan);
 
-  WriteInfo* writeInfo(int32_t id) {
-    return toGraph_.writeInfos().at(id).get();
+  connector::ConnectorInsertTableHandlePtr writeHandle(int32_t id) {
+    return toGraph_.writeHandles().at(id);
   }
 
  private:

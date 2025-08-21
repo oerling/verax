@@ -179,20 +179,6 @@ struct SubfieldProjections {
   std::unordered_map<PathCP, ExprCP> pathToExpr;
 };
 
-struct WriteInfo {
-  WriteInfo(
-      connector::ConnectorInsertTableHandlePtr handle,
-      logical_plan::WriteKind kind,
-      connector::WritePartitionInfo info,
-      const RowTypePtr& rowType)
-      : handle(handle), kind(kind), info(std::move(info)), rowType(rowType) {}
-
-  connector::ConnectorInsertTableHandlePtr handle;
-  logical_plan::WriteKind kind;
-  connector ::WritePartitionInfo info;
-  RowTypePtr rowType;
-};
-
 class ToGraph {
  public:
   ToGraph(
@@ -238,8 +224,8 @@ class ToGraph {
     }
   }
 
-  std::unordered_map<int32_t, std::unique_ptr<WriteInfo>>& writeInfos() {
-    return writeInfos_;
+  std::unordered_map<int32_t, connector::ConnectorInsertTableHandlePtr>& writeHandles() {
+    return writeHandles_;
   }
 
  private:
@@ -533,7 +519,7 @@ class ToGraph {
       planLeaves_;
 
   std::unique_ptr<BuiltinNames> builtinNames_;
-  std::unordered_map<int32_t, std::unique_ptr<WriteInfo>> writeInfos_;
+  std::unordered_map<int32_t, connector::ConnectorInsertTableHandlePtr> writeHandles_;
 };
 
 } // namespace facebook::velox::optimizer

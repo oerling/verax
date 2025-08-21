@@ -838,8 +838,6 @@ RelationOpPtr repartitionForWrite(const RelationOpPtr& plan, PlanState& state) {
   }
 
   const auto* write = state.dt->write;
-  const auto* info = queryCtx()->optimization()->writeInfo(write->id());
-
   auto& partition = write->layout()->partitionColumns();
   if (partition.empty()) {
     // The write is not partitioned on columns of the layout. ToVelox will add
@@ -853,12 +851,12 @@ RelationOpPtr repartitionForWrite(const RelationOpPtr& plan, PlanState& state) {
     auto name = toName(partition[i]->name());
     auto it = std::find(write->columns().begin(), write->columns().end(), name);
     if (it == write->columns().end()) {
-      // Not given. Null .
-      auto type = info->rowType->childAt(info->rowType->getChildIdx(name));
+      // Not given. column default.
+      auto* column = write->layout()->table()->findColumn(name);
       keyValues.push_back(make<Literal>(
-          Value(toType(type), 1),
+					Value(toType(column->type()), 1),
           queryCtx()->registerVariant(
-              std::make_unique<Variant>(Variant::null(type->kind())))));
+				      std::make_unique<Variant>(column->defaultValue()))));
     } else {
       keyValues.push_back(write->values()[i]);
     }

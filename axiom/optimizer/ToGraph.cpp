@@ -1350,11 +1350,7 @@ PlanObjectP ToGraph::addWrite(const lp::TableWriteNode& tableWrite) {
       tableWrite.options(),
       connector::WriteKind::kInsert,
       options.session);
-  writeInfos_[currentDt_->write->id()] = std::make_unique<WriteInfo>(
-      handle,
-      logical_plan::WriteKind::kInsert,
-      metadata->writePartitionInfo(handle),
-      layout->rowType());
+  writeHandles_[currentDt_->write->id()] = handle;
 
   return currentDt_;
 }

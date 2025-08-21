@@ -139,7 +139,7 @@ class Column {
  public:
   virtual ~Column() = default;
 
-  Column(const std::string& name, TypePtr type) : name_(name), type_(type) {}
+  Column(const std::string& name, TypePtr type, std::optional<Variant> defaultValue = std::nullopt) : name_(name), type_(type), defaultValue_(makeDefaultValue(type_, defaultValue)) {}
 
   const ColumnStatistics* stats() const {
     return latestStats_;
@@ -169,6 +169,10 @@ class Column {
     return type_;
   }
 
+  const Variant& defaultValue() const {
+    return defaultValue_;
+  }
+  
   /// Returns approximate number of distinct values. Returns 'deflt' if no
   /// information.
   int64_t approxNumDistinct(int64_t deflt = 1000) const {
@@ -179,7 +183,7 @@ class Column {
  protected:
   const std::string name_;
   const TypePtr type_;
-
+  const Variant defaultValue_;
   // The latest element added to 'allStats_'.
   tsan_atomic<ColumnStatistics*> latestStats_{nullptr};
 
@@ -188,6 +192,8 @@ class Column {
   std::vector<std::unique_ptr<ColumnStatistics>> allStats_;
 
  private:
+  static Variant makeDefaultValue(const TypePtr& type, std::optional<Variant>& value);
+
   // Serializes changes to statistics.
   std::mutex mutex_;
 };
@@ -589,20 +595,6 @@ struct LookupKeys {
   bool isAscending{true};
 };
 
-/// Describes how to repartition data before a TableWriter.
-struct WritePartitionInfo {
-  /// Columns for partitioning,. Names refer to the column names in the insert
-  /// table handle. Empty if any worker can write any row.
-  const std::vector<std::string> columns;
-
-  /// Specifies the partition function. nullptr if 'columns' is empty.
-  const std::shared_ptr<const core::PartitionFunctionSpec> partitionSpec;
-
-  /// Maximum number of workers. For example, having more workers than there are
-  /// partitions makes no sense.
-  const int32_t maxWorkers;
-};
-
 /// Representts session status for update operations. May for
 /// example encapsulate a transaction state. The minimal
 /// implementation does nothing, which amounts to all write
@@ -764,13 +756,6 @@ class ConnectorMetadata {
       const std::unordered_map<std::string, std::string>& options,
       WriteKind kind,
       const ConnectorSessionPtr& session) {
-    VELOX_UNSUPPORTED();
-  }
-
-  /// Returns specification for repartitioning data before the table writer
-  /// stage.
-  virtual WritePartitionInfo writePartitionInfo(
-      const ConnectorInsertTableHandlePtr& handle) {
     VELOX_UNSUPPORTED();
   }
 
