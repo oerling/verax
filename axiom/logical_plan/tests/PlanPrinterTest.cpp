@@ -325,6 +325,32 @@ TEST_F(PlanPrinterTest, aggregate) {
           testing::Eq("")));
 }
 
+TEST_F(PlanPrinterTest, sort) {
+  auto type = ROW({"a", "b"}, {INTEGER(), DOUBLE()});
+
+  std::vector<Variant> data{
+      Variant::row({1, 1.2}),
+      Variant::row({2, 3.4}),
+  };
+
+  auto plan = PlanBuilder()
+                  .values(type, data)
+                  .sort({
+                      SortKey(Col("a"), DESC),
+                      SortKey(Col("b"), DESC_NULLS_FIRST),
+                  })
+                  .build();
+
+  auto lines = toLines(plan);
+
+  EXPECT_THAT(
+      lines,
+      testing::ElementsAre(
+          testing::StartsWith("- Sort: a DESC NULLS LAST, b DESC NULLS FIRS"),
+          testing::StartsWith("  - Values: 2 rows"),
+          testing::Eq("")));
+}
+
 TEST_F(PlanPrinterTest, union) {
   auto type = ROW({"a", "b"}, {INTEGER(), DOUBLE()});
 

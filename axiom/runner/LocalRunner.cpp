@@ -215,9 +215,22 @@ void LocalRunner::waitForCompletion(int32_t maxWaitUs) {
   }
 }
 
+namespace {
+bool isBroadcast(const velox::core::PlanFragment& fragment) {
+  if (auto partitionedOutputNode =
+          std::dynamic_pointer_cast<const velox::core::PartitionedOutputNode>(
+              fragment.planNode)) {
+    return partitionedOutputNode->kind() ==
+        velox::core::PartitionedOutputNode::Kind::kBroadcast;
+  }
+
+  return false;
+}
+} // namespace
+
 void LocalRunner::makeStages(
     const std::shared_ptr<velox::exec::Task>& lastStageTask) {
-  std::unordered_map<std::string, int32_t> stageMap;
+  std::unordered_map<std::string, std::pair<int32_t, bool>> stageMap;
   auto sharedRunner = shared_from_this();
   auto onError = [self = sharedRunner, this](std::exception_ptr error) {
     {
@@ -236,7 +249,8 @@ void LocalRunner::makeStages(
   for (auto fragmentIndex = 0; fragmentIndex < fragments_.size() - 1;
        ++fragmentIndex) {
     const auto& fragment = fragments_[fragmentIndex];
-    stageMap[fragment.taskPrefix] = stages_.size();
+    stageMap[fragment.taskPrefix] = {
+        stages_.size(), isBroadcast(fragment.fragment)};
     stages_.emplace_back();
 
     for (auto i = 0; i < fragment.width; ++i) {
@@ -255,13 +269,8 @@ void LocalRunner::makeStages(
           0,
           onError);
       stages_.back().push_back(task);
-      // Output buffers are created during Task::start(), so we must start the
-      // task before calling updateOutputBuffers().
+
       task->start(options_.numDrivers);
-      if (fragment.numBroadcastDestinations) {
-        // TODO: Add support for Arbitrary partition type.
-        task->updateOutputBuffers(fragment.numBroadcastDestinations, true);
-      }
     }
   }
 
@@ -270,6 +279,7 @@ void LocalRunner::makeStages(
   for (auto fragmentIndex = 0; fragmentIndex < fragments_.size();
        ++fragmentIndex) {
     const auto& fragment = fragments_[fragmentIndex];
+    const auto& stage = stages_[fragmentIndex];
 
     for (auto& scan : fragment.scans) {
       auto source = splitSourceForScan(*scan);
@@ -286,13 +296,13 @@ void LocalRunner::makeStages(
 
       bool allDone = false;
       do {
-        for (auto i = 0; i < stages_[fragmentIndex].size(); ++i) {
+        for (auto i = 0; i < stage.size(); ++i) {
           auto split = getNextSplit();
           if (!split.hasConnectorSplit()) {
             allDone = true;
             break;
           }
-          stages_[fragmentIndex][i]->addSplit(scan->id(), std::move(split));
+          stage[i]->addSplit(scan->id(), std::move(split));
         }
       } while (!allDone);
     }
@@ -304,12 +314,16 @@ void LocalRunner::makeStages(
     }
 
     for (auto& input : fragment.inputStages) {
-      const auto sourceStage = stageMap[input.producerTaskPrefix];
+      const auto [sourceStage, broadcast] = stageMap[input.producerTaskPrefix];
 
       std::vector<std::shared_ptr<velox::exec::RemoteConnectorSplit>>
           sourceSplits;
       for (const auto& task : stages_[sourceStage]) {
         sourceSplits.push_back(remoteSplit(task->taskId()));
+
+        if (broadcast) {
+          task->updateOutputBuffers(fragment.width, true);
+        }
       }
 
       for (auto& task : stages_[fragmentIndex]) {

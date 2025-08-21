@@ -228,9 +228,18 @@ class PlanBuilder {
       const std::vector<std::string>& groupingKeys,
       const std::vector<std::string>& aggregates);
 
+  PlanBuilder& aggregate(
+      const std::vector<ExprApi>& groupingKeys,
+      const std::vector<ExprApi>& aggregates);
+
   PlanBuilder& join(
       const PlanBuilder& right,
       const std::string& condition,
+      JoinType joinType);
+
+  PlanBuilder& join(
+      const PlanBuilder& right,
+      const std::optional<ExprApi>& condition,
       JoinType joinType);
 
   PlanBuilder& crossJoin(const PlanBuilder& right) {
@@ -248,6 +257,8 @@ class PlanBuilder {
       const std::vector<PlanBuilder>& inputs);
 
   PlanBuilder& sort(const std::vector<std::string>& sortingKeys);
+
+  PlanBuilder& sort(const std::vector<SortKey>& sortingKeys);
 
   /// An alias for 'sort'.
   PlanBuilder& orderBy(const std::vector<std::string>& sortingKeys) {
@@ -278,6 +289,17 @@ class PlanBuilder {
 
     return *this;
   }
+
+  /// Returns the number of output columns.
+  size_t numOutput() const;
+
+  /// Returns the names of the output columns. If some colums are anonymous,
+  /// assigns them unique names before returning.
+  std::vector<std::string> findOrAssignOutputNames() const;
+
+  /// Returns the name of the output column at the given index. If the column is
+  /// anonymous, assigns unique name before returning.
+  std::string findOrAssignOutputNameAt(size_t index) const;
 
   LogicalPlanNodePtr build();
 

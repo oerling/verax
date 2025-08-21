@@ -11,19 +11,3 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-add_subdirectory(tests)
-
-find_package(antlr4-runtime REQUIRED)
-
-add_library(
-  velox_presto_grammar_lib
-  PrestoSqlBaseListener.cpp
-  PrestoSqlBaseVisitor.cpp
-  PrestoSqlLexer.cpp
-  PrestoSqlListener.cpp
-  PrestoSqlParser.cpp
-  PrestoSqlVisitor.cpp)
-
-target_link_libraries(
-  velox_presto_grammar_lib antlr4_shared)

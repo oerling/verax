@@ -64,8 +64,6 @@ struct ExecutableFragment {
 
   /// Table scan nodes in 'this'.
   std::vector<std::shared_ptr<const velox::core::TableScanNode>> scans;
-
-  int32_t numBroadcastDestinations{0};
 };
 
 /// Describes a distributed plan handed to a Runner for parallel/distributed
