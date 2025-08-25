@@ -703,8 +703,19 @@ enum class WriteKind {
 
 VELOX_DECLARE_ENUM_NAME(WriteKind);
 
+/// Implements insert/delete/update as per 'kind'.
 class TableWriteNode : public LogicalPlanNode {
  public:
+  /// @param id Unique ID of the plan node.
+  /// @param connectorId ID of the connector to use to access the table.
+  /// @param tableName Table name.
+  /// @param kind - Indicates the type of write (insert/delete/update)
+  /// @param columnNames A list of column names. These are 1:1 aligned with the
+  /// output of the input node. which may expose columns under different names.
+  /// @param outputType - Connector dependent output.
+  /// @param options - Writer dependent options. Mayy specify compression or
+  /// encoding options. The table always specifies partitioning. 'options' are
+  /// only for advanced/testing features.
   TableWriteNode(
       const std::string& id,
       const LogicalPlanNodePtr& input,
@@ -712,8 +723,9 @@ class TableWriteNode : public LogicalPlanNode {
       const std::string& tableName,
       WriteKind kind,
       const std::vector<std::string>& columnNames,
+      const RowTypePtr& outputType,
       const std::unordered_map<std::string, std::string>& options = {})
-      : LogicalPlanNode(NodeKind::kTableWrite, id, {input}, makeWriteType()),
+      : LogicalPlanNode(NodeKind::kTableWrite, id, {input}, outputType),
         connectorId_(connectorId),
         tableName_(tableName),
         writeKind_(kind),
@@ -732,7 +744,7 @@ class TableWriteNode : public LogicalPlanNode {
     return writeKind_;
   }
 
-  const std::vector<std::string> columnNames() const {
+  const std::vector<std::string>& columnNames() const {
     return columnNames_;
   }
 

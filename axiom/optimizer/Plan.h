@@ -95,6 +95,12 @@ struct PlanSet {
   /// some other distribution, sets 'needsShuffle ' to true.
   PlanP best(const Distribution& distribution, bool& needShuffle);
 
+  /// Retruns the best plan when we're ok with any distribution.
+  PlanP best() {
+    bool ignore = false;
+    return best(Distribution{}, ignore);
+  }
+
   /// Compares 'plan' to already seen plans and retains it if it is
   /// interesting, e.g. better than the best so far or has an interesting
   /// order. Returns the plan if retained, nullptr if not.
@@ -364,8 +370,7 @@ class Optimization {
               .numDrivers = 5});
 
   Optimization(const Optimization& other) = delete;
-
-  void operator==(Optimization& other) = delete;
+  Optimization& operator=(const Optimization& other) = delete;
 
   /// Returns the optimized RelationOp plan for 'plan' given at construction.
   PlanP bestPlan();

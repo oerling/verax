@@ -759,13 +759,18 @@ fs::path createTemporaryDirectory(const fs::path& parentDir) {
   static std::random_device rd;
   static std::mt19937 gen(rd());
   static std::uniform_int_distribution<uint32_t> dis(1, 1000000);
+  static std::mutex mutex;
   fs::path tempDirPath;
-  do {
-    uint32_t randomNumber = dis(gen);
-    tempDirPath = parentDir / ("temp_" + std::to_string(randomNumber));
-  } while (fs::exists(tempDirPath));
-  fs::create_directory(tempDirPath);
-  return tempDirPath;
+  std::lock_guard<std::mutex> l(mutex);
+  for (;;) {
+    do {
+      uint32_t randomNumber = dis(gen);
+      tempDirPath = parentDir / ("temp_" + std::to_string(randomNumber));
+    } while (fs::exists(tempDirPath));
+    if (common::generateFileDirectory(tempDirPath.c_str())) {
+      return tempDirPath;
+    }
+  }
 }
 
 std::string LocalHiveConnectorMetadata::makeStagingDirectory() {
@@ -930,7 +935,7 @@ void LocalHiveConnectorMetadata::createTableWithOptions(
   std::string filePath = path + "/.schema";
 
   std::lock_guard<std::mutex> l(mutex_);
-  folly::writeFileAtomic(filePath, jsonStr.data(), jsonStr.size());
+  folly::writeFileAtomic(filePath, jsonStr);
   tables_.erase(tableName);
   loadTable(tableName, path);
 }

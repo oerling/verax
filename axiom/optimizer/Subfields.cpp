@@ -121,6 +121,24 @@ void ToGraph::markFieldAccessed(
       }
     }
 
+    if (kind == lp::NodeKind::kTableWrite) {
+      std::vector<Step> empty;
+      auto& write = *source.planNode->asUnchecked<lp::TableWriteNode>();
+      std::vector<const RowType*> inputContext{write.onlyInput()->outputType().get()};
+      std::vector<LogicalContextSource> inputSources{
+	{.planNode = write.onlyInput().get()}};
+      for (auto i = 0; i < inputSources[0].planNode->outputType()->size(); ++i) { 
+	  markFieldAccessed(
+			    inputSources[0],
+			    i,
+			    steps,
+			    isControl,
+			    inputContext,
+			    inputSources);
+      }
+      return;
+    }
+
     const auto& sourceInputs = source.planNode->inputs();
     if (sourceInputs.empty()) {
       return;
@@ -576,3 +594,4 @@ std::string PlanSubfields::toString() const {
 }
 
 } // namespace facebook::velox::optimizer
+

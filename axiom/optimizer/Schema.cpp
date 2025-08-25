@@ -50,20 +50,22 @@ ColumnGroupP SchemaTable::addIndex(
     int32_t numKeysUnique,
     int32_t numOrdering,
     const ColumnVector& keys,
-    DistributionType distType,
+    DistributionType distributionType,
     const ColumnVector& partition,
-    const ColumnVector& columns) {
+    ColumnVector columns) {
   VELOX_CHECK_LE(numKeysUnique, keys.size());
 
   Distribution distribution;
+  distribution.orderTypes.reserve(numOrdering);
   for (auto i = 0; i < numOrdering; ++i) {
-    distribution.orderType.push_back(OrderType::kAscNullsFirst);
+    distribution.orderTypes.push_back(OrderType::kAscNullsFirst);
   }
   distribution.numKeysUnique = numKeysUnique;
-  appendToVector(distribution.order, keys);
-  distribution.distributionType = distType;
+  appendToVector(distribution.orderKeys, keys);
+  distribution.distributionType = distributionType;
   appendToVector(distribution.partition, partition);
-  columnGroups.push_back(make<ColumnGroup>(name, this, distribution, columns));
+  columnGroups.push_back(make<ColumnGroup>(
+      name, this, std::move(distribution), std::move(columns)));
   return columnGroups.back();
 }
 
@@ -136,14 +138,14 @@ SchemaTableCP Schema::findTable(
   };
 
   auto layout = connectorTable->layouts()[0];
-  DistributionType defaultDist;
-  defaultDist.partitionType = layout->partitionType();
-  if (defaultDist.partitionType &&
-      defaultDist.partitionType->numPartitions().has_value()) {
-    defaultDist.numPartitions =
-        defaultDist.partitionType->numPartitions().value();
+  DistributionType distribution;
+  distribution.partitionType = layout->partitionType();
+  if (distribution.partitionType &&
+      distribution.partitionType->numPartitions().has_value()) {
+    distribution.numPartitions =
+        distribution.partitionType->numPartitions().value();
   }
-  defaultDist.locus = defaultLocus_;
+  distribution.locus = defaultLocus_;
   ColumnVector partition;
   for (auto& part : layout->partitionColumns()) {
     partition.push_back(findColumn(part->name()));
@@ -158,11 +160,10 @@ SchemaTableCP Schema::findTable(
       layout->uniquePrifixColumns(),
       order.size(),
       order,
-      defaultDist,
+      distribution,
       partition,
       columns);
   pk->layout = layout;
-  addTable(schemaTable);
   pk->layout = connectorTable->layouts()[0];
   queryCtx()->optimization()->retainConnectorTable(std::move(connectorTable));
   return schemaTable;
@@ -252,13 +253,13 @@ IndexInfo SchemaTable::indexInfo(ColumnGroupP index, CPSpan<Column> columns)
   info.scanCardinality = index->table->cardinality;
   info.joinCardinality = index->table->cardinality;
 
-  const auto numSorting = index->distribution().orderType.size();
+  const auto numSorting = index->distribution().orderTypes.size();
   const auto numUnique = index->distribution().numKeysUnique;
 
   PlanObjectSet covered;
   for (auto i = 0; i < numSorting || i < numUnique; ++i) {
     auto part = findColumnByName(
-        columns, index->distribution().order[i]->as<Column>()->name());
+        columns, index->distribution().orderKeys[i]->as<Column>()->name());
     if (!part) {
       break;
     }
@@ -268,14 +269,14 @@ IndexInfo SchemaTable::indexInfo(ColumnGroupP index, CPSpan<Column> columns)
       info.scanCardinality = combine(
           info.scanCardinality,
           i,
-          index->distribution().order[i]->value().cardinality);
+          index->distribution().orderKeys[i]->value().cardinality);
       info.lookupKeys.push_back(part);
       info.joinCardinality = info.scanCardinality;
     } else {
       info.joinCardinality = combine(
           info.joinCardinality,
           i,
-          index->distribution().order[i]->value().cardinality);
+          index->distribution().orderKeys[i]->value().cardinality);
     }
     if (i == numUnique - 1) {
       info.unique = true;
@@ -380,7 +381,7 @@ ColumnCP IndexInfo::schemaColumn(ColumnCP keyValue) const {
 }
 
 bool Distribution::isSamePartition(const Distribution& other) const {
-  if (!(distributionType == other.distributionType)) {
+  if (distributionType != other.distributionType) {
     return false;
   }
   if (isBroadcast || other.isBroadcast) {
@@ -403,12 +404,12 @@ bool Distribution::isSamePartition(const Distribution& other) const {
 }
 
 bool Distribution::isSameOrder(const Distribution& other) const {
-  if (order.size() != other.order.size()) {
+  if (orderKeys.size() != other.orderKeys.size()) {
     return false;
   }
-  for (auto i = 0; i < order.size(); ++i) {
-    if (!order[i]->sameOrEqual(*other.order[i]) ||
-        orderType[i] != other.orderType[i]) {
+  for (size_t i = 0; i < orderKeys.size(); ++i) {
+    if (!orderKeys[i]->sameOrEqual(*other.orderKeys[i]) ||
+        orderTypes[i] != other.orderTypes[i]) {
       return false;
     }
   }
@@ -426,8 +427,8 @@ Distribution Distribution::rename(
   }
   // Ordering survives if a prefix of the previous order continues to be
   // projected out.
-  result.order.resize(prefixSize(result.order, exprs));
-  replace(result.order, exprs, names);
+  result.orderKeys.resize(prefixSize(result.orderKeys, exprs));
+  replace(result.orderKeys, exprs, names);
   return result;
 }
 
@@ -462,11 +463,11 @@ std::string Distribution::toString() const {
     exprsToString(partition, out);
     out << " " << distributionType.numPartitions << " ways";
   }
-  if (!order.empty()) {
+  if (!orderKeys.empty()) {
     out << " O ";
-    exprsToString(order, out);
+    exprsToString(orderKeys, out);
   }
-  if (numKeysUnique && numKeysUnique >= order.size()) {
+  if (numKeysUnique && numKeysUnique >= orderKeys.size()) {
     out << " first " << numKeysUnique << " unique";
   }
   return out.str();

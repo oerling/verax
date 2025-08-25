@@ -418,8 +418,10 @@ ExprCP ToGraph::makeGettersOverSkyline(
           auto subscriptKind = subscriptType->kind();
           ExprVector args;
           args.push_back(expr);
-          args.push_back(make<Literal>(
-              Value(subscriptType, 1), subscriptLiteral(subscriptKind, step)));
+          args.push_back(
+              make<Literal>(
+                  Value(subscriptType, 1),
+                  subscriptLiteral(subscriptKind, step)));
           expr = make<Call>(
               toName("subscript"),
               Value(type, 1),
@@ -910,21 +912,23 @@ AggregationPlanCP ToGraph::translateAggregation(
 }
 
 PlanObjectP ToGraph::addOrderBy(const lp::SortNode& order) {
-  OrderTypeVector orderType;
-  ExprVector keys;
-  for (auto& field : order.ordering()) {
+  ExprVector orderKeys;
+  OrderTypeVector orderTypes;
+  orderKeys.reserve(order.ordering().size());
+  orderTypes.reserve(order.ordering().size());
+
+  for (const auto& field : order.ordering()) {
     auto sort = field.order;
-    orderType.push_back(
+    orderKeys.push_back(translateExpr(field.expression));
+    orderTypes.push_back(
         sort.isAscending() ? (sort.isNullsFirst() ? OrderType::kAscNullsFirst
                                                   : OrderType::kAscNullsLast)
                            : (sort.isNullsFirst() ? OrderType::kDescNullsFirst
                                                   : OrderType::kDescNullsLast));
-
-    keys.push_back(translateExpr(field.expression));
   }
 
-  currentDt_->orderByKeys = keys;
-  currentDt_->orderByTypes = orderType;
+  currentDt_->orderKeys = std::move(orderKeys);
+  currentDt_->orderTypes = std::move(orderTypes);
 
   return currentDt_;
 }
@@ -1311,24 +1315,38 @@ PlanObjectP ToGraph::addWrite(const lp::TableWriteNode& tableWrite) {
       "Only one materialization supported for table write");
 
   auto* layout = schemaTable->columnGroups[0]->layout;
+  auto rowType = layout->rowType();
 
   NameVector columns;
   ExprVector values;
-  for (auto i = 0; i < tableWrite.columnNames().size(); ++i) {
-    columns.push_back(toName(tableWrite.columnNames()[i]));
-    values.push_back(
-        translateColumn(tableWrite.onlyInput()->outputType()->nameOf(i)));
+  for (auto i = 0; i < rowType->size(); ++i) {
+    auto name = rowType->nameOf(i);
+    auto it = std::find(
+        tableWrite.columnNames().begin(), tableWrite.columnNames().end(), name);
+    if (it == tableWrite.columnNames().end()) {
+      columns.push_back(toName(name));
+      auto connectorColumn = layout->table()->findColumn(name);
+      values.push_back(
+          make<Literal>(
+              Value(toType(rowType->childAt(i)), 1),
+              queryCtx()->registerVariant(
+                  std::make_unique<Variant>(connectorColumn->defaultValue()))));
+    } else {
+      auto nth = it - tableWrite.columnNames().begin();
+      columns.push_back(toName(name));
+      values.push_back(
+          translateColumn(tableWrite.onlyInput()->outputType()->nameOf(nth)));
+    }
   }
-  ColumnVector outputColumns = {
-      make<Column>(
-          toName("numWrittenRows"), currentDt_, Value(toType(BIGINT()), 1)),
-      make<Column>(
-          toName("fragment"), currentDt_, Value(toType(VARBINARY()), 1)),
-      make<Column>(
-          toName("tableCommitContext"),
-          currentDt_,
-          Value(toType(VARBINARY()), 1))};
-
+  ColumnVector outputColumns;
+  for (auto i = 0; i < tableWrite.outputType()->size(); ++i) {
+    outputColumns.push_back(
+        make<Column>(
+            toName(tableWrite.outputType()->nameOf(i)),
+            currentDt_,
+            Value(toType(tableWrite.outputType()->childAt(i)), 1)));
+    renames_[tableWrite.outputType()->nameOf(i)] = outputColumns.back();
+  }
   currentDt_->write = make<WritePlan>(
       toName(tableWrite.tableName()),
       layout,
@@ -1336,7 +1354,7 @@ PlanObjectP ToGraph::addWrite(const lp::TableWriteNode& tableWrite) {
       std::move(values),
       std::move(columns),
       outputColumns);
-  currentDt_->columns = outputColumns;
+  //currentDt_->columns = outputColumns;
 
   auto& options = queryCtx()->optimization()->options();
   VELOX_CHECK_NOT_NULL(
@@ -1346,7 +1364,7 @@ PlanObjectP ToGraph::addWrite(const lp::TableWriteNode& tableWrite) {
 
   auto handle = metadata->createInsertTableHandle(
       *layout,
-      tableWrite.onlyInput()->outputType(),
+      layout->rowType(),
       tableWrite.options(),
       connector::WriteKind::kInsert,
       options.session);
@@ -1405,11 +1423,12 @@ DerivedTableP ToGraph::translateSetJoin(
   ColumnVector columns;
   for (auto i = 0; i < type->size(); ++i) {
     exprs.push_back(left->columns[i]);
-    columns.push_back(make<Column>(
-        toName(type->nameOf(i)),
-        setDt,
-        exprs.back()->value(),
-        toName(type->nameOf(i))));
+    columns.push_back(
+        make<Column>(
+            toName(type->nameOf(i)),
+            setDt,
+            exprs.back()->value(),
+            toName(type->nameOf(i))));
     renames_[type->nameOf(i)] = columns.back();
   }
 
@@ -1624,8 +1643,8 @@ PlanObjectP ToGraph::makeQueryGraph(
       if (currentDt_->hasAggregation() || currentDt_->hasLimit()) {
         finalizeDt(*node.onlyInput());
       } else if (currentDt_->hasOrderBy()) {
-        currentDt_->orderByKeys.clear();
-        currentDt_->orderByTypes.clear();
+        currentDt_->orderKeys.clear();
+        currentDt_->orderTypes.clear();
       }
 
       addAggregation(*node.asUnchecked<lp::AggregateNode>());

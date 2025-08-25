@@ -92,10 +92,6 @@ struct QGAllocator {
       const QGAllocator& /*rhs*/) {
     return true;
   }
-
-  friend bool operator!=(const QGAllocator& lhs, const QGAllocator& rhs) {
-    return !(lhs == rhs);
-  }
 };
 
 /// Elements of subfield paths. The QueryGraphContext holds a dedupped

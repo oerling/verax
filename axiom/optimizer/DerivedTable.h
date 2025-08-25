@@ -136,14 +136,16 @@ struct DerivedTable : public PlanObject {
   ExprVector having;
 
   /// Order by.
-  ExprVector orderByKeys;
-  OrderTypeVector orderByTypes;
+  ExprVector orderKeys;
+  OrderTypeVector orderTypes;
 
   /// Limit and offset.
   int64_t limit{-1};
   int64_t offset{0};
 
-  WritePlanCP write;
+  // Table write
+  WritePlanCP write{nullptr};
+
   /// Adds an equijoin edge between 'left' and 'right'.
   void addJoinEquality(ExprCP left, ExprCP right);
 
@@ -195,7 +197,7 @@ struct DerivedTable : public PlanObject {
   }
 
   bool hasOrderBy() const {
-    return !orderByKeys.empty();
+    return !orderKeys.empty();
   }
 
   bool hasLimit() const {

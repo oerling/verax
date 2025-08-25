@@ -785,7 +785,7 @@ class ConnectorMetadata {
 
   /// Returns the output type of TableWrite operator for a row with columns as
   /// in 'rowType'.
-  virtual RowTypePtr tableWriteOutputType(const RowTypePtr& rowType) const {
+  virtual RowTypePtr tableWriteOutputType(const RowTypePtr& rowType, WriteKind kind) const {
     VELOX_UNSUPPORTED();
   }
 

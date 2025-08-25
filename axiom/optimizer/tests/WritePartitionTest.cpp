@@ -26,10 +26,20 @@ namespace {
 
 class WritePartitionTest : public test::HiveQueriesTestBase {
  protected:
+  static void SetUpTestCase() {
+    test::HiveQueriesTestBase::SetUpTestCase();
+  }
+
+  static void TearDownTestCase() {
+    test::HiveQueriesTestBase::TearDownTestCase();
+  }
+
   void SetUp() override {
+    HiveQueriesTestBase::SetUp();
     connector_ = connector::getConnector(velox::exec::test::kHiveConnectorId);
     metadata_ = dynamic_cast<connector::hive::HiveConnectorMetadata*>(
         connector_->metadata());
+    optimizerOptions_.session = std::make_shared<connector::hive::HiveConnectorSession>();
   }
 
   std::vector<RowVectorPtr>
@@ -69,6 +79,7 @@ TEST_F(WritePartitionTest, write) {
       {{"key1", BIGINT()},
        {"key2", INTEGER()},
        {"data", BIGINT()},
+       {"data2", VARCHAR()},
        {"ds", VARCHAR()}});
 
   std::unordered_map<std::string, std::string> options = {
@@ -119,6 +130,43 @@ TEST_F(WritePartitionTest, write) {
   EXPECT_EQ(
       kTestBatchSize * 10,
       result.results[0]->childAt(0)->as<FlatVector<int64_t>>()->valueAt(0));
+
+auto readPlan = lp::PlanBuilder(context)
+  .tableScan(exec::test::kHiveConnectorId, "test", {"key1", "key2", "data", "data2", "ds"})
+.filter("data2 is null")
+.project({"key1", "key2", "data", "ds"})
+.build();
+
+result = runVelox(readPlan);
+exec::test::assertEqualResults(data, result.results); 
+
+
+// Create a second table to copy the first one into. Values runs single node, the copy runs distributed.
+   std::unordered_map<std::string, std::string> options2 = {
+      {"bucketed_by", "key1"},
+      {"bucket_count", "16"},
+      {"partitioned_by", "ds"},
+      {"file_format", "parquet"},
+      {"compression_kind", "snappy"}};
+ metadata_->createTableWithOptions("test2", tableType, options2, session, false);
+
+ auto copyPlan = lp::PlanBuilder(context)
+   .tableScan(exec::test::kHiveConnectorId, "test", {"key1", "key2", "data", "data2", "ds"} )
+   .tableWrite(exec::test::kHiveConnectorId, "test2", lp::WriteKind::kInsert, {"key1", "key2", "data", "data2", "ds"})
+   .build();
+ runVelox(copyPlan);
+ 
+ readPlan = lp::PlanBuilder(context)
+  .tableScan(exec::test::kHiveConnectorId, "test2", {"key1", "key2", "data", "data2", "ds"})
+.filter("data2 is null")
+.project({"key1", "key2", "data", "ds"})
+.build();
+
+result = runVelox(readPlan);
+exec::test::assertEqualResults(data, result.results); 
+
+   
 }
+
 } // namespace
 } // namespace facebook::velox::optimizer

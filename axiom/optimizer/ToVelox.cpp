@@ -92,9 +92,9 @@ RelationOpPtr addGather(const RelationOpPtr& op) {
   }
   if (op->relType() == RelType::kOrderBy) {
     auto order = op->distribution();
-    Distribution final = Distribution::gather(order.order, order.orderType);
+    auto final = Distribution::gather(order.orderKeys, order.orderTypes);
     auto* gather = make<Repartition>(op, final, op->columns());
-    auto* orderBy = make<OrderBy>(gather, order.order, order.orderType);
+    auto* orderBy = make<OrderBy>(gather, order.orderKeys, order.orderTypes);
     return orderBy;
   }
   auto* gather = make<Repartition>(op, Distribution::gather(), op->columns());
@@ -654,8 +654,8 @@ core::PlanNodePtr ToVelox::makeOrderBy(
     ExecutableFragment& fragment,
     std::vector<ExecutableFragment>& stages) {
   std::vector<core::SortOrder> sortOrder;
-  sortOrder.reserve(op.distribution().orderType.size());
-  for (auto order : op.distribution().orderType) {
+  sortOrder.reserve(op.distribution().orderTypes.size());
+  for (auto order : op.distribution().orderTypes) {
     sortOrder.push_back(toSortOrder(order));
   }
 
@@ -663,7 +663,7 @@ core::PlanNodePtr ToVelox::makeOrderBy(
     auto input = makeFragment(op.input(), fragment, stages);
 
     TempProjections projections(*this, *op.input());
-    auto keys = projections.toFieldRefs(op.distribution().order);
+    auto keys = projections.toFieldRefs(op.distribution().orderKeys);
     auto project = projections.maybeProject(input);
 
     if (options_.numDrivers == 1) {
@@ -704,7 +704,7 @@ core::PlanNodePtr ToVelox::makeOrderBy(
   auto input = makeFragment(op.input(), source, stages);
 
   TempProjections projections(*this, *op.input());
-  auto keys = projections.toFieldRefs(op.distribution().order);
+  auto keys = projections.toFieldRefs(op.distribution().orderKeys);
   auto project = projections.maybeProject(input);
 
   core::PlanNodePtr node;
@@ -1407,13 +1407,7 @@ core::PlanNodePtr ToVelox::makeWrite(
     auto* name = partition[i];
     auto it = std::find(write->columns().begin(), write->columns().end(), name);
     if (it == write->columns().end()) {
-      auto* column = layout->table()->findColumn(name);
-      channels.push_back(kConstantChannel);
-      constants.push_back(BaseVector::createConstant(
-          column->type(),
-          column->defaultValue(),
-          1,
-          queryCtx()->optimization()->evaluator()->pool()));
+      VELOX_USER_FAIL("No value for partition column {}", name);
     } else {
       channels.push_back(it - write->columns().begin());
       constants.push_back(nullptr);
@@ -1433,11 +1427,9 @@ core::PlanNodePtr ToVelox::makeWrite(
         inputs);
   }
   std::vector<std::string> columnNames;
-  std::transform(
-      write->columns().begin(),
-      write->columns().begin(),
-      columnNames.end(),
-      [](auto x) { return std::string(x); });
+  for (auto* name : write->columns()) {
+    columnNames.push_back(name);
+  }
   auto* metadata = write->layout()->connector()->metadata();
   auto session = queryCtx()->optimization()->options().session;
   std::unordered_set<connector::ConnectorTablePtr> retainedTables =
@@ -1456,7 +1448,7 @@ core::PlanNodePtr ToVelox::makeWrite(
             session);
       });
 
-  auto outputType = metadata->tableWriteOutputType(layout->rowType());
+  auto outputType = metadata->tableWriteOutputType(layout->rowType(), connector::WriteKind::kInsert);
   return std::make_shared<core::TableWriteNode>(
       nextId(),
       input->outputType(),

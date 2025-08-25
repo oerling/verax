@@ -357,12 +357,6 @@ void TableWriteNode::accept(
   visitor.visit(*this, context);
 }
 
-RowTypePtr TableWriteNode::makeWriteType() {
-  return ROW(
-      {"numWrittenRows", "fragment", "tableCommitContext"},
-      {BIGINT(), VARBINARY(), VARBINARY()});
-}
-
 namespace {
 folly::F14FastMap<WriteKind, std::string> writeKindNames() {
   static const folly::F14FastMap<WriteKind, std::string> kNames = {

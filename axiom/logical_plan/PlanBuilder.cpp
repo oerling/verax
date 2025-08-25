@@ -1128,8 +1128,21 @@ PlanBuilder& PlanBuilder::tableWrite(
     const std::unordered_map<std::string, std::string> options) {
   VELOX_USER_CHECK_NOT_NULL(node_, "Table write node cannot be a leaf node");
 
+  auto connector = connector::getConnector(connectorId);
+  VELOX_CHECK_NOT_NULL(connector);
+  VELOX_CHECK_EQ(kind, WriteKind::kInsert);
+  auto metadata = connector->metadata();
+  VELOX_CHECK_NOT_NULL(metadata);
   node_ = std::make_shared<TableWriteNode>(
-      nextId(), node_, connectorId, tableName, kind, columnNames, options);
+      nextId(),
+      node_,
+      connectorId,
+      tableName,
+      kind,
+      columnNames,
+      metadata->tableWriteOutputType(
+          node_->outputType(), connector::WriteKind::kInsert),
+      options);
 
   return *this;
 }
