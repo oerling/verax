@@ -24,8 +24,6 @@ namespace facebook::velox::optimizer {
 
 namespace {
 struct LevelData {
-  int32_t exprCount{0};
-  float levelCost{0};
   PlanObjectSet exprs;
 };
 
