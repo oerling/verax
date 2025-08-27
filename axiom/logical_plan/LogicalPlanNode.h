@@ -684,7 +684,7 @@ using UnnestNodePtr = std::shared_ptr<const UnnestNode>;
 
 /// Corresponds to connector::WriteKind.
 enum class WriteKind {
-  // Rows are added and all columns must be specified for the TableWriter. This
+  // Rows are added . All columns are written and either have a value in from an expression in the table writer or get a default from the schema. This
   // covers insert, create table and replacing a Hive partition and any other
   // use that adds whole rows.
   kInsert,
@@ -710,8 +710,11 @@ class TableWriteNode : public LogicalPlanNode {
   /// @param connectorId ID of the connector to use to access the table.
   /// @param tableName Table name.
   /// @param kind - Indicates the type of write (insert/delete/update)
-  /// @param columnNames A list of column names. These are 1:1 aligned with the
-  /// output of the input node. which may expose columns under different names.
+  /// @param values - Expressions producing the values to write.. Correspond 1:1 to 'columnNames'.
+  /// @param columnNames A List of columns in the table being written. 1:1 to
+  /// 'inputNames'. 'columnNames' must refer to columns in the table but their
+  /// number or order does not have to correspond to the table. Missing columns
+  /// in insert get their default from the table.
   /// @param outputType - Connector dependent output.
   /// @param options - Writer dependent options. Mayy specify compression or
   /// encoding options. The table always specifies partitioning. 'options' are
@@ -722,6 +725,7 @@ class TableWriteNode : public LogicalPlanNode {
       const std::string& connectorId,
       const std::string& tableName,
       WriteKind kind,
+      const std::vector<ExprPtr>& values,
       const std::vector<std::string>& columnNames,
       const RowTypePtr& outputType,
       const std::unordered_map<std::string, std::string>& options = {})
@@ -729,6 +733,7 @@ class TableWriteNode : public LogicalPlanNode {
         connectorId_(connectorId),
         tableName_(tableName),
         writeKind_(kind),
+	values_(values), 
         columnNames_(columnNames),
         options_(options) {}
 
@@ -744,6 +749,10 @@ class TableWriteNode : public LogicalPlanNode {
     return writeKind_;
   }
 
+  const std::vector<ExprPtr>& values() const {
+    return values_;
+  }
+  
   const std::vector<std::string>& columnNames() const {
     return columnNames_;
   }
@@ -761,6 +770,7 @@ class TableWriteNode : public LogicalPlanNode {
   const std::string connectorId_;
   const std::string tableName_;
   const WriteKind writeKind_;
+  const std::vector<ExprPtr> values_;
   const std::vector<std::string> columnNames_;
   const std::unordered_map<std::string, std::string> options_;
 };

@@ -802,18 +802,11 @@ void moveFilesRecursively(
     }
   }
   // Optionally, remove empty directories in the source
-  for (auto it = fs::recursive_directory_iterator(
-           sourceDir, fs::directory_options::follow_directory_symlink);
-       it != fs::recursive_directory_iterator();
-       ++it) {
-    if (it->is_directory() && fs::is_empty(it->path())) {
-      fs::remove(it->path());
-    }
-  }
-  // Remove the source directory itself if it's empty
+  deleteDirectoryContents(sourceDir);
   if (fs::is_empty(sourceDir)) {
     fs::remove(sourceDir);
   }
+
 }
 
 // Helper: Check if directory exists

@@ -61,9 +61,10 @@ std::vector<common::Subfield> columnSubfields(BaseTableCP table, int32_t id) {
           if (first &&
               optimization->options().isMapAsStruct(
                   table->schemaTable->name, columnName)) {
-            elements.push_back(std::make_unique<common::Subfield::NestedField>(
-                step.field ? std::string(step.field)
-                           : fmt::format("{}", step.id)));
+            elements.push_back(
+                std::make_unique<common::Subfield::NestedField>(
+                    step.field ? std::string(step.field)
+                               : fmt::format("{}", step.id)));
             break;
           }
           if (step.field) {
@@ -231,9 +232,10 @@ RowTypePtr ToVelox::makeOutputType(const ColumnVector& columns) {
 
       auto runnerTable = schemaTable->connectorTable;
       if (runnerTable) {
-        auto* runnerColumn = runnerTable->findColumn(std::string(
-            column->topColumn() ? column->topColumn()->name()
-                                : column->name()));
+        auto* runnerColumn = runnerTable->findColumn(
+            std::string(
+                column->topColumn() ? column->topColumn()->name()
+                                    : column->name()));
         VELOX_CHECK_NOT_NULL(runnerColumn);
       }
     }
@@ -494,8 +496,9 @@ class TempProjections {
     for (auto& column : input_.columns()) {
       exprChannel_[column] = nextChannel_++;
       names_.push_back(ToVelox::outputName(column));
-      fieldRefs_.push_back(std::make_shared<core::FieldAccessTypedExpr>(
-          toTypePtr(column->value().type), names_.back()));
+      fieldRefs_.push_back(
+          std::make_shared<core::FieldAccessTypedExpr>(
+              toTypePtr(column->value().type), names_.back()));
     }
     exprs_.insert(exprs_.begin(), fieldRefs_.begin(), fieldRefs_.end());
   }
@@ -510,8 +513,9 @@ class TempProjections {
       exprs_.push_back(queryCtx()->optimization()->toTypedExpr(expr));
       names_.push_back(
           optName ? *optName : fmt::format("__r{}", nextChannel_ - 1));
-      fieldRefs_.push_back(std::make_shared<core::FieldAccessTypedExpr>(
-          toTypePtr(expr->value().type), names_.back()));
+      fieldRefs_.push_back(
+          std::make_shared<core::FieldAccessTypedExpr>(
+              toTypePtr(expr->value().type), names_.back()));
       return fieldRefs_.back();
     }
     auto fieldRef = fieldRefs_[it->second];
@@ -547,6 +551,19 @@ class TempProjections {
 
     return std::make_shared<core::ProjectNode>(
         toVelox_.nextId(), std::move(names_), std::move(exprs_), inputNode);
+  }
+
+  /// Returns a projection that has exactly the fields in 'names'.
+  core::PlanNodePtr projectNamed(
+				 core::PlanNodePtr inputNode, const std::vector<std::string>& names) {
+    std::vector<core::TypedExprPtr> exprs;
+    for (auto& name : names) {
+      auto it = std::find(names_.begin(), names_.end(), name);
+      VELOX_CHECK(it != names_.end());
+      exprs.push_back(exprs_[it - names_.begin()]);
+    }
+    return std::make_shared<core::ProjectNode>(
+        toVelox_.nextId(), std::move(names), std::move(exprs), inputNode);
   }
 
  private:
@@ -1390,32 +1407,25 @@ core::PlanNodePtr ToVelox::makeWrite(
   auto* write = op.write;
   auto* layout = write->layout();
   auto handle = queryCtx()->optimization()->writeHandle(write->id());
+  std::vector<std::string> names;
   std::vector<core::FieldAccessTypedExprPtr> fields;
-  for (auto value : write->values()) {
-    fields.push_back(projections.toFieldRef(value));
+  for (auto i = 0; i < write->values().size(); ++i) {
+    std::string name = write->columns()[i];
+    names.push_back(name);
+    fields.push_back(projections.toFieldRef(write->values()[i], &name));
   }
-  auto* partitionType = layout->partitionType();
-  auto& partitionColumns = layout->partitionColumns();
-  NameVector partition;
-  for (auto& column : partitionColumns) {
-    partition.push_back(toName(column->name()));
-  }
+  input = projections.projectNamed(input, names);
 
-  std::vector<column_index_t> channels;
-  std::vector<VectorPtr> constants;
-  for (auto i = 0; i < partition.size(); ++i) {
-    auto* name = partition[i];
-    auto it = std::find(write->columns().begin(), write->columns().end(), name);
-    if (it == write->columns().end()) {
-      VELOX_USER_FAIL("No value for partition column {}", name);
-    } else {
-      channels.push_back(it - write->columns().begin());
+  auto& partitionColumns = layout->partitionColumns();
+  if (!partitionColumns.empty()) {
+    auto* partitionType = layout->partitionType();
+    std::vector<column_index_t> channels;
+    std::vector<VectorPtr> constants;
+    for (auto i = 0; i < partitionColumns.size(); ++i) {
+      channels.push_back(input->outputType()->getChildIdx(partitionColumns[i]->name()));
       constants.push_back(nullptr);
     }
-  }
 
-  input = projections.maybeProject(input);
-  if (!partition.empty()) {
     auto spec =
         write->layout()->partitionType()->makeSpec(channels, constants, true);
     auto inputs = std::vector<core::PlanNodePtr>{input};
@@ -1448,7 +1458,8 @@ core::PlanNodePtr ToVelox::makeWrite(
             session);
       });
 
-  auto outputType = metadata->tableWriteOutputType(layout->rowType(), connector::WriteKind::kInsert);
+  auto outputType = metadata->tableWriteOutputType(
+      layout->rowType(), connector::WriteKind::kInsert);
   return std::make_shared<core::TableWriteNode>(
       nextId(),
       input->outputType(),

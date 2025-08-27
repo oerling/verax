@@ -277,6 +277,7 @@ class PlanBuilder {
       const std::string& connectorId,
       const std::string& tableName,
       WriteKind kind,
+      const std::vector<ExprApi>& values,
       const std::vector<std::string>& columnNames,
       const std::unordered_map<std::string, std::string> options = {});
 

@@ -124,17 +124,15 @@ void ToGraph::markFieldAccessed(
     if (kind == lp::NodeKind::kTableWrite) {
       std::vector<Step> empty;
       auto& write = *source.planNode->asUnchecked<lp::TableWriteNode>();
-      std::vector<const RowType*> inputContext{write.onlyInput()->outputType().get()};
-      std::vector<LogicalContextSource> inputSources{
-	{.planNode = write.onlyInput().get()}};
-      for (auto i = 0; i < inputSources[0].planNode->outputType()->size(); ++i) { 
-	  markFieldAccessed(
-			    inputSources[0],
-			    i,
-			    steps,
-			    isControl,
-			    inputContext,
-			    inputSources);
+      auto& input = write.onlyInput();
+      for (auto& expr : write.values()) {
+	std::vector<Step> empty;
+	markSubfields(
+          expr,
+          empty,
+          isControl,
+          {input->outputType().get()},
+          {LogicalContextSource{.planNode = input.get()}});
       }
       return;
     }

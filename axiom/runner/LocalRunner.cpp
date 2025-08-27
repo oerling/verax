@@ -114,6 +114,12 @@ void LocalRunner::runWrite() {
     state_ = State::kFinished;
 
   } catch (const std::exception& e) {
+    try {
+      waitForCompletion(1'000'000);
+    } catch (const std::exception& e) {
+      LOG(ERROR) << e.what()
+                 << " while waiting for completion after error in write query";
+    }
     finishWrite_(false, result);
     throw;
   }

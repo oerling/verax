@@ -1335,16 +1335,18 @@ PlanObjectP ToGraph::addWrite(const lp::TableWriteNode& tableWrite) {
       auto nth = it - tableWrite.columnNames().begin();
       columns.push_back(toName(name));
       values.push_back(
-          translateColumn(tableWrite.onlyInput()->outputType()->nameOf(nth)));
+		       translateExpr(tableWrite.values()[nth]));
     }
   }
   ColumnVector outputColumns;
   for (auto i = 0; i < tableWrite.outputType()->size(); ++i) {
+    auto name = toName(tableWrite.outputType()->nameOf(i));
     outputColumns.push_back(
         make<Column>(
-            toName(tableWrite.outputType()->nameOf(i)),
+            name,
             currentDt_,
-            Value(toType(tableWrite.outputType()->childAt(i)), 1)));
+            Value(toType(tableWrite.outputType()->childAt(i)), 1),
+	    name));
     renames_[tableWrite.outputType()->nameOf(i)] = outputColumns.back();
   }
   currentDt_->write = make<WritePlan>(
