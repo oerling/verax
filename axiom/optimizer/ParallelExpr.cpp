@@ -18,6 +18,8 @@
 #include "velox/core/Expressions.h"
 #include "velox/core/PlanNode.h"
 
+#include <iostream>
+
 namespace facebook::velox::optimizer {
 
 namespace {
@@ -36,44 +38,70 @@ int32_t definitionLevel(std::vector<LevelData>& levels, ExprCP expr) {
   VELOX_UNREACHABLE();
 }
 
+void pushdownExpr(
+    ExprCP expr,
+    int32_t level,
+    std::vector<LevelData>& levelData) {
+  auto defined = definitionLevel(levelData, expr);
+  if (defined >= level) {
+    return;
+  }
+  if (level >= levelData.size()) {
+    levelData.resize(level + 1);
+  }
+  if (expr->is(PlanType::kCallExpr)) {
+    for (auto& input : expr->as<Call>()->args()) {
+      if (input->is(PlanType::kLiteralExpr)) {
+        continue;
+      }
+      pushdownExpr(input, level + 1, levelData);
+    }
+  }
+}
+
+void makeLevelsInner(
+    ExprCP expr,
+    int32_t level,
+    std::vector<LevelData>& levelData,
+    std::unordered_map<ExprCP, int32_t>& refCount,
+    PlanObjectSet& counted) {
+  if (expr->is(PlanType::kLiteralExpr)) {
+    return;
+  }
+  if (counted.contains(expr)) {
+    ++refCount[expr];
+    pushdownExpr(expr, level, levelData);
+    return;
+  }
+  if (level >= levelData.size()) {
+    levelData.resize(level + 1);
+  }
+
+  counted.add(expr);
+  ++refCount[expr];
+  levelData[level].exprs.add(expr);
+  if (expr->is(PlanType::kCallExpr)) {
+    for (auto& input : expr->as<Call>()->args()) {
+      if (input->is(PlanType::kLiteralExpr)) {
+        continue;
+      }
+      makeLevelsInner(input, level + 1, levelData, refCount, counted);
+    }
+  }
+}
+
 void makeExprLevels(
     PlanObjectSet exprs,
     std::vector<LevelData>& levelData,
     std::unordered_map<ExprCP, int32_t>& refCount) {
   PlanObjectSet counted;
-  for (;;) {
-    PlanObjectSet inputs;
-    levelData.emplace_back();
-    int32_t levelIdx = levelData.size() - 1;
-    exprs.forEach([&](PlanObjectCP o) {
-      auto* expr = o->as<Expr>();
-      if (expr->is(PlanType::kLiteralExpr)) {
-        return;
-      }
-      float self = selfCost(expr);
-      if (counted.contains(expr)) {
-        auto i = definitionLevel(levelData, expr);
-        levelData[i].exprs.erase(expr);
-        levelData[i].levelCost -= self;
-      }
-      levelData[levelIdx].exprs.add(expr);
-      levelData[levelIdx].levelCost += self;
-      counted.add(expr);
-      if (expr->is(PlanType::kCallExpr)) {
-        for (auto& input : expr->as<Call>()->args()) {
-          if (input->is(PlanType::kLiteralExpr)) {
-            continue;
-          }
-          ++refCount[input];
-          inputs.add(input);
-        }
-      }
-    });
-    if (inputs.empty()) {
+  exprs.forEach([&](PlanObjectCP o) {
+    auto* expr = o->as<Expr>();
+    if (expr->is(PlanType::kLiteralExpr)) {
       return;
     }
-    exprs = std::move(inputs);
-  }
+    makeLevelsInner(expr, 0, levelData, refCount, counted);
+  });
 }
 
 PlanObjectSet makeCseBorder(
@@ -337,6 +365,25 @@ core::PlanNodePtr ToVelox::maybeParallelProject(
   }
   return std::make_shared<core::ProjectNode>(
       nextId(), std::move(names), std::move(finalExprs), input);
+}
+
+void pset(const PlanObjectSet* set) {
+  std::cout << set->toString(1);
+}
+
+void prefs(std::unordered_map<ExprCP, int32_t>& refCount) {
+  std::vector<ExprCP> exprs;
+  for (auto& pair : refCount) {
+    if (pair.second > 1) {
+      exprs.push_back(pair.first);
+    }
+  }
+  std::sort(exprs.begin(), exprs.end(), [&](ExprCP l, ExprCP r) {
+    return refCount[l] > refCount[r];
+  });
+  for (auto& e : exprs) {
+    std::cout << refCount[e] << ": " << e->toString() << std::endl;
+  }
 }
 
 } // namespace facebook::velox::optimizer
