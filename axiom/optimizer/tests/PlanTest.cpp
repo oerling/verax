@@ -36,26 +36,15 @@ class PlanTest : public test::QueryTestBase {
   static constexpr auto kTestConnectorId = "test";
 
   static void SetUpTestCase() {
-    std::string path;
-    if (FLAGS_data_path.empty()) {
-      tempDirectory_ = exec::test::TempDirectoryPath::create();
-      path = tempDirectory_->getPath();
-      test::ParquetTpchTest::createTables(path);
-    } else {
-      path = FLAGS_data_path;
-      if (FLAGS_create_dataset) {
-        test::ParquetTpchTest::createTables(path);
-      }
-    }
+    test::ParquetTpchTest::createTables();
 
-    LocalRunnerTestBase::testDataPath_ = path;
+    LocalRunnerTestBase::testDataPath_ = FLAGS_data_path;
     LocalRunnerTestBase::localFileFormat_ = "parquet";
     LocalRunnerTestBase::SetUpTestCase();
   }
 
   static void TearDownTestCase() {
     LocalRunnerTestBase::TearDownTestCase();
-    tempDirectory_.reset();
   }
 
   void SetUp() override {
@@ -105,14 +94,8 @@ class PlanTest : public test::QueryTestBase {
     return plan->fragments().at(0).fragment.planNode;
   }
 
-  static std::shared_ptr<exec::test::TempDirectoryPath> tempDirectory_;
-
   std::shared_ptr<connector::TestConnector> testConnector_;
 };
-
-// static
-std::shared_ptr<exec::test::TempDirectoryPath> PlanTest::tempDirectory_ =
-    nullptr;
 
 auto gte(const std::string& name, int64_t n) {
   return common::test::singleSubfieldFilter(name, exec::greaterThanOrEqual(n));
@@ -609,7 +592,7 @@ TEST_F(PlanTest, filterBreakup) {
 
   auto referenceBuilder = std::make_unique<exec::test::TpchQueryBuilder>(
       dwio::common::FileFormat::PARQUET);
-  referenceBuilder->initialize(LocalRunnerTestBase::testDataPath_);
+  referenceBuilder->initialize(FLAGS_data_path);
 
   auto referencePlan = referenceBuilder->getQueryPlan(19).plan;
 
@@ -1165,6 +1148,41 @@ TEST_F(PlanTest, values) {
     checkSame(logicalPlan, referencePlan);
   }
 }
+TEST_F(PlanTest, xxx) {
+  testConnector_->createTable("t", ROW({"a", "b", "c"}, INTEGER()));
+
+  auto logicalPlan =
+      lp::PlanBuilder(/* allowCoersions */ true)
+          .tableScan(kTestConnectorId, "t", {"a", "b", "c"})
+          .map({"a + b + c as x"})
+          .map({
+              "contains(array[1], cast(if(cast(x as real) < 0, ceil(cast(x as real)), floor(cast(x as real))) as int)) as a",
+          })
+          .build();
+
+  optimizerOptions_.parallelProjectWidth = 2;
+  auto plan = toSingleNodePlan(logicalPlan);
+
+  LOG(ERROR) << plan->toString(true, true);
+}
+
+
+#if 0
+-- Project[6][expressions: (a:BOOLEAN, contains({1},cast(if(lt(cast("__temp11" as DOUBLE),0),ceil("__temp11"),floor("__temp11")) as INTEGER)))] -> a:BOOLEAN
+  -- ParallelProject[5][expressions: (__temp11:REAL, "__temp11") Parallel expr groups: [0-0]
+] -> __temp11:REAL
+    -- ParallelProject[4][expressions: (__temp11:REAL, cast("__temp9" as REAL)) Parallel expr groups: [0-0]
+] -> __temp11:REAL
+      -- ParallelProject[3][expressions: (__temp9:INTEGER, plus("c","__temp8")) Parallel expr groups: [0-0]
+] -> __temp9:INTEGER
+        -- ParallelProject[2][expressions: (__temp8:INTEGER, plus("a","b")), (c:INTEGER, "c") Parallel expr groups: [0-0]
+] -> __temp8:INTEGER, c:INTEGER
+          -- ParallelProject[1][expressions: (a:INTEGER, "a"), (b:INTEGER, "b"), (c:INTEGER, "c") Parallel expr groups: [0-1], [2-2]
+] -> a:INTEGER, b:INTEGER, c:INTEGER
+            -- TableScan[0][t] -> a:INTEGER, b:INTEGER, c:INTEGER
+#endif
+
+  
 } // namespace
 } // namespace facebook::velox::optimizer
 
