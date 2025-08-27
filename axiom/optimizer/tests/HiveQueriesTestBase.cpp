@@ -22,10 +22,15 @@ namespace lp = facebook::velox::logical_plan;
 namespace facebook::velox::optimizer::test {
 
 // static
-void HiveQueriesTestBase::SetUpTestCase() {
-  test::ParquetTpchTest::createTables();
+std::shared_ptr<exec::test::TempDirectoryPath>
+    HiveQueriesTestBase::tempDirectory_ = nullptr;
 
-  LocalRunnerTestBase::testDataPath_ = FLAGS_data_path;
+// static
+void HiveQueriesTestBase::SetUpTestCase() {
+  tempDirectory_ = exec::test::TempDirectoryPath::create();
+  test::ParquetTpchTest::createTables(tempDirectory_->getPath());
+
+  LocalRunnerTestBase::testDataPath_ = tempDirectory_->getPath();
   LocalRunnerTestBase::localFileFormat_ = "parquet";
   LocalRunnerTestBase::SetUpTestCase();
 }
@@ -33,6 +38,7 @@ void HiveQueriesTestBase::SetUpTestCase() {
 // static
 void HiveQueriesTestBase::TearDownTestCase() {
   LocalRunnerTestBase::TearDownTestCase();
+  tempDirectory_.reset();
 }
 
 namespace {
@@ -64,7 +70,7 @@ void HiveQueriesTestBase::SetUp() {
   test::QueryTestBase::SetUp();
   test::ParquetTpchTest::registerTpchConnector(kTpchConnectorId);
   duckParser_ = makeDuckParser(pool());
-  // prestoParser_ = std::make_unique<PrestoParser>(kTpchConnectorId, pool());
+  prestoParser_ = std::make_unique<PrestoParser>(kTpchConnectorId, pool());
 }
 
 void HiveQueriesTestBase::TearDown() {
@@ -85,7 +91,7 @@ void HiveQueriesTestBase::checkResults(
   SCOPED_TRACE(sql);
   VELOX_CHECK_NOT_NULL(referencePlan);
 
-  auto statement = duckParser_->parse(sql);
+  auto statement = prestoParser_->parse(sql);
 
   ASSERT_TRUE(statement->isSelect());
   auto logicalPlan = statement->asUnchecked<test::SelectStatement>()->plan();

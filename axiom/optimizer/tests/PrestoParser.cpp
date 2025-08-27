@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cctype>
 #include "axiom/logical_plan/PlanBuilder.h"
+#include "axiom/optimizer/connectors/ConnectorMetadata.h"
 #include "axiom/sql/presto/ParserHelper.h"
 #include "axiom/sql/presto/ast/AstBuilder.h"
 #include "axiom/sql/presto/ast/AstPrinter.h"
@@ -232,9 +233,11 @@ class RelationPlanner : public sql::AstVisitor {
         return "gt";
       case sql::ComparisonExpression::Operator::kGreaterThanOrEqual:
         return "gte";
-      default:
-        VELOX_NYI("Not yet supported comparison operator: {}", op);
+      case sql::ComparisonExpression::Operator::kIsDistinctFrom:
+        VELOX_NYI("Not yet supported comparison operator: is_distinct_from");
     }
+
+    folly::assume_unreachable();
   }
 
   static std::string toFunctionName(
@@ -251,6 +254,8 @@ class RelationPlanner : public sql::AstVisitor {
       case sql::ArithmeticBinaryExpression::Operator::kModulus:
         return "modulus";
     }
+
+    folly::assume_unreachable();
   }
 
   static int32_t parseYearMonthInterval(
@@ -656,6 +661,16 @@ class RelationPlanner : public sql::AstVisitor {
             parseType(literal->valueType()), lp::Lit(literal->value()));
       }
 
+      case sql::NodeType::kArrayConstructor: {
+        auto* array = node->as<sql::ArrayConstructor>();
+        std::vector<lp::ExprApi> values;
+        for (const auto& value : array->values()) {
+          values.emplace_back(toExpr(value));
+        }
+
+        return lp::Call("array_constructor", values);
+      }
+
       case sql::NodeType::kFunctionCall: {
         auto* call = node->as<sql::FunctionCall>();
 
@@ -693,6 +708,52 @@ class RelationPlanner : public sql::AstVisitor {
         return lp::JoinType::kRight;
       case sql::Join::Type::kFull:
         return lp::JoinType::kFull;
+    }
+
+    folly::assume_unreachable();
+  }
+
+  static std::optional<
+      std::pair<const sql::Unnest*, const sql::AliasedRelation*>>
+  tryGetUnnest(const sql::RelationPtr& relation) {
+    if (relation->is(sql::NodeType::kAliasedRelation)) {
+      const auto* aliasedRelation = relation->as<sql::AliasedRelation>();
+      if (aliasedRelation->relation()->is(sql::NodeType::kUnnest)) {
+        return std::make_pair(
+            aliasedRelation->relation()->as<sql::Unnest>(), aliasedRelation);
+      }
+      return std::nullopt;
+    }
+
+    if (relation->is(sql::NodeType::kUnnest)) {
+      return std::make_pair(relation->as<sql::Unnest>(), nullptr);
+    }
+
+    return std::nullopt;
+  }
+
+  void addCrossJoinUnnest(
+      const sql::Unnest& unnest,
+      const sql::AliasedRelation* aliasedRelation) {
+    std::vector<lp::ExprApi> inputs;
+    for (const auto& expr : unnest.expressions()) {
+      inputs.push_back(toExpr(expr));
+    }
+
+    if (aliasedRelation) {
+      std::vector<std::string> columnNames;
+      columnNames.reserve(aliasedRelation->columnNames().size());
+      for (const auto& name : aliasedRelation->columnNames()) {
+        columnNames.emplace_back(name->value());
+      }
+
+      builder_->unnest(
+          inputs,
+          unnest.isWithOrdinality(),
+          aliasedRelation->alias()->value(),
+          columnNames);
+    } else {
+      builder_->unnest(inputs, unnest.isWithOrdinality());
     }
   }
 
@@ -747,13 +808,32 @@ class RelationPlanner : public sql::AstVisitor {
           sql::NodeTypeName::toName(query->type()));
     }
 
+    if (relation->is(sql::NodeType::kUnnest)) {
+      auto* unnest = relation->as<sql::Unnest>();
+      std::vector<lp::ExprApi> inputs;
+      for (const auto& expr : unnest->expressions()) {
+        inputs.push_back(toExpr(expr));
+      }
+
+      builder_->unnest(inputs, unnest->isWithOrdinality());
+      return;
+    }
+
     if (relation->is(sql::NodeType::kJoin)) {
       auto* join = relation->as<sql::Join>();
       processFrom(join->left());
 
+      if (auto unnest = tryGetUnnest(join->right())) {
+        addCrossJoinUnnest(*unnest->first, unnest->second);
+        return;
+      }
+
       auto leftBuilder = builder_;
 
-      builder_ = newBuilder();
+      lp::PlanBuilder::Scope scope;
+      leftBuilder->captureScope(scope);
+
+      builder_ = newBuilder(scope);
       processFrom(join->right());
       auto rightBuilder = builder_;
 
@@ -1033,27 +1113,31 @@ class RelationPlanner : public sql::AstVisitor {
 
   void visitQuerySpecification(sql::QuerySpecification* node) override {}
 
-  std::shared_ptr<lp::PlanBuilder> newBuilder() {
+  std::shared_ptr<lp::PlanBuilder> newBuilder(
+      const lp::PlanBuilder::Scope& outerScope = nullptr) {
     return std::make_shared<lp::PlanBuilder>(
-        context_, /* enableCoersions */ true);
+        context_, /* enableCoersions */ true, outerScope);
   }
 
   lp::PlanBuilder::Context context_;
   std::shared_ptr<lp::PlanBuilder> builder_;
-}; // namespace facebook::velox::optimizer::test
+};
 
 } // namespace
 
-SqlStatementPtr PrestoParser::parseQuery(
+SqlStatementPtr PrestoParser::parse(
     const std::string& sql,
     bool enableTracing) {
-  return std::make_shared<SelectStatement>(doParse(sql, enableTracing));
+  return doParse(sql, enableTracing);
 }
 
 lp::ExprPtr PrestoParser::parseExpression(
     const std::string& sql,
     bool enableTracing) {
-  auto plan = doParse("SELECT " + sql, enableTracing);
+  auto statement = doParse("SELECT " + sql, enableTracing);
+  VELOX_USER_CHECK(statement->isSelect());
+
+  auto plan = statement->asUnchecked<SelectStatement>()->plan();
 
   VELOX_USER_CHECK(plan->is(lp::NodeKind::kProject));
 
@@ -1064,15 +1148,15 @@ lp::ExprPtr PrestoParser::parseExpression(
   return project->expressionAt(0);
 }
 
-logical_plan::LogicalPlanNodePtr PrestoParser::doParse(
+SqlStatementPtr PrestoParser::doParse(
     const std::string& sql,
     bool enableTracing) {
   sql::ParserHelper helper(sql);
-  auto* queryContext = helper.parse();
+  auto* context = helper.parse();
 
   sql::AstBuilder astBuilder(enableTracing);
   auto query =
-      astBuilder.visit(queryContext).as<std::shared_ptr<sql::Statement>>();
+      std::any_cast<std::shared_ptr<sql::Statement>>(astBuilder.visit(context));
 
   if (enableTracing) {
     std::stringstream astString;
@@ -1083,9 +1167,40 @@ logical_plan::LogicalPlanNodePtr PrestoParser::doParse(
   }
 
   RelationPlanner planner(defaultConnectorId_);
-  query->accept(&planner);
+  if (query->is(sql::NodeType::kExplain)) {
+    query->as<sql::Explain>()->statement()->accept(&planner);
+    return std::make_shared<ExplainStatement>(
+        std::make_shared<SelectStatement>(planner.getPlan()));
+  }
 
-  return planner.getPlan();
+  if (query->is(sql::NodeType::kShowColumns)) {
+    const auto tableName = query->as<sql::ShowColumns>()->table()->suffix();
+
+    auto table = connector::getConnector(defaultConnectorId_)
+                     ->metadata()
+                     ->findTable(tableName);
+
+    VELOX_USER_CHECK_NOT_NULL(table, "Table not found: {}", tableName);
+
+    const auto& schema = table->rowType();
+
+    std::vector<Variant> data;
+    data.reserve(schema->size());
+    for (auto i = 0; i < schema->size(); ++i) {
+      data.emplace_back(
+          Variant::row({schema->nameOf(i), schema->childAt(i)->toString()}));
+    }
+
+    lp::PlanBuilder::Context ctx(defaultConnectorId_);
+
+    return std::make_shared<SelectStatement>(
+        lp::PlanBuilder(ctx)
+            .values(ROW({"column", "type"}, {VARCHAR(), VARCHAR()}), data)
+            .build());
+  }
+
+  query->accept(&planner);
+  return std::make_shared<SelectStatement>(planner.getPlan());
 }
 
 } // namespace facebook::velox::optimizer::test

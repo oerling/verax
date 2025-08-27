@@ -71,8 +71,8 @@ class Expr : public PlanObject {
     return true;
   }
 
-  // Returns the single base or derived table 'this' depends on, nullptr if
-  // 'this' depends on none or multiple tables.
+  /// Returns the single base or derived table 'this' depends on, nullptr if
+  /// 'this' depends on none or multiple tables.
   PlanObjectCP singleTable() const;
 
   /// Returns all tables 'this' depends on.
@@ -155,7 +155,7 @@ class Column : public Expr {
  public:
   Column(
       Name name,
-      PlanObjectP relation,
+      PlanObjectCP relation,
       const Value& value,
       Name alias = nullptr,
       Name nameInTable = nullptr,
@@ -185,7 +185,7 @@ class Column : public Expr {
 
   std::string toString() const override;
 
-  struct Equivalence* equivalence() const {
+  EquivalenceP equivalence() const {
     return equivalence_;
   }
 
@@ -202,7 +202,7 @@ class Column : public Expr {
   Name name_;
 
   // The defining BaseTable or DerivedTable.
-  PlanObjectP relation_;
+  PlanObjectCP relation_;
 
   // Optional alias copied from the the logical plan.
   Name alias_;
@@ -270,8 +270,8 @@ struct SubfieldSet {
   /// Id of an accessed column of complex type.
   std::vector<int32_t, QGAllocator<int32_t>> ids;
 
-  // Set of subfield paths that are accessed for the corresponding 'column'.
-  // empty means that all subfields are accessed.
+  /// Set of subfield paths that are accessed for the corresponding 'column'.
+  /// empty means that all subfields are accessed.
   std::vector<BitSet, QGAllocator<BitSet>> subfields;
 
   std::optional<BitSet> findSubfields(int32_t id) const;
@@ -465,7 +465,7 @@ class Lambda : public Expr {
 
 /// Represens a set of transitively equal columns.
 struct Equivalence {
-  // Each element has a direct or implied equality edge to every other.
+  /// Each element has a direct or implied equality edge to every other.
   ColumnVector columns;
 };
 
@@ -545,9 +545,7 @@ class JoinEdge {
         markColumn_(spec.markColumn),
         directed_(spec.directed) {
     VELOX_CHECK_NOT_NULL(rightTable);
-    if (isInner()) {
-      VELOX_CHECK(filter_.empty());
-    }
+    VELOX_CHECK(directed_ || filter_.empty() || !isInner());
   }
 
   static JoinEdge* makeInner(PlanObjectCP leftTable, PlanObjectCP rightTable) {
@@ -602,6 +600,14 @@ class JoinEdge {
   bool isInner() const {
     return !leftOptional_ && !rightOptional_ && !rightExists_ &&
         !rightNotExists_;
+  }
+
+  bool isSemi() const {
+    return rightExists_;
+  }
+
+  bool isAnti() const {
+    return rightNotExists_;
   }
 
   /// True if all tables referenced from 'leftKeys' must be placed before
@@ -737,7 +743,7 @@ using JoinEdgeVector = std::vector<JoinEdgeP, QGAllocator<JoinEdgeP>>;
 struct BaseTable : public PlanObject {
   BaseTable() : PlanObject(PlanType::kTableNode) {}
 
-  // Correlation name, distinguishes between uses of the same schema table.
+  /// Correlation name, distinguishes between uses of the same schema table.
   Name cname{nullptr};
 
   SchemaTableCP schemaTable{nullptr};
@@ -747,17 +753,17 @@ struct BaseTable : public PlanObject {
   /// 'columns'.
   ColumnVector columns;
 
-  // All joins where 'this' is an end point.
+  /// All joins where 'this' is an end point.
   JoinEdgeVector joinedBy;
 
-  // Top level conjuncts on single columns and literals, column to the left.
+  /// Top level conjuncts on single columns and literals, column to the left.
   ExprVector columnFilters;
 
-  // Multicolumn filters dependent on 'this' alone.
+  /// Multicolumn filters dependent on 'this' alone.
   ExprVector filter;
 
-  // the fraction of base table rows selected by all filters involving this
-  // table only.
+  /// The fraction of base table rows selected by all filters involving this
+  /// table only.
   float filterSelectivity{1};
 
   SubfieldSet controlSubfields;
@@ -777,8 +783,8 @@ struct BaseTable : public PlanObject {
 
   BitSet columnSubfields(int32_t id, bool payloadOnly, bool controlOnly) const;
 
-  // Returns possible indices for driving table scan of 'table'.
-  std::vector<ColumnGroupP> chooseLeafIndex() const {
+  /// Returns possible indices for driving table scan of 'table'.
+  std::vector<ColumnGroupCP> chooseLeafIndex() const {
     VELOX_DCHECK(!schemaTable->columnGroups.empty());
     return {schemaTable->columnGroups[0]};
   }
@@ -792,7 +798,7 @@ struct ValuesTable : public PlanObject {
   explicit ValuesTable(const logical_plan::ValuesNode& values)
       : PlanObject{PlanType::kValuesTableNode}, values{values} {}
 
-  // Correlation name, distinguishes between uses of the same values node.
+  /// Correlation name, distinguishes between uses of the same values node.
   Name cname{nullptr};
 
   const logical_plan::ValuesNode& values;
@@ -800,7 +806,7 @@ struct ValuesTable : public PlanObject {
   /// All columns referenced from this 'ValuesNode'.
   ColumnVector columns;
 
-  // All joins where 'this' is an end point.
+  /// All joins where 'this' is an end point.
   JoinEdgeVector joinedBy;
 
   float cardinality() const {

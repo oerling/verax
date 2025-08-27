@@ -67,15 +67,15 @@ class TpchPlanTest : public virtual test::HiveQueriesTestBase {
     auto path = velox::test::getDataFilePath("axiom/optimizer/tests", filePath);
     std::ifstream inputFile(path, std::ifstream::binary);
 
+    VELOX_CHECK(inputFile, "Failed to open SQL file: {}", path);
+
     // Find out file size.
     auto begin = inputFile.tellg();
     inputFile.seekg(0, std::ios::end);
     auto end = inputFile.tellg();
 
-    auto fileSize = end - begin;
-    if (fileSize == 0) {
-      return "";
-    }
+    const auto fileSize = end - begin;
+    VELOX_CHECK_GT(fileSize, 0, "SQL file is empty: {}", path);
 
     // Read the file.
     std::string sql;
@@ -84,6 +84,7 @@ class TpchPlanTest : public virtual test::HiveQueriesTestBase {
     inputFile.seekg(begin);
     inputFile.read(sql.data(), fileSize);
     inputFile.close();
+
     return sql;
   }
 
@@ -236,7 +237,7 @@ TEST_F(TpchPlanTest, q07) {
 
   checkTpch(7, logicalPlan);
 
-  // checkTpchSql(7);
+  checkTpchSql(7);
 }
 
 TEST_F(TpchPlanTest, q08) {
@@ -283,7 +284,7 @@ TEST_F(TpchPlanTest, q08) {
 
   checkTpch(8, logicalPlan);
 
-  // checkTpchSql(8);
+  checkTpchSql(8);
 }
 
 TEST_F(TpchPlanTest, q09) {
@@ -313,7 +314,7 @@ TEST_F(TpchPlanTest, q09) {
   // import of existences to build side does not affect join cardinality.
   checkTpch(9, logicalPlan);
 
-  // checkTpchSql(9);
+  checkTpchSql(9);
 }
 
 TEST_F(TpchPlanTest, q10) {
@@ -430,7 +431,7 @@ TEST_F(TpchPlanTest, q12) {
   // Fix string in filter
   checkTpch(12, logicalPlan);
 
-  // checkTpchSql(12);
+  checkTpchSql(12);
 }
 
 TEST_F(TpchPlanTest, q13) {
@@ -471,7 +472,7 @@ TEST_F(TpchPlanTest, q14) {
 
   checkTpch(14, logicalPlan);
 
-  // checkTpchSql(14);
+  checkTpchSql(14);
 }
 
 TEST_F(TpchPlanTest, DISABLED_q15) {
@@ -523,7 +524,7 @@ TEST_F(TpchPlanTest, q19) {
 
   checkTpch(19, logicalPlan);
 
-  // checkTpchSql(19);
+  checkTpchSql(19);
 }
 
 TEST_F(TpchPlanTest, DISABLED_q20) {

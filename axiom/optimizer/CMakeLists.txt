@@ -29,8 +29,10 @@ target_link_libraries(
 add_library(
   velox_verax
   DerivedTable.cpp
+  DerivedTablePrinter.cpp
   ToGraph.cpp
   Subfields.cpp
+  Optimization.cpp
   Plan.cpp
   BitSet.cpp
   ParallelExpr.cpp

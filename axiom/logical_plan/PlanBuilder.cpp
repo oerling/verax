@@ -379,6 +379,101 @@ PlanBuilder& PlanBuilder::aggregate(
   return *this;
 }
 
+PlanBuilder& PlanBuilder::unnest(
+    const std::vector<std::string>& unnestExprs,
+    bool withOrdinality) {
+  return unnest(parse(unnestExprs), withOrdinality);
+}
+
+PlanBuilder& PlanBuilder::unnest(
+    const std::vector<ExprApi>& unnestExprs,
+    bool withOrdinality) {
+  return unnest(unnestExprs, withOrdinality, std::nullopt, {});
+}
+
+PlanBuilder& PlanBuilder::unnest(
+    const std::vector<ExprApi>& unnestExprs,
+    bool withOrdinality,
+    const std::optional<std::string>& alias,
+    const std::vector<std::string>& unnestAliases) {
+  auto newOutputMapping =
+      node_ != nullptr ? outputMapping_ : std::make_shared<NameMappings>();
+
+  size_t index = 0;
+
+  auto addOutputMapping = [&](const std::string& name, const std::string& id) {
+    if (!newOutputMapping->lookup(name)) {
+      newOutputMapping->add(name, id);
+    }
+    newOutputMapping->add({.alias = alias, .name = name}, id);
+    ++index;
+  };
+
+  std::vector<ExprPtr> exprs;
+  std::vector<std::vector<std::string>> outputNames;
+  for (const auto& unnestExpr : unnestExprs) {
+    auto expr = resolveScalarTypes(unnestExpr.expr());
+    exprs.push_back(expr);
+
+    if (!unnestExpr.unnestedAliases().empty()) {
+      outputNames.emplace_back();
+      for (const std::string& alias : unnestExpr.unnestedAliases()) {
+        outputNames.back().emplace_back(newName(alias));
+        newOutputMapping->add(alias, outputNames.back().back());
+      }
+    } else {
+      switch (expr->type()->kind()) {
+        case TypeKind::ARRAY:
+          if (!unnestAliases.empty()) {
+            VELOX_USER_CHECK_LT(index, unnestAliases.size());
+
+            const auto& outputName = unnestAliases.at(index);
+            outputNames.emplace_back(
+                std::vector<std::string>{newName(outputName)});
+
+            addOutputMapping(outputName, outputNames.back().back());
+          } else {
+            outputNames.emplace_back(std::vector<std::string>{newName("e")});
+          }
+          break;
+
+        case TypeKind::MAP:
+          if (!unnestAliases.empty()) {
+            VELOX_USER_CHECK_LT(index, unnestAliases.size());
+
+            const auto& keyName = unnestAliases.at(index);
+            const auto& valueName = unnestAliases.at(index + 1);
+            outputNames.emplace_back(
+                std::vector<std::string>{newName(keyName), newName(valueName)});
+
+            addOutputMapping(keyName, outputNames.back().at(0));
+            addOutputMapping(valueName, outputNames.back().at(1));
+          } else {
+            outputNames.emplace_back(
+                std::vector<std::string>{newName("k"), newName("v")});
+          }
+          break;
+
+        default:
+          VELOX_USER_FAIL(
+              "Unsupported type to unnest: {}", expr->type()->toString());
+      }
+    }
+  }
+
+  std::optional<std::string> ordinalityName;
+  if (withOrdinality) {
+    ordinalityName = newName("orginality");
+  }
+
+  node_ = std::make_shared<UnnestNode>(
+      nextId(), node_, exprs, outputNames, ordinalityName, withOrdinality);
+
+  outputMapping_ = newOutputMapping;
+
+  return *this;
+}
+
 namespace {
 
 ExprPtr resolveJoinInputName(
@@ -751,7 +846,7 @@ core::TypedExprPtr ExprResolver::makeConstantTypedExpr(
 }
 
 ExprPtr ExprResolver::makeConstant(const VectorPtr& vector) const {
-  auto variant = std::make_shared<Variant>(vectorToVariant(vector, 0));
+  auto variant = std::make_shared<Variant>(vector->variantAt(0));
   return std::make_shared<ConstantExpr>(vector->type(), std::move(variant));
 }
 
@@ -1157,6 +1252,11 @@ PlanBuilder& PlanBuilder::tableWrite(
 ExprPtr PlanBuilder::resolveInputName(
     const std::optional<std::string>& alias,
     const std::string& name) const {
+  if (outputMapping_ == nullptr) {
+    VELOX_CHECK_NOT_NULL(outerScope_);
+    return outerScope_(alias, name);
+  }
+
   if (alias.has_value()) {
     if (auto id = outputMapping_->lookup(alias.value(), name)) {
       return std::make_shared<InputReferenceExpr>(
@@ -1253,6 +1353,7 @@ std::string PlanBuilder::findOrAssignOutputNameAt(size_t index) const {
 
 LogicalPlanNodePtr PlanBuilder::build() {
   VELOX_USER_CHECK_NOT_NULL(node_);
+  VELOX_USER_CHECK_NOT_NULL(outputMapping_);
 
   // Use user-specified names for the output. Should we add an OutputNode?
 

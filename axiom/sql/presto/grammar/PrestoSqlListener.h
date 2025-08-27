@@ -14,14 +14,12 @@
  * limitations under the License.
  */
 
-// Generated from PrestoSql.g4 by ANTLR 4.9.3
+// Generated from PrestoSql.g4 by ANTLR 4.13.2
 
 #pragma once
 
+#include "PrestoSqlParser.h"
 #include "antlr4-runtime.h"
-#include "axiom/sql/presto/grammar/PrestoSqlParser.h"
-
-namespace axiom::sql::presto {
 
 /**
  * This interface defines an abstract listener for a parse tree produced by
@@ -936,5 +934,3 @@ class PrestoSqlListener : public antlr4::tree::ParseTreeListener {
   virtual void enterNonReserved(PrestoSqlParser::NonReservedContext* ctx) = 0;
   virtual void exitNonReserved(PrestoSqlParser::NonReservedContext* ctx) = 0;
 };
-
-} // namespace axiom::sql::presto

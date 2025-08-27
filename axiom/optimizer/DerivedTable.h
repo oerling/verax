@@ -130,7 +130,8 @@ struct DerivedTable : public PlanObject {
   /// not try to further restrict this with probe side.
   bool noImportOfExists{false};
 
-  /// Postprocessing clauses, group by, having, order by, limit, offset.
+  /// Postprocessing clauses: group by, having, order by, limit, offset.
+
   AggregationPlanCP aggregation{nullptr};
 
   ExprVector having;
@@ -215,7 +216,7 @@ struct DerivedTable : public PlanObject {
   /// more conjuncts. May call itself recursively on component dts.
   void distributeConjuncts();
 
-  /// memoizes plans for 'this' and fills in 'distribution_'. Needed
+  /// Memoizes plans for 'this' and fills in 'distribution_'. Needed
   /// before adding 'this' as a join side because join sides must have
   /// a cardinality guess.
   void makeInitialPlan();
@@ -225,21 +226,21 @@ struct DerivedTable : public PlanObject {
   std::string toString() const override;
 
  private:
-  /// Imports the joins in 'this' inside 'firstDt', which must be a
-  /// member of 'this'. The import is possible if the join is not
-  /// through aggregates in 'firstDt'. On return, all joins that can go
-  /// inside firstDt are imported below aggregation in
-  /// firstDt. 'firstDt' is not modified, its original contents are
-  /// copied in a new dt before the import.
+  // Imports the joins in 'this' inside 'firstDt', which must be a
+  // member of 'this'. The import is possible if the join is not
+  // through aggregates in 'firstDt'. On return, all joins that can go
+  // inside firstDt are imported below aggregation in
+  // firstDt. 'firstDt' is not modified, its original contents are
+  // copied in a new dt before the import.
   void importJoinsIntoFirstDt(const DerivedTable* firstDt);
 
-  /// Sets 'dt' to be the complete contents of 'this'.
+  // Sets 'dt' to be the complete contents of 'this'.
   void flattenDt(const DerivedTable* dt);
 
-  /// Finds single row dts from non-correlated scalar subqueries.
+  // Finds single row dts from non-correlated scalar subqueries.
   void findSingleRowDts();
 
-  /// Sets 'columns' and 'exprs'.
+  // Sets 'columns' and 'exprs'.
   void makeProjection(const ExprVector& exprs);
 };
 

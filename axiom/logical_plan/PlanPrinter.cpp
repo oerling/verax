@@ -154,7 +154,24 @@ class ToTextVisitor : public PlanNodeVisitor {
 
   void visit(const UnnestNode& node, PlanNodeVisitorContext& context)
       const override {
-    appendNode("Unnest", node, context);
+    auto& myContext = static_cast<Context&>(context);
+
+    myContext.out << makeIndent(myContext.indent) << "- Unnest:";
+    appendOutputType(node, myContext);
+    myContext.out << std::endl;
+
+    const auto size = node.unnestExpressions().size();
+    const auto indent = makeIndent(myContext.indent + 2);
+
+    for (auto i = 0; i < size; ++i) {
+      myContext.out << indent << "["
+                    << folly::join(", ", node.unnestedNames().at(i)) << "]"
+                    << " := "
+                    << ExprPrinter::toText(*node.unnestExpressions().at(i))
+                    << std::endl;
+    }
+
+    appendInputs(node, myContext);
   }
 
   void visit(const TableWriteNode& node, PlanNodeVisitorContext& context)

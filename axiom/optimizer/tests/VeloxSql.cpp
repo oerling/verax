@@ -19,42 +19,42 @@
 #include <gflags/gflags.h>
 #include <sys/resource.h>
 #include <sys/time.h>
-
-#include "axiom/optimizer/connectors/hive/LocalHiveConnectorMetadata.h"
-#include "velox/common/file/FileSystems.h"
-#include "velox/connectors/hive/HiveConnector.h"
-#include "velox/dwio/dwrf/RegisterDwrfReader.h"
-#include "velox/dwio/parquet/RegisterParquetReader.h"
-#include "velox/parse/TypeResolver.h"
-
 #include "axiom/logical_plan/PlanPrinter.h"
+#include "axiom/optimizer/Optimization.h"
 #include "axiom/optimizer/Plan.h"
 #include "axiom/optimizer/SchemaResolver.h"
 #include "axiom/optimizer/VeloxHistory.h"
 #include "axiom/optimizer/connectors/ConnectorSplitSource.h"
+#include "axiom/optimizer/connectors/hive/LocalHiveConnectorMetadata.h"
+#include "axiom/optimizer/connectors/tpch/TpchConnectorMetadata.h"
 #include "axiom/optimizer/tests/DuckParser.h"
+#include "axiom/optimizer/tests/PrestoParser.h"
 #include "axiom/runner/LocalRunner.h"
 #include "velox/benchmarks/QueryBenchmarkBase.h"
+#include "velox/common/caching/SsdCache.h"
+#include "velox/common/file/FileSystems.h"
+#include "velox/connectors/hive/HiveConnector.h"
+#include "velox/dwio/dwrf/RegisterDwrfReader.h"
+#include "velox/dwio/parquet/RegisterParquetReader.h"
 #include "velox/exec/PlanNodeStats.h"
-#include "velox/exec/tests/utils/HiveConnectorTestBase.h"
 #include "velox/exec/tests/utils/LocalExchangeSource.h"
+#include "velox/exec/tests/utils/QueryAssertions.h"
 #include "velox/expression/Expr.h"
 #include "velox/functions/prestosql/aggregates/RegisterAggregateFunctions.h"
 #include "velox/functions/prestosql/registration/RegistrationFunctions.h"
+#include "velox/parse/TypeResolver.h"
 #include "velox/serializers/PrestoSerializer.h"
 #include "velox/vector/VectorSaver.h"
-
-namespace {
-static bool notEmpty(const char* /*flagName*/, const std::string& value) {
-  return !value.empty();
-}
-
-} // namespace
 
 DEFINE_string(
     data_path,
     "",
     "Root path of data. Data layout must follow Hive-style partitioning. ");
+
+DEFINE_bool(
+    use_duck_parser,
+    false,
+    "Use DuckDB SQL parser instead of built-in Presto SQL parser.");
 
 // Defined in velox/benchmarks/QueryBenchmarkBase.cpp
 DECLARE_string(ssd_path);
@@ -108,8 +108,6 @@ DEFINE_string(
     "Name of SQL file with a single query. Runs and "
     "compares with <name>.ref, previously recorded with --record");
 
-DEFINE_validator(data_path, &notEmpty);
-
 DEFINE_bool(
     check_test_flag_combinations,
     true,
@@ -145,26 +143,8 @@ const char* helpText =
 
 class VeloxRunner : public QueryBenchmarkBase {
  public:
-  static const std::string kHiveConnectorId;
-
-  void initialize() {
-    if (FLAGS_cache_gb) {
-      memory::MemoryManagerOptions options;
-      int64_t memoryBytes = FLAGS_cache_gb * (1LL << 30);
-      options.useMmapAllocator = FLAGS_use_mmap;
-      options.allocatorCapacity = memoryBytes;
-      options.useMmapArena = true;
-      options.mmapArenaCapacityRatio = 1;
-      memory::MemoryManager::testingSetInstance(options);
-
-      cache_ = cache::AsyncDataCache::create(
-          memory::memoryManager()->allocator(), setupSsdCache());
-      cache::AsyncDataCache::setInstance(cache_.get());
-    } else {
-      memory::MemoryManagerOptions options;
-      memory::MemoryManager::testingSetInstance(options);
-    }
-
+  void initialize() override {
+    initializeMemoryManager();
     rootPool_ = memory::memoryManager()->addRootPool("velox_sql");
 
     optimizerPool_ = rootPool_->addLeafChild("optimizer");
@@ -184,20 +164,52 @@ class VeloxRunner : public QueryBenchmarkBase {
       serializer::presto::PrestoVectorSerde::registerNamedVectorSerde();
     }
 
-    registerHiveConnector();
+    if (!FLAGS_data_path.empty()) {
+      connector_ = registerHiveConnector(FLAGS_data_path);
+    } else {
+      connector_ = registerTpchConnector();
+    }
 
     schema_ = std::make_shared<optimizer::SchemaResolver>();
 
-    parser_ = setupQueryParser();
+    if (FLAGS_use_duck_parser) {
+      VELOX_CHECK(!FLAGS_data_path.empty());
+      duckParser_ = setupQueryParser();
+    } else {
+      prestoParser_ = std::make_unique<optimizer::test::PrestoParser>(
+          connector_->connectorId(), optimizerPool_.get());
+    }
 
     history_ = std::make_unique<optimizer::VeloxHistory>();
-    history_->updateFromFile(FLAGS_data_path + "/.history");
+
+    if (!FLAGS_data_path.empty()) {
+      history_->updateFromFile(FLAGS_data_path + "/.history");
+    }
 
     executor_ =
         std::make_shared<folly::CPUThreadPoolExecutor>(std::max<int32_t>(
             std::thread::hardware_concurrency() * 2,
             FLAGS_num_workers * FLAGS_num_drivers * 2 + 2));
     spillExecutor_ = std::make_shared<folly::IOThreadPoolExecutor>(4);
+  }
+
+  void initializeMemoryManager() {
+    if (FLAGS_cache_gb) {
+      memory::MemoryManagerOptions options;
+      int64_t memoryBytes = FLAGS_cache_gb * (1LL << 30);
+      options.useMmapAllocator = FLAGS_use_mmap;
+      options.allocatorCapacity = memoryBytes;
+      options.useMmapArena = true;
+      options.mmapArenaCapacityRatio = 1;
+      memory::MemoryManager::testingSetInstance(options);
+
+      cache_ = cache::AsyncDataCache::create(
+          memory::memoryManager()->allocator(), setupSsdCache());
+      cache::AsyncDataCache::setInstance(cache_.get());
+    } else {
+      memory::MemoryManagerOptions options;
+      memory::MemoryManager::testingSetInstance(options);
+    }
   }
 
   std::unique_ptr<cache::SsdCache> setupSsdCache() {
@@ -217,28 +229,41 @@ class VeloxRunner : public QueryBenchmarkBase {
     return nullptr;
   }
 
-  void registerHiveConnector() {
+  std::shared_ptr<connector::Connector> registerTpchConnector() {
+    connector::tpch::registerTpchConnectorMetadataFactory(
+        std::make_unique<connector::tpch::TpchConnectorMetadataFactoryImpl>());
+
+    auto emptyConfig = std::make_shared<config::ConfigBase>(
+        std::unordered_map<std::string, std::string>());
+
+    connector::tpch::TpchConnectorFactory factory;
+    auto connector = factory.newConnector("tpch", emptyConfig);
+    connector::registerConnector(connector);
+    return connector;
+  }
+
+  std::shared_ptr<connector::Connector> registerHiveConnector(
+      const std::string& dataPath) {
     ioExecutor_ = std::make_unique<folly::IOThreadPoolExecutor>(8);
 
-    std::unordered_map<std::string, std::string> connectorConfig;
-    connectorConfig[connector::hive::HiveConfig::kLocalDataPath] =
-        FLAGS_data_path;
-    connectorConfig[connector::hive::HiveConfig::kLocalFileFormat] =
-        FLAGS_data_format;
+    std::unordered_map<std::string, std::string> connectorConfig = {
+        {connector::hive::HiveConfig::kLocalDataPath, dataPath},
+        {connector::hive::HiveConfig::kLocalFileFormat, FLAGS_data_format},
+    };
+
     auto config =
         std::make_shared<config::ConfigBase>(std::move(connectorConfig));
-    connector::registerConnectorFactory(
-        std::make_shared<connector::hive::HiveConnectorFactory>());
-    connector_ =
-        connector::getConnectorFactory(
-            connector::hive::HiveConnectorFactory::kHiveConnectorName)
-            ->newConnector(kHiveConnectorId, config, ioExecutor_.get());
-    connector::registerConnector(connector_);
+
+    connector::hive::HiveConnectorFactory factory;
+    auto connector = factory.newConnector("hive", config, ioExecutor_.get());
+    connector::registerConnector(connector);
+
+    return connector;
   }
 
   std::unique_ptr<optimizer::test::DuckParser> setupQueryParser() {
     auto parser = std::make_unique<optimizer::test::DuckParser>(
-        kHiveConnectorId, optimizerPool_.get());
+        connector_->connectorId(), optimizerPool_.get());
     auto& tables = dynamic_cast<connector::hive::LocalHiveConnectorMetadata*>(
                        connector_->metadata())
                        ->tables();
@@ -289,7 +314,11 @@ class VeloxRunner : public QueryBenchmarkBase {
   void run(const std::string& sql) {
     optimizer::test::SqlStatementPtr sqlStatement;
     try {
-      sqlStatement = parser_->parse(sql);
+      if (FLAGS_use_duck_parser) {
+        sqlStatement = duckParser_->parse(sql);
+      } else {
+        sqlStatement = prestoParser_->parse(sql);
+      }
     } catch (std::exception& e) {
       std::cerr << "Failed to parse SQL: " << e.what() << std::endl;
       return;
@@ -696,31 +725,100 @@ class VeloxRunner : public QueryBenchmarkBase {
       numRows += result->size();
     }
 
-    std::cout << "Results: " << numRows << " rows in " << results.size()
-              << " batches" << std::endl;
+    auto printFooter = [&]() {
+      std::cout << "(" << numRows << " rows in " << results.size()
+                << " batches)" << std::endl
+                << std::endl;
+    };
 
-    if (numRows > 0) {
-      std::cout << results.front()->type()->toString() << std::endl;
+    if (numRows == 0) {
+      printFooter();
+      return 0;
     }
 
-    numRows = 0;
-    for (auto vectorIndex = 0; vectorIndex < results.size(); ++vectorIndex) {
-      const auto& vector = results[vectorIndex];
-      for (vector_size_t i = 0; i < vector->size(); ++i) {
-        std::cout << vector->deprecatedToString(i, 100) << std::endl;
-        if (++numRows >= FLAGS_max_rows) {
-          int32_t numLeft = (vector->size() - (i - 1));
-          ++vectorIndex;
-          for (; vectorIndex < results.size(); ++vectorIndex) {
-            numLeft += results[vectorIndex]->size();
-          }
-          if (numLeft) {
-            std::cout << fmt::format("{} more rows.", numLeft) << std::endl;
-          }
-          return numRows + numLeft;
+    const auto type = results.front()->rowType();
+    std::cout << type->toString() << std::endl;
+
+    const auto numColumns = type->size();
+
+    std::vector<std::vector<std::string>> data;
+    std::vector<size_t> widths(numColumns, 0);
+    std::vector<bool> alignLeft(numColumns);
+
+    for (auto i = 0; i < numColumns; ++i) {
+      widths[i] = type->nameOf(i).size();
+      alignLeft[i] = type->childAt(i)->isVarchar();
+    }
+
+    auto printSeparator = [&]() {
+      std::cout << std::setfill('-');
+      for (auto i = 0; i < numColumns; ++i) {
+        if (i > 0) {
+          std::cout << "-+-";
+        }
+        std::cout << std::setw(widths[i]) << "";
+      }
+      std::cout << std::endl;
+      std::cout << std::setfill(' ');
+    };
+
+    auto printRow = [&](const auto& row) {
+      for (auto i = 0; i < numColumns; ++i) {
+        if (i > 0) {
+          std::cout << " | ";
+        }
+        std::cout << std::setw(widths[i]);
+        if (alignLeft[i]) {
+          std::cout << std::left;
+        } else {
+          std::cout << std::right;
+        }
+        std::cout << row[i];
+      }
+      std::cout << std::endl;
+    };
+
+    int32_t numPrinted = 0;
+
+    auto doPrint = [&]() {
+      printSeparator();
+      printRow(type->names());
+      printSeparator();
+
+      for (auto row : data) {
+        printRow(row);
+      }
+
+      if (numPrinted < numRows) {
+        std::cout << std::endl;
+        std::cout << "..." << (numRows - numPrinted) << " more rows."
+                  << std::endl;
+      }
+
+      printFooter();
+    };
+
+    for (const auto& result : results) {
+      for (auto row = 0; row < result->size(); ++row) {
+        data.emplace_back();
+
+        auto& rowData = data.back();
+        rowData.resize(numColumns);
+        for (auto column = 0; column < numColumns; ++column) {
+          rowData[column] = result->childAt(column)->toString(row);
+          widths[column] = std::max(widths[column], rowData[column].size());
+        }
+
+        ++numPrinted;
+        if (numPrinted >= FLAGS_max_rows) {
+          doPrint();
+          return numRows;
         }
       }
     }
+
+    doPrint();
+
     return numRows;
   }
 
@@ -735,7 +833,8 @@ class VeloxRunner : public QueryBenchmarkBase {
   std::shared_ptr<connector::Connector> connector_;
   std::shared_ptr<optimizer::SchemaResolver> schema_;
   std::unique_ptr<optimizer::VeloxHistory> history_;
-  std::unique_ptr<optimizer::test::DuckParser> parser_;
+  std::unique_ptr<optimizer::test::DuckParser> duckParser_;
+  std::unique_ptr<optimizer::test::PrestoParser> prestoParser_;
   std::ofstream* record_{nullptr};
   std::ifstream* check_{nullptr};
   int32_t numPassed_{0};
@@ -751,9 +850,6 @@ class VeloxRunner : public QueryBenchmarkBase {
   std::vector<RowVectorPtr> referenceResult_;
   std::set<std::string> modifiedFlags_;
 };
-
-// static
-const std::string VeloxRunner::kHiveConnectorId = exec::test::kHiveConnectorId;
 
 // Reads multi-line command from 'in' until encounters ';' followed by zero or
 // more whitespaces.

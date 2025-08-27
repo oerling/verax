@@ -18,7 +18,7 @@
 
 #include "axiom/optimizer/tests/DuckParser.h"
 #include "axiom/optimizer/tests/PlanMatcher.h"
-// #include "axiom/optimizer/tests/PrestoParser.h"
+#include "axiom/optimizer/tests/PrestoParser.h"
 #include "axiom/optimizer/tests/QueryTestBase.h"
 
 namespace facebook::velox::optimizer::test {
@@ -55,13 +55,15 @@ class HiveQueriesTestBase : public test::QueryTestBase {
     return *duckParser_;
   }
 
-  // PrestoParser& prestoParser() {
-  //   return *prestoParser_;
-  // }
+  PrestoParser& prestoParser() {
+    return *prestoParser_;
+  }
 
  protected:
+  static std::shared_ptr<exec::test::TempDirectoryPath> tempDirectory_;
+
   std::unique_ptr<DuckParser> duckParser_;
-  // std::unique_ptr<PrestoParser> prestoParser_;
+  std::unique_ptr<PrestoParser> prestoParser_;
 };
 
 } // namespace facebook::velox::optimizer::test

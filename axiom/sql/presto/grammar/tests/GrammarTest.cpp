@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include <antlr4-runtime/antlr4-runtime.h>
+#include <antlr4-runtime.h>
 #include <gtest/gtest.h>
 
 #include "axiom/sql/presto/ast/UpperCaseInputStream.h"

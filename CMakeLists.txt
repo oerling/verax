@@ -46,13 +46,14 @@ set(VELOX_BUILD_VECTOR_TEST_UTILS
     CACHE BOOL "Velox vector test utilities (VectorMaker).")
 
 set(VELOX_ENABLE_PARQUET ON)
-set(VELOX_ENABLE_BENCHMARKS_BASIC ON)
 set(VELOX_BUILD_TEST_UTILS ON)
 set(VELOX_BUILD_TESTING OFF)
 
 set(VELOX_DEPENDENCY_SOURCE
     AUTO
     CACHE STRING "Default dependency source: AUTO SYSTEM or BUNDLED.")
+
+option(VERAX_ENABLE_CCACHE "Use ccache if installed." ON)
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
@@ -112,6 +113,76 @@ if(COMMAND_STATUS EQUAL "1")
 endif()
 message("Setting CMAKE_CXX_FLAGS=${SCRIPT_CXX_FLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SCRIPT_CXX_FLAGS}")
+
+# Debug ccache configuration
+message(STATUS "VERAX_ENABLE_CCACHE: ${VERAX_ENABLE_CCACHE}")
+message(STATUS "CMAKE_C_COMPILER_LAUNCHER: ${CMAKE_C_COMPILER_LAUNCHER}")
+message(STATUS "CMAKE_CXX_COMPILER_LAUNCHER: ${CMAKE_CXX_COMPILER_LAUNCHER}")
+message(STATUS "CMAKE_CUDA_COMPILER_LAUNCHER: ${CMAKE_CUDA_COMPILER_LAUNCHER}")
+
+# Always check for ccache availability
+find_program(CCACHE_FOUND ccache)
+if(CCACHE_FOUND)
+  message(STATUS "ccache found at: ${CCACHE_FOUND}")
+else()
+  message(STATUS "ccache not found in PATH")
+endif()
+
+if(VERAX_ENABLE_CCACHE
+   AND NOT CMAKE_C_COMPILER_LAUNCHER
+   AND NOT CMAKE_CXX_COMPILER_LAUNCHER
+   AND NOT CMAKE_CUDA_COMPILER_LAUNCHER)
+
+  if(CCACHE_FOUND)
+    message(STATUS "All ccache conditions met, enabling ccache")
+    set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_FOUND})
+    set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_FOUND})
+    set(CMAKE_CUDA_COMPILER_LAUNCHER ${CCACHE_FOUND})
+    # keep comments as they might matter to the compiler
+    set(ENV{CCACHE_COMMENTS} "1")
+    message(STATUS "ccache configuration complete")
+    message(
+      STATUS
+        "  C compiler command will be: ${CMAKE_C_COMPILER_LAUNCHER} ${CMAKE_C_COMPILER}"
+    )
+    message(
+      STATUS
+        "  C++ compiler command will be: ${CMAKE_CXX_COMPILER_LAUNCHER} ${CMAKE_CXX_COMPILER}"
+    )
+  else()
+    message(
+      WARNING
+        "ccache is enabled but not found - builds will proceed without ccache")
+  endif()
+else()
+  message(STATUS "ccache not enabled because:")
+  if(NOT VERAX_ENABLE_CCACHE)
+    message(STATUS "  - VERAX_ENABLE_CCACHE is OFF")
+  endif()
+  if(CMAKE_C_COMPILER_LAUNCHER)
+    message(
+      STATUS
+        "  - CMAKE_C_COMPILER_LAUNCHER already set: ${CMAKE_C_COMPILER_LAUNCHER}"
+    )
+  endif()
+  if(CMAKE_CXX_COMPILER_LAUNCHER)
+    message(
+      STATUS
+        "  - CMAKE_CXX_COMPILER_LAUNCHER already set: ${CMAKE_CXX_COMPILER_LAUNCHER}"
+    )
+  endif()
+  if(CMAKE_CUDA_COMPILER_LAUNCHER)
+    message(
+      STATUS
+        "  - CMAKE_CUDA_COMPILER_LAUNCHER already set: ${CMAKE_CUDA_COMPILER_LAUNCHER}"
+    )
+  endif()
+  if(CCACHE_FOUND)
+    message(
+      STATUS
+        "  - ccache is available but not being used due to above conditions")
+  endif()
+endif()
 
 message("FINAL CMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}")
 

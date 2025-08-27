@@ -17,9 +17,8 @@
 #include "axiom/optimizer/Schema.h"
 #include "axiom/optimizer/Cost.h"
 #include "axiom/optimizer/DerivedTable.h"
-#include "axiom/optimizer/Plan.h"
+#include "axiom/optimizer/Optimization.h"
 #include "axiom/optimizer/PlanUtils.h"
-#include "axiom/optimizer/RelationOp.h"
 
 namespace facebook::velox::optimizer {
 
@@ -45,14 +44,15 @@ std::vector<ColumnCP> SchemaTable::toColumns(
   return columns;
 }
 
-ColumnGroupP SchemaTable::addIndex(
+ColumnGroupCP SchemaTable::addIndex(
     const char* name,
     int32_t numKeysUnique,
     int32_t numOrdering,
     const ColumnVector& keys,
     DistributionType distributionType,
     const ColumnVector& partition,
-    ColumnVector columns) {
+    ColumnVector _columns,
+    const connector::TableLayout* layout) {
   VELOX_CHECK_LE(numKeysUnique, keys.size());
 
   Distribution distribution;
@@ -64,8 +64,10 @@ ColumnGroupP SchemaTable::addIndex(
   appendToVector(distribution.orderKeys, keys);
   distribution.distributionType = distributionType;
   appendToVector(distribution.partition, partition);
+  VELOX_DCHECK_EQ(
+      distribution.orderKeys.size(), distribution.orderTypes.size());
   columnGroups.push_back(make<ColumnGroup>(
-      name, this, std::move(distribution), std::move(columns)));
+      name, this, std::move(distribution), std::move(_columns), layout));
   return columnGroups.back();
 }
 
@@ -214,13 +216,13 @@ bool SchemaTable::isUnique(CPSpan<Column> columns) const {
     }
   }
   for (auto index : columnGroups) {
-    auto nUnique = index->distribution().numKeysUnique;
+    auto nUnique = index->distribution.numKeysUnique;
     if (!nUnique) {
       continue;
     }
     bool unique = true;
     for (auto i = 0; i < nUnique; ++i) {
-      auto part = findColumnByName(columns, index->columns()[i]->name());
+      auto part = findColumnByName(columns, index->columns[i]->name());
       if (!part) {
         unique = false;
         break;
@@ -246,45 +248,42 @@ float combine(float card, int32_t ith, float otherCard) {
 }
 } // namespace
 
-IndexInfo SchemaTable::indexInfo(ColumnGroupP index, CPSpan<Column> columns)
+IndexInfo SchemaTable::indexInfo(ColumnGroupCP index, CPSpan<Column> _columns)
     const {
   IndexInfo info;
   info.index = index;
   info.scanCardinality = index->table->cardinality;
   info.joinCardinality = index->table->cardinality;
 
-  const auto numSorting = index->distribution().orderTypes.size();
-  const auto numUnique = index->distribution().numKeysUnique;
+  const auto& distribution = index->distribution;
+
+  const auto numSorting = distribution.orderTypes.size();
+  const auto numUnique = distribution.numKeysUnique;
 
   PlanObjectSet covered;
   for (auto i = 0; i < numSorting || i < numUnique; ++i) {
-    auto part = findColumnByName(
-        columns, index->distribution().orderKeys[i]->as<Column>()->name());
+    auto orderKey = distribution.orderKeys[i];
+    auto part = findColumnByName(_columns, orderKey->as<Column>()->name());
     if (!part) {
       break;
     }
 
     covered.add(part);
     if (i < numSorting) {
-      info.scanCardinality = combine(
-          info.scanCardinality,
-          i,
-          index->distribution().orderKeys[i]->value().cardinality);
+      info.scanCardinality =
+          combine(info.scanCardinality, i, orderKey->value().cardinality);
       info.lookupKeys.push_back(part);
       info.joinCardinality = info.scanCardinality;
     } else {
-      info.joinCardinality = combine(
-          info.joinCardinality,
-          i,
-          index->distribution().orderKeys[i]->value().cardinality);
+      info.joinCardinality =
+          combine(info.joinCardinality, i, orderKey->value().cardinality);
     }
     if (i == numUnique - 1) {
       info.unique = true;
     }
   }
 
-  for (auto i = 0; i < columns.size(); ++i) {
-    auto column = columns[i];
+  for (auto column : _columns) {
     if (column->type() != PlanType::kColumnExpr) {
       // Join key is an expression dependent on the table.
       covered.unionColumns(column->as<Expr>());
@@ -295,7 +294,7 @@ IndexInfo SchemaTable::indexInfo(ColumnGroupP index, CPSpan<Column> columns)
     if (covered.contains(column)) {
       continue;
     }
-    auto part = findColumnByName(index->columns(), column->name());
+    auto part = findColumnByName(index->columns, column->name());
     if (!part) {
       continue;
     }
@@ -372,7 +371,7 @@ IndexInfo joinCardinality(PlanObjectCP table, CPSpan<Column> keys) {
 }
 
 ColumnCP IndexInfo::schemaColumn(ColumnCP keyValue) const {
-  for (auto& column : index->columns()) {
+  for (auto& column : index->columns) {
     if (column->name() == keyValue->name()) {
       return column;
     }
@@ -427,8 +426,11 @@ Distribution Distribution::rename(
   }
   // Ordering survives if a prefix of the previous order continues to be
   // projected out.
-  result.orderKeys.resize(prefixSize(result.orderKeys, exprs));
+  const auto newOrderSize = prefixSize(result.orderKeys, exprs);
+  result.orderKeys.resize(newOrderSize);
+  result.orderTypes.resize(newOrderSize);
   replace(result.orderKeys, exprs, names);
+  VELOX_DCHECK_EQ(result.orderKeys.size(), result.orderTypes.size());
   return result;
 }
 

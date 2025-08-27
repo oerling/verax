@@ -72,6 +72,12 @@ LogicalPlanMatcherBuilder& LogicalPlanMatcherBuilder::tableScan() {
   return *this;
 }
 
+LogicalPlanMatcherBuilder& LogicalPlanMatcherBuilder::values() {
+  VELOX_USER_CHECK_NULL(matcher_);
+  matcher_ = std::make_shared<LogicalPlanMatcherImpl<ValuesNode>>();
+  return *this;
+}
+
 LogicalPlanMatcherBuilder& LogicalPlanMatcherBuilder::filter() {
   VELOX_USER_CHECK_NOT_NULL(matcher_);
   matcher_ = std::make_shared<LogicalPlanMatcherImpl<FilterNode>>(matcher_);
@@ -87,6 +93,16 @@ LogicalPlanMatcherBuilder& LogicalPlanMatcherBuilder::project() {
 LogicalPlanMatcherBuilder& LogicalPlanMatcherBuilder::aggregate() {
   VELOX_USER_CHECK_NOT_NULL(matcher_);
   matcher_ = std::make_shared<LogicalPlanMatcherImpl<AggregateNode>>(matcher_);
+  return *this;
+}
+
+LogicalPlanMatcherBuilder& LogicalPlanMatcherBuilder::unnest() {
+  if (matcher_ != nullptr) {
+    matcher_ = std::make_shared<LogicalPlanMatcherImpl<UnnestNode>>(matcher_);
+  } else {
+    matcher_ = std::make_shared<LogicalPlanMatcherImpl<UnnestNode>>();
+  }
+
   return *this;
 }
 

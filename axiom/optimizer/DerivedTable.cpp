@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "axiom/optimizer/DerivedTable.h"
+#include "axiom/optimizer/Optimization.h"
 #include "axiom/optimizer/Plan.h"
 #include "axiom/optimizer/PlanUtils.h"
 
@@ -21,7 +22,7 @@ namespace facebook::velox::optimizer {
 namespace lp = facebook::velox::logical_plan;
 
 namespace {
-/// If 'object' is an Expr, returns Expr::singleTable, else nullptr.
+// If 'object' is an Expr, returns Expr::singleTable, else nullptr.
 PlanObjectCP singleTable(PlanObjectCP object) {
   if (isExprType(object->type())) {
     return object->as<Expr>()->singleTable();
@@ -290,7 +291,7 @@ void DerivedTable::import(
     const std::vector<PlanObjectSet>& existences,
     float existsFanout) {
   tableSet = _tables;
-  _tables.forEach([&](auto table) { tables.push_back(table); });
+  tables = _tables.toObjects();
   for (auto join : super.joins) {
     if (_tables.contains(join->rightTable()) && join->leftTable() &&
         _tables.contains(join->leftTable())) {
@@ -305,8 +306,7 @@ void DerivedTable::import(
     // of these tables goes into its own derived table which is joined
     // with exists to the main table(s) in the 'this'.
     importedExistences.unionSet(exists);
-    PlanObjectVector existsTables;
-    exists.forEach([&](auto object) { existsTables.push_back(object); });
+    auto existsTables = exists.toObjects();
     auto existsJoin = makeExists(firstTable, exists);
     if (existsTables.size() > 1) {
       // There is a join on the right of exists. Needs its own dt.
@@ -359,9 +359,8 @@ JoinEdgeP importedDtJoin(
 
 bool isProjected(PlanObjectCP table, const PlanObjectSet& columns) {
   bool projected = false;
-  columns.forEach([&](PlanObjectCP column) {
-    projected |= column->as<Column>()->relation() == table;
-  });
+  columns.forEach<Column>(
+      [&](auto column) { projected |= column->relation() == table; });
   return projected;
 }
 
@@ -1002,9 +1001,7 @@ void DerivedTable::makeInitialPlan() {
   MemoKey key;
   key.firstTable = this;
   key.tables.add(this);
-  for (auto& column : columns) {
-    key.columns.add(column);
-  }
+  key.columns.unionObjects(columns);
 
   distributeConjuncts();
   addImpliedJoins();
@@ -1020,7 +1017,7 @@ void DerivedTable::makeInitialPlan() {
     state.targetColumns.unionColumns(expr);
   }
 
-  optimization->makeJoins(nullptr, state);
+  optimization->makeJoins(state);
 
   auto plan = state.plans.best()->op;
 
@@ -1043,9 +1040,7 @@ PlanP DerivedTable::bestInitialPlan() const {
   MemoKey key;
   key.firstTable = this;
   key.tables.add(this);
-  for (auto& column : columns) {
-    key.columns.add(column);
-  }
+  key.columns.unionObjects(columns);
 
   auto& memo = queryCtx()->optimization()->memo();
   auto it = memo.find(key);

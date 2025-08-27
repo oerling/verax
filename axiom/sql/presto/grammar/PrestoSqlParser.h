@@ -14,13 +14,11 @@
  * limitations under the License.
  */
 
-// Generated from PrestoSql.g4 by ANTLR 4.9.3
+// Generated from PrestoSql.g4 by ANTLR 4.13.2
 
 #pragma once
 
 #include "antlr4-runtime.h"
-
-namespace axiom::sql::presto {
 
 class PrestoSqlParser : public antlr4::Parser {
  public:
@@ -379,17 +377,22 @@ class PrestoSqlParser : public antlr4::Parser {
   };
 
   explicit PrestoSqlParser(antlr4::TokenStream* input);
-  ~PrestoSqlParser();
 
-  virtual std::string getGrammarFileName() const override;
-  virtual const antlr4::atn::ATN& getATN() const override {
-    return _atn;
-  }
-  virtual const std::vector<std::string>& getTokenNames() const override {
-    return _tokenNames;
-  } // deprecated: use vocabulary instead.
-  virtual const std::vector<std::string>& getRuleNames() const override;
-  virtual antlr4::dfa::Vocabulary& getVocabulary() const override;
+  PrestoSqlParser(
+      antlr4::TokenStream* input,
+      const antlr4::atn::ParserATNSimulatorOptions& options);
+
+  ~PrestoSqlParser() override;
+
+  std::string getGrammarFileName() const override;
+
+  const antlr4::atn::ATN& getATN() const override;
+
+  const std::vector<std::string>& getRuleNames() const override;
+
+  const antlr4::dfa::Vocabulary& getVocabulary() const override;
+
+  antlr4::atn::SerializedATNView getSerializedATN() const override;
 
   class SingleStatementContext;
   class StandaloneExpressionContext;
@@ -493,8 +496,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   SingleStatementContext* singleStatement();
@@ -511,8 +513,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   StandaloneExpressionContext* standaloneExpression();
@@ -529,8 +530,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   StandaloneRoutineBodyContext* standaloneRoutineBody();
@@ -548,7 +548,7 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class ExplainContext : public StatementContext {
    public:
-    explicit ExplainContext(StatementContext* ctx);
+    ExplainContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* EXPLAIN();
     StatementContext* statement();
@@ -559,13 +559,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class PrepareContext : public StatementContext {
    public:
-    explicit PrepareContext(StatementContext* ctx);
+    PrepareContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* PREPARE();
     IdentifierContext* identifier();
@@ -574,13 +573,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class DropMaterializedViewContext : public StatementContext {
    public:
-    explicit DropMaterializedViewContext(StatementContext* ctx);
+    DropMaterializedViewContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* DROP();
     antlr4::tree::TerminalNode* MATERIALIZED();
@@ -591,13 +589,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class UseContext : public StatementContext {
    public:
-    explicit UseContext(StatementContext* ctx);
+    UseContext(StatementContext* ctx);
 
     PrestoSqlParser::IdentifierContext* schema = nullptr;
     PrestoSqlParser::IdentifierContext* catalog = nullptr;
@@ -607,13 +604,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class AddConstraintContext : public StatementContext {
    public:
-    explicit AddConstraintContext(StatementContext* ctx);
+    AddConstraintContext(StatementContext* ctx);
 
     PrestoSqlParser::QualifiedNameContext* tableName = nullptr;
     antlr4::tree::TerminalNode* ALTER();
@@ -626,13 +622,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class DeallocateContext : public StatementContext {
    public:
-    explicit DeallocateContext(StatementContext* ctx);
+    DeallocateContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* DEALLOCATE();
     antlr4::tree::TerminalNode* PREPARE();
@@ -640,13 +635,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class RenameTableContext : public StatementContext {
    public:
-    explicit RenameTableContext(StatementContext* ctx);
+    RenameTableContext(StatementContext* ctx);
 
     PrestoSqlParser::QualifiedNameContext* from = nullptr;
     PrestoSqlParser::QualifiedNameContext* to = nullptr;
@@ -661,26 +655,24 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class CommitContext : public StatementContext {
    public:
-    explicit CommitContext(StatementContext* ctx);
+    CommitContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* COMMIT();
     antlr4::tree::TerminalNode* WORK();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class CreateRoleContext : public StatementContext {
    public:
-    explicit CreateRoleContext(StatementContext* ctx);
+    CreateRoleContext(StatementContext* ctx);
 
     PrestoSqlParser::IdentifierContext* name = nullptr;
     antlr4::tree::TerminalNode* CREATE();
@@ -692,13 +684,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ShowCreateFunctionContext : public StatementContext {
    public:
-    explicit ShowCreateFunctionContext(StatementContext* ctx);
+    ShowCreateFunctionContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* SHOW();
     antlr4::tree::TerminalNode* CREATE();
@@ -708,13 +699,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class DropColumnContext : public StatementContext {
    public:
-    explicit DropColumnContext(StatementContext* ctx);
+    DropColumnContext(StatementContext* ctx);
 
     PrestoSqlParser::QualifiedNameContext* tableName = nullptr;
     PrestoSqlParser::QualifiedNameContext* column = nullptr;
@@ -731,13 +721,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class DropViewContext : public StatementContext {
    public:
-    explicit DropViewContext(StatementContext* ctx);
+    DropViewContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* DROP();
     antlr4::tree::TerminalNode* VIEW();
@@ -747,13 +736,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ShowTablesContext : public StatementContext {
    public:
-    explicit ShowTablesContext(StatementContext* ctx);
+    ShowTablesContext(StatementContext* ctx);
 
     PrestoSqlParser::StringContext* pattern = nullptr;
     PrestoSqlParser::StringContext* escape = nullptr;
@@ -769,13 +757,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ShowCatalogsContext : public StatementContext {
    public:
-    explicit ShowCatalogsContext(StatementContext* ctx);
+    ShowCatalogsContext(StatementContext* ctx);
 
     PrestoSqlParser::StringContext* pattern = nullptr;
     PrestoSqlParser::StringContext* escape = nullptr;
@@ -788,13 +775,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ShowRolesContext : public StatementContext {
    public:
-    explicit ShowRolesContext(StatementContext* ctx);
+    ShowRolesContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* SHOW();
     antlr4::tree::TerminalNode* ROLES();
@@ -805,13 +791,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class RenameColumnContext : public StatementContext {
    public:
-    explicit RenameColumnContext(StatementContext* ctx);
+    RenameColumnContext(StatementContext* ctx);
 
     PrestoSqlParser::QualifiedNameContext* tableName = nullptr;
     PrestoSqlParser::IdentifierContext* from = nullptr;
@@ -831,13 +816,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class RevokeRolesContext : public StatementContext {
    public:
-    explicit RevokeRolesContext(StatementContext* ctx);
+    RevokeRolesContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* REVOKE();
     RolesContext* roles();
@@ -853,13 +837,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ShowCreateTableContext : public StatementContext {
    public:
-    explicit ShowCreateTableContext(StatementContext* ctx);
+    ShowCreateTableContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* SHOW();
     antlr4::tree::TerminalNode* CREATE();
@@ -868,13 +851,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ShowColumnsContext : public StatementContext {
    public:
-    explicit ShowColumnsContext(StatementContext* ctx);
+    ShowColumnsContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* SHOW();
     antlr4::tree::TerminalNode* COLUMNS();
@@ -886,13 +868,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ShowRoleGrantsContext : public StatementContext {
    public:
-    explicit ShowRoleGrantsContext(StatementContext* ctx);
+    ShowRoleGrantsContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* SHOW();
     antlr4::tree::TerminalNode* ROLE();
@@ -903,13 +884,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class AddColumnContext : public StatementContext {
    public:
-    explicit AddColumnContext(StatementContext* ctx);
+    AddColumnContext(StatementContext* ctx);
 
     PrestoSqlParser::QualifiedNameContext* tableName = nullptr;
     PrestoSqlParser::ColumnDefinitionContext* column = nullptr;
@@ -927,13 +907,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ResetSessionContext : public StatementContext {
    public:
-    explicit ResetSessionContext(StatementContext* ctx);
+    ResetSessionContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* RESET();
     antlr4::tree::TerminalNode* SESSION();
@@ -941,13 +920,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class DropConstraintContext : public StatementContext {
    public:
-    explicit DropConstraintContext(StatementContext* ctx);
+    DropConstraintContext(StatementContext* ctx);
 
     PrestoSqlParser::QualifiedNameContext* tableName = nullptr;
     PrestoSqlParser::IdentifierContext* name = nullptr;
@@ -964,13 +942,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class InsertIntoContext : public StatementContext {
    public:
-    explicit InsertIntoContext(StatementContext* ctx);
+    InsertIntoContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* INSERT();
     antlr4::tree::TerminalNode* INTO();
@@ -980,13 +957,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ShowSessionContext : public StatementContext {
    public:
-    explicit ShowSessionContext(StatementContext* ctx);
+    ShowSessionContext(StatementContext* ctx);
 
     PrestoSqlParser::StringContext* pattern = nullptr;
     PrestoSqlParser::StringContext* escape = nullptr;
@@ -999,13 +975,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class CreateSchemaContext : public StatementContext {
    public:
-    explicit CreateSchemaContext(StatementContext* ctx);
+    CreateSchemaContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* CREATE();
     antlr4::tree::TerminalNode* SCHEMA();
@@ -1018,13 +993,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ExecuteContext : public StatementContext {
    public:
-    explicit ExecuteContext(StatementContext* ctx);
+    ExecuteContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* EXECUTE();
     IdentifierContext* identifier();
@@ -1034,13 +1008,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class RenameSchemaContext : public StatementContext {
    public:
-    explicit RenameSchemaContext(StatementContext* ctx);
+    RenameSchemaContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* ALTER();
     antlr4::tree::TerminalNode* SCHEMA();
@@ -1051,13 +1024,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class DropRoleContext : public StatementContext {
    public:
-    explicit DropRoleContext(StatementContext* ctx);
+    DropRoleContext(StatementContext* ctx);
 
     PrestoSqlParser::IdentifierContext* name = nullptr;
     antlr4::tree::TerminalNode* DROP();
@@ -1066,13 +1038,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class AnalyzeContext : public StatementContext {
    public:
-    explicit AnalyzeContext(StatementContext* ctx);
+    AnalyzeContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* ANALYZE();
     QualifiedNameContext* qualifiedName();
@@ -1081,13 +1052,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class SetRoleContext : public StatementContext {
    public:
-    explicit SetRoleContext(StatementContext* ctx);
+    SetRoleContext(StatementContext* ctx);
 
     PrestoSqlParser::IdentifierContext* role = nullptr;
     antlr4::tree::TerminalNode* SET();
@@ -1098,13 +1068,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class CreateFunctionContext : public StatementContext {
    public:
-    explicit CreateFunctionContext(StatementContext* ctx);
+    CreateFunctionContext(StatementContext* ctx);
 
     PrestoSqlParser::QualifiedNameContext* functionName = nullptr;
     PrestoSqlParser::TypeContext* returnType = nullptr;
@@ -1125,13 +1094,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ShowGrantsContext : public StatementContext {
    public:
-    explicit ShowGrantsContext(StatementContext* ctx);
+    ShowGrantsContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* SHOW();
     antlr4::tree::TerminalNode* GRANTS();
@@ -1141,13 +1109,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class DropSchemaContext : public StatementContext {
    public:
-    explicit DropSchemaContext(StatementContext* ctx);
+    DropSchemaContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* DROP();
     antlr4::tree::TerminalNode* SCHEMA();
@@ -1159,13 +1126,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ShowCreateViewContext : public StatementContext {
    public:
-    explicit ShowCreateViewContext(StatementContext* ctx);
+    ShowCreateViewContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* SHOW();
     antlr4::tree::TerminalNode* CREATE();
@@ -1174,13 +1140,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class CreateTableContext : public StatementContext {
    public:
-    explicit CreateTableContext(StatementContext* ctx);
+    CreateTableContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* CREATE();
     antlr4::tree::TerminalNode* TABLE();
@@ -1197,13 +1162,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class StartTransactionContext : public StatementContext {
    public:
-    explicit StartTransactionContext(StatementContext* ctx);
+    StartTransactionContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* START();
     antlr4::tree::TerminalNode* TRANSACTION();
@@ -1212,13 +1176,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class CreateTableAsSelectContext : public StatementContext {
    public:
-    explicit CreateTableAsSelectContext(StatementContext* ctx);
+    CreateTableAsSelectContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* CREATE();
     antlr4::tree::TerminalNode* TABLE();
@@ -1239,13 +1202,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ShowStatsContext : public StatementContext {
    public:
-    explicit ShowStatsContext(StatementContext* ctx);
+    ShowStatsContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* SHOW();
     antlr4::tree::TerminalNode* STATS();
@@ -1254,13 +1216,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class DropFunctionContext : public StatementContext {
    public:
-    explicit DropFunctionContext(StatementContext* ctx);
+    DropFunctionContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* DROP();
     antlr4::tree::TerminalNode* FUNCTION();
@@ -1272,13 +1233,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class RevokeContext : public StatementContext {
    public:
-    explicit RevokeContext(StatementContext* ctx);
+    RevokeContext(StatementContext* ctx);
 
     PrestoSqlParser::PrincipalContext* grantee = nullptr;
     antlr4::tree::TerminalNode* REVOKE();
@@ -1297,13 +1257,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class UpdateContext : public StatementContext {
    public:
-    explicit UpdateContext(StatementContext* ctx);
+    UpdateContext(StatementContext* ctx);
 
     PrestoSqlParser::BooleanExpressionContext* where = nullptr;
     antlr4::tree::TerminalNode* UPDATE();
@@ -1316,13 +1275,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class CreateTypeContext : public StatementContext {
    public:
-    explicit CreateTypeContext(StatementContext* ctx);
+    CreateTypeContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* CREATE();
     antlr4::tree::TerminalNode* TYPE();
@@ -1334,13 +1292,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class DeleteContext : public StatementContext {
    public:
-    explicit DeleteContext(StatementContext* ctx);
+    DeleteContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* DELETE();
     antlr4::tree::TerminalNode* FROM();
@@ -1350,13 +1307,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class DescribeInputContext : public StatementContext {
    public:
-    explicit DescribeInputContext(StatementContext* ctx);
+    DescribeInputContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* DESCRIBE();
     antlr4::tree::TerminalNode* INPUT();
@@ -1364,13 +1320,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ShowStatsForQueryContext : public StatementContext {
    public:
-    explicit ShowStatsForQueryContext(StatementContext* ctx);
+    ShowStatsForQueryContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* SHOW();
     antlr4::tree::TerminalNode* STATS();
@@ -1379,25 +1334,23 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class StatementDefaultContext : public StatementContext {
    public:
-    explicit StatementDefaultContext(StatementContext* ctx);
+    StatementDefaultContext(StatementContext* ctx);
 
     QueryContext* query();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class TruncateTableContext : public StatementContext {
    public:
-    explicit TruncateTableContext(StatementContext* ctx);
+    TruncateTableContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* TRUNCATE();
     antlr4::tree::TerminalNode* TABLE();
@@ -1405,13 +1358,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class AlterColumnSetNotNullContext : public StatementContext {
    public:
-    explicit AlterColumnSetNotNullContext(StatementContext* ctx);
+    AlterColumnSetNotNullContext(StatementContext* ctx);
 
     PrestoSqlParser::QualifiedNameContext* tableName = nullptr;
     PrestoSqlParser::IdentifierContext* column = nullptr;
@@ -1429,13 +1381,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class CreateMaterializedViewContext : public StatementContext {
    public:
-    explicit CreateMaterializedViewContext(StatementContext* ctx);
+    CreateMaterializedViewContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* CREATE();
     antlr4::tree::TerminalNode* MATERIALIZED();
@@ -1453,13 +1404,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class AlterFunctionContext : public StatementContext {
    public:
-    explicit AlterFunctionContext(StatementContext* ctx);
+    AlterFunctionContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* ALTER();
     antlr4::tree::TerminalNode* FUNCTION();
@@ -1469,13 +1419,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class SetSessionContext : public StatementContext {
    public:
-    explicit SetSessionContext(StatementContext* ctx);
+    SetSessionContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* SET();
     antlr4::tree::TerminalNode* SESSION();
@@ -1485,13 +1434,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class CreateViewContext : public StatementContext {
    public:
-    explicit CreateViewContext(StatementContext* ctx);
+    CreateViewContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* CREATE();
     antlr4::tree::TerminalNode* VIEW();
@@ -1506,13 +1454,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ShowSchemasContext : public StatementContext {
    public:
-    explicit ShowSchemasContext(StatementContext* ctx);
+    ShowSchemasContext(StatementContext* ctx);
 
     PrestoSqlParser::StringContext* pattern = nullptr;
     PrestoSqlParser::StringContext* escape = nullptr;
@@ -1528,13 +1475,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class DropTableContext : public StatementContext {
    public:
-    explicit DropTableContext(StatementContext* ctx);
+    DropTableContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* DROP();
     antlr4::tree::TerminalNode* TABLE();
@@ -1544,26 +1490,24 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class RollbackContext : public StatementContext {
    public:
-    explicit RollbackContext(StatementContext* ctx);
+    RollbackContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* ROLLBACK();
     antlr4::tree::TerminalNode* WORK();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class RenameViewContext : public StatementContext {
    public:
-    explicit RenameViewContext(StatementContext* ctx);
+    RenameViewContext(StatementContext* ctx);
 
     PrestoSqlParser::QualifiedNameContext* from = nullptr;
     PrestoSqlParser::QualifiedNameContext* to = nullptr;
@@ -1578,13 +1522,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class AlterColumnDropNotNullContext : public StatementContext {
    public:
-    explicit AlterColumnDropNotNullContext(StatementContext* ctx);
+    AlterColumnDropNotNullContext(StatementContext* ctx);
 
     PrestoSqlParser::QualifiedNameContext* tableName = nullptr;
     PrestoSqlParser::IdentifierContext* column = nullptr;
@@ -1602,13 +1545,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class GrantRolesContext : public StatementContext {
    public:
-    explicit GrantRolesContext(StatementContext* ctx);
+    GrantRolesContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* GRANT();
     RolesContext* roles();
@@ -1624,13 +1566,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class CallContext : public StatementContext {
    public:
-    explicit CallContext(StatementContext* ctx);
+    CallContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* CALL();
     QualifiedNameContext* qualifiedName();
@@ -1639,13 +1580,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class RefreshMaterializedViewContext : public StatementContext {
    public:
-    explicit RefreshMaterializedViewContext(StatementContext* ctx);
+    RefreshMaterializedViewContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* REFRESH();
     antlr4::tree::TerminalNode* MATERIALIZED();
@@ -1656,13 +1596,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ShowCreateMaterializedViewContext : public StatementContext {
    public:
-    explicit ShowCreateMaterializedViewContext(StatementContext* ctx);
+    ShowCreateMaterializedViewContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* SHOW();
     antlr4::tree::TerminalNode* CREATE();
@@ -1672,13 +1611,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ShowFunctionsContext : public StatementContext {
    public:
-    explicit ShowFunctionsContext(StatementContext* ctx);
+    ShowFunctionsContext(StatementContext* ctx);
 
     PrestoSqlParser::StringContext* pattern = nullptr;
     PrestoSqlParser::StringContext* escape = nullptr;
@@ -1691,13 +1629,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class DescribeOutputContext : public StatementContext {
    public:
-    explicit DescribeOutputContext(StatementContext* ctx);
+    DescribeOutputContext(StatementContext* ctx);
 
     antlr4::tree::TerminalNode* DESCRIBE();
     antlr4::tree::TerminalNode* OUTPUT();
@@ -1705,13 +1642,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class GrantContext : public StatementContext {
    public:
-    explicit GrantContext(StatementContext* ctx);
+    GrantContext(StatementContext* ctx);
 
     PrestoSqlParser::PrincipalContext* grantee = nullptr;
     std::vector<antlr4::tree::TerminalNode*> GRANT();
@@ -1730,13 +1666,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class SetTablePropertiesContext : public StatementContext {
    public:
-    explicit SetTablePropertiesContext(StatementContext* ctx);
+    SetTablePropertiesContext(StatementContext* ctx);
 
     PrestoSqlParser::QualifiedNameContext* tableName = nullptr;
     antlr4::tree::TerminalNode* ALTER();
@@ -1750,8 +1685,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   StatementContext* statement();
@@ -1766,8 +1700,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   QueryContext* query();
@@ -1784,8 +1717,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   WithContext* with();
@@ -1803,8 +1735,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   TableElementContext* tableElement();
@@ -1827,8 +1758,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   ColumnDefinitionContext* columnDefinition();
@@ -1847,8 +1777,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   LikeClauseContext* likeClause();
@@ -1863,8 +1792,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   PropertiesContext* properties();
@@ -1880,8 +1808,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   PropertyContext* property();
@@ -1898,8 +1825,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   SqlParameterDeclarationContext* sqlParameterDeclaration();
@@ -1916,8 +1842,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   RoutineCharacteristicsContext* routineCharacteristics();
@@ -1936,8 +1861,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   RoutineCharacteristicContext* routineCharacteristic();
@@ -1955,8 +1879,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   AlterRoutineCharacteristicsContext* alterRoutineCharacteristics();
@@ -1972,8 +1895,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   AlterRoutineCharacteristicContext* alterRoutineCharacteristic();
@@ -1988,8 +1910,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   RoutineBodyContext* routineBody();
@@ -2006,8 +1927,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   ReturnStatementContext* returnStatement();
@@ -2025,8 +1945,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   ExternalBodyReferenceContext* externalBodyReference();
@@ -2041,8 +1960,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   LanguageContext* language();
@@ -2057,8 +1975,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   DeterminismContext* determinism();
@@ -2079,8 +1996,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   NullCallClauseContext* nullCallClause();
@@ -2096,8 +2012,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   ExternalRoutineNameContext* externalRoutineName();
@@ -2129,8 +2044,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   QueryNoWithContext* queryNoWith();
@@ -2148,19 +2062,18 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class QueryTermDefaultContext : public QueryTermContext {
    public:
-    explicit QueryTermDefaultContext(QueryTermContext* ctx);
+    QueryTermDefaultContext(QueryTermContext* ctx);
 
     QueryPrimaryContext* queryPrimary();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class SetOperationContext : public QueryTermContext {
    public:
-    explicit SetOperationContext(QueryTermContext* ctx);
+    SetOperationContext(QueryTermContext* ctx);
 
     PrestoSqlParser::QueryTermContext* left = nullptr;
     antlr4::Token* op = nullptr;
@@ -2174,8 +2087,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   QueryTermContext* queryTerm();
@@ -2195,44 +2107,41 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class SubqueryContext : public QueryPrimaryContext {
    public:
-    explicit SubqueryContext(QueryPrimaryContext* ctx);
+    SubqueryContext(QueryPrimaryContext* ctx);
 
     QueryNoWithContext* queryNoWith();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class QueryPrimaryDefaultContext : public QueryPrimaryContext {
    public:
-    explicit QueryPrimaryDefaultContext(QueryPrimaryContext* ctx);
+    QueryPrimaryDefaultContext(QueryPrimaryContext* ctx);
 
     QuerySpecificationContext* querySpecification();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class TableContext : public QueryPrimaryContext {
    public:
-    explicit TableContext(QueryPrimaryContext* ctx);
+    TableContext(QueryPrimaryContext* ctx);
 
     antlr4::tree::TerminalNode* TABLE();
     QualifiedNameContext* qualifiedName();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class InlineTableContext : public QueryPrimaryContext {
    public:
-    explicit InlineTableContext(QueryPrimaryContext* ctx);
+    InlineTableContext(QueryPrimaryContext* ctx);
 
     antlr4::tree::TerminalNode* VALUES();
     std::vector<ExpressionContext*> expression();
@@ -2240,8 +2149,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   QueryPrimaryContext* queryPrimary();
@@ -2262,8 +2170,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   SortItemContext* sortItem();
@@ -2294,8 +2201,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   QuerySpecificationContext* querySpecification();
@@ -2311,8 +2217,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   GroupByContext* groupBy();
@@ -2332,7 +2237,7 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class MultipleGroupingSetsContext : public GroupingElementContext {
    public:
-    explicit MultipleGroupingSetsContext(GroupingElementContext* ctx);
+    MultipleGroupingSetsContext(GroupingElementContext* ctx);
 
     antlr4::tree::TerminalNode* GROUPING();
     antlr4::tree::TerminalNode* SETS();
@@ -2341,25 +2246,23 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class SingleGroupingSetContext : public GroupingElementContext {
    public:
-    explicit SingleGroupingSetContext(GroupingElementContext* ctx);
+    SingleGroupingSetContext(GroupingElementContext* ctx);
 
     GroupingSetContext* groupingSet();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class CubeContext : public GroupingElementContext {
    public:
-    explicit CubeContext(GroupingElementContext* ctx);
+    CubeContext(GroupingElementContext* ctx);
 
     antlr4::tree::TerminalNode* CUBE();
     std::vector<ExpressionContext*> expression();
@@ -2367,13 +2270,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class RollupContext : public GroupingElementContext {
    public:
-    explicit RollupContext(GroupingElementContext* ctx);
+    RollupContext(GroupingElementContext* ctx);
 
     antlr4::tree::TerminalNode* ROLLUP();
     std::vector<ExpressionContext*> expression();
@@ -2381,8 +2283,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   GroupingElementContext* groupingElement();
@@ -2397,8 +2298,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   GroupingSetContext* groupingSet();
@@ -2416,8 +2316,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   NamedQueryContext* namedQuery();
@@ -2434,8 +2333,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   SetQuantifierContext* setQuantifier();
@@ -2453,20 +2351,19 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class SelectAllContext : public SelectItemContext {
    public:
-    explicit SelectAllContext(SelectItemContext* ctx);
+    SelectAllContext(SelectItemContext* ctx);
 
     QualifiedNameContext* qualifiedName();
     antlr4::tree::TerminalNode* ASTERISK();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class SelectSingleContext : public SelectItemContext {
    public:
-    explicit SelectSingleContext(SelectItemContext* ctx);
+    SelectSingleContext(SelectItemContext* ctx);
 
     ExpressionContext* expression();
     IdentifierContext* identifier();
@@ -2474,8 +2371,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   SelectItemContext* selectItem();
@@ -2493,19 +2389,18 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class RelationDefaultContext : public RelationContext {
    public:
-    explicit RelationDefaultContext(RelationContext* ctx);
+    RelationDefaultContext(RelationContext* ctx);
 
     SampledRelationContext* sampledRelation();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class JoinRelationContext : public RelationContext {
    public:
-    explicit JoinRelationContext(RelationContext* ctx);
+    JoinRelationContext(RelationContext* ctx);
 
     PrestoSqlParser::RelationContext* left = nullptr;
     PrestoSqlParser::SampledRelationContext* right = nullptr;
@@ -2521,8 +2416,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   RelationContext* relation();
@@ -2540,8 +2434,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   JoinTypeContext* joinType();
@@ -2561,8 +2454,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   JoinCriteriaContext* joinCriteria();
@@ -2582,8 +2474,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   SampledRelationContext* sampledRelation();
@@ -2598,8 +2489,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   SampleTypeContext* sampleType();
@@ -2618,8 +2508,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   AliasedRelationContext* aliasedRelation();
@@ -2636,8 +2525,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   ColumnAliasesContext* columnAliases();
@@ -2657,31 +2545,29 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class SubqueryRelationContext : public RelationPrimaryContext {
    public:
-    explicit SubqueryRelationContext(RelationPrimaryContext* ctx);
+    SubqueryRelationContext(RelationPrimaryContext* ctx);
 
     QueryContext* query();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ParenthesizedRelationContext : public RelationPrimaryContext {
    public:
-    explicit ParenthesizedRelationContext(RelationPrimaryContext* ctx);
+    ParenthesizedRelationContext(RelationPrimaryContext* ctx);
 
     RelationContext* relation();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class UnnestContext : public RelationPrimaryContext {
    public:
-    explicit UnnestContext(RelationPrimaryContext* ctx);
+    UnnestContext(RelationPrimaryContext* ctx);
 
     antlr4::tree::TerminalNode* UNNEST();
     std::vector<ExpressionContext*> expression();
@@ -2691,34 +2577,31 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class LateralContext : public RelationPrimaryContext {
    public:
-    explicit LateralContext(RelationPrimaryContext* ctx);
+    LateralContext(RelationPrimaryContext* ctx);
 
     antlr4::tree::TerminalNode* LATERAL();
     QueryContext* query();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class TableNameContext : public RelationPrimaryContext {
    public:
-    explicit TableNameContext(RelationPrimaryContext* ctx);
+    TableNameContext(RelationPrimaryContext* ctx);
 
     QualifiedNameContext* qualifiedName();
     TableVersionExpressionContext* tableVersionExpression();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   RelationPrimaryContext* relationPrimary();
@@ -2732,8 +2615,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   ExpressionContext* expression();
@@ -2753,20 +2635,19 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class LogicalNotContext : public BooleanExpressionContext {
    public:
-    explicit LogicalNotContext(BooleanExpressionContext* ctx);
+    LogicalNotContext(BooleanExpressionContext* ctx);
 
     antlr4::tree::TerminalNode* NOT();
     BooleanExpressionContext* booleanExpression();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class PredicatedContext : public BooleanExpressionContext {
    public:
-    explicit PredicatedContext(BooleanExpressionContext* ctx);
+    PredicatedContext(BooleanExpressionContext* ctx);
 
     PrestoSqlParser::ValueExpressionContext* valueExpressionContext = nullptr;
     ValueExpressionContext* valueExpression();
@@ -2774,13 +2655,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class LogicalBinaryContext : public BooleanExpressionContext {
    public:
-    explicit LogicalBinaryContext(BooleanExpressionContext* ctx);
+    LogicalBinaryContext(BooleanExpressionContext* ctx);
 
     PrestoSqlParser::BooleanExpressionContext* left = nullptr;
     antlr4::Token* op = nullptr;
@@ -2792,15 +2672,14 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   BooleanExpressionContext* booleanExpression();
   BooleanExpressionContext* booleanExpression(int precedence);
   class PredicateContext : public antlr4::ParserRuleContext {
    public:
-    antlr4::ParserRuleContext* value{};
+    antlr4::ParserRuleContext* value;
     PredicateContext(antlr4::ParserRuleContext* parent, size_t invokingState);
     PredicateContext(
         antlr4::ParserRuleContext* parent,
@@ -2816,7 +2695,7 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class ComparisonContext : public PredicateContext {
    public:
-    explicit ComparisonContext(PredicateContext* ctx);
+    ComparisonContext(PredicateContext* ctx);
 
     PrestoSqlParser::ValueExpressionContext* right = nullptr;
     ComparisonOperatorContext* comparisonOperator();
@@ -2824,13 +2703,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class LikeContext : public PredicateContext {
    public:
-    explicit LikeContext(PredicateContext* ctx);
+    LikeContext(PredicateContext* ctx);
 
     PrestoSqlParser::ValueExpressionContext* pattern = nullptr;
     PrestoSqlParser::ValueExpressionContext* escape = nullptr;
@@ -2842,13 +2720,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class InSubqueryContext : public PredicateContext {
    public:
-    explicit InSubqueryContext(PredicateContext* ctx);
+    InSubqueryContext(PredicateContext* ctx);
 
     antlr4::tree::TerminalNode* IN();
     QueryContext* query();
@@ -2856,13 +2733,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class DistinctFromContext : public PredicateContext {
    public:
-    explicit DistinctFromContext(PredicateContext* ctx);
+    DistinctFromContext(PredicateContext* ctx);
 
     PrestoSqlParser::ValueExpressionContext* right = nullptr;
     antlr4::tree::TerminalNode* IS();
@@ -2873,13 +2749,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class InListContext : public PredicateContext {
    public:
-    explicit InListContext(PredicateContext* ctx);
+    InListContext(PredicateContext* ctx);
 
     antlr4::tree::TerminalNode* IN();
     std::vector<ExpressionContext*> expression();
@@ -2888,13 +2763,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class NullPredicateContext : public PredicateContext {
    public:
-    explicit NullPredicateContext(PredicateContext* ctx);
+    NullPredicateContext(PredicateContext* ctx);
 
     antlr4::tree::TerminalNode* IS();
     antlr4::tree::TerminalNode* NULL_LITERAL();
@@ -2902,13 +2776,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class BetweenContext : public PredicateContext {
    public:
-    explicit BetweenContext(PredicateContext* ctx);
+    BetweenContext(PredicateContext* ctx);
 
     PrestoSqlParser::ValueExpressionContext* lower = nullptr;
     PrestoSqlParser::ValueExpressionContext* upper = nullptr;
@@ -2920,13 +2793,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class QuantifiedComparisonContext : public PredicateContext {
    public:
-    explicit QuantifiedComparisonContext(PredicateContext* ctx);
+    QuantifiedComparisonContext(PredicateContext* ctx);
 
     ComparisonOperatorContext* comparisonOperator();
     ComparisonQuantifierContext* comparisonQuantifier();
@@ -2934,8 +2806,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   PredicateContext* predicate(antlr4::ParserRuleContext* value);
@@ -2955,19 +2826,18 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class ValueExpressionDefaultContext : public ValueExpressionContext {
    public:
-    explicit ValueExpressionDefaultContext(ValueExpressionContext* ctx);
+    ValueExpressionDefaultContext(ValueExpressionContext* ctx);
 
     PrimaryExpressionContext* primaryExpression();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ConcatenationContext : public ValueExpressionContext {
    public:
-    explicit ConcatenationContext(ValueExpressionContext* ctx);
+    ConcatenationContext(ValueExpressionContext* ctx);
 
     PrestoSqlParser::ValueExpressionContext* left = nullptr;
     PrestoSqlParser::ValueExpressionContext* right = nullptr;
@@ -2977,13 +2847,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ArithmeticBinaryContext : public ValueExpressionContext {
    public:
-    explicit ArithmeticBinaryContext(ValueExpressionContext* ctx);
+    ArithmeticBinaryContext(ValueExpressionContext* ctx);
 
     PrestoSqlParser::ValueExpressionContext* left = nullptr;
     antlr4::Token* op = nullptr;
@@ -2998,13 +2867,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ArithmeticUnaryContext : public ValueExpressionContext {
    public:
-    explicit ArithmeticUnaryContext(ValueExpressionContext* ctx);
+    ArithmeticUnaryContext(ValueExpressionContext* ctx);
 
     antlr4::Token* op = nullptr;
     ValueExpressionContext* valueExpression();
@@ -3013,13 +2881,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class AtTimeZoneContext : public ValueExpressionContext {
    public:
-    explicit AtTimeZoneContext(ValueExpressionContext* ctx);
+    AtTimeZoneContext(ValueExpressionContext* ctx);
 
     ValueExpressionContext* valueExpression();
     antlr4::tree::TerminalNode* AT();
@@ -3027,8 +2894,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   ValueExpressionContext* valueExpression();
@@ -3048,7 +2914,7 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class DereferenceContext : public PrimaryExpressionContext {
    public:
-    explicit DereferenceContext(PrimaryExpressionContext* ctx);
+    DereferenceContext(PrimaryExpressionContext* ctx);
 
     PrestoSqlParser::PrimaryExpressionContext* base = nullptr;
     PrestoSqlParser::IdentifierContext* fieldName = nullptr;
@@ -3057,13 +2923,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class TypeConstructorContext : public PrimaryExpressionContext {
    public:
-    explicit TypeConstructorContext(PrimaryExpressionContext* ctx);
+    TypeConstructorContext(PrimaryExpressionContext* ctx);
 
     TypeContext* type();
     StringContext* string();
@@ -3071,13 +2936,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class SpecialDateTimeFunctionContext : public PrimaryExpressionContext {
    public:
-    explicit SpecialDateTimeFunctionContext(PrimaryExpressionContext* ctx);
+    SpecialDateTimeFunctionContext(PrimaryExpressionContext* ctx);
 
     antlr4::Token* name = nullptr;
     antlr4::Token* precision = nullptr;
@@ -3090,13 +2954,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class SubstringContext : public PrimaryExpressionContext {
    public:
-    explicit SubstringContext(PrimaryExpressionContext* ctx);
+    SubstringContext(PrimaryExpressionContext* ctx);
 
     antlr4::tree::TerminalNode* SUBSTRING();
     std::vector<ValueExpressionContext*> valueExpression();
@@ -3106,13 +2969,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class CastContext : public PrimaryExpressionContext {
    public:
-    explicit CastContext(PrimaryExpressionContext* ctx);
+    CastContext(PrimaryExpressionContext* ctx);
 
     antlr4::tree::TerminalNode* CAST();
     ExpressionContext* expression();
@@ -3122,13 +2984,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class LambdaContext : public PrimaryExpressionContext {
    public:
-    explicit LambdaContext(PrimaryExpressionContext* ctx);
+    LambdaContext(PrimaryExpressionContext* ctx);
 
     std::vector<IdentifierContext*> identifier();
     IdentifierContext* identifier(size_t i);
@@ -3136,36 +2997,33 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ParenthesizedExpressionContext : public PrimaryExpressionContext {
    public:
-    explicit ParenthesizedExpressionContext(PrimaryExpressionContext* ctx);
+    ParenthesizedExpressionContext(PrimaryExpressionContext* ctx);
 
     ExpressionContext* expression();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ParameterContext : public PrimaryExpressionContext {
    public:
-    explicit ParameterContext(PrimaryExpressionContext* ctx);
+    ParameterContext(PrimaryExpressionContext* ctx);
 
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class NormalizeContext : public PrimaryExpressionContext {
    public:
-    explicit NormalizeContext(PrimaryExpressionContext* ctx);
+    NormalizeContext(PrimaryExpressionContext* ctx);
 
     antlr4::tree::TerminalNode* NORMALIZE();
     ValueExpressionContext* valueExpression();
@@ -3173,49 +3031,45 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class IntervalLiteralContext : public PrimaryExpressionContext {
    public:
-    explicit IntervalLiteralContext(PrimaryExpressionContext* ctx);
+    IntervalLiteralContext(PrimaryExpressionContext* ctx);
 
     IntervalContext* interval();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class NumericLiteralContext : public PrimaryExpressionContext {
    public:
-    explicit NumericLiteralContext(PrimaryExpressionContext* ctx);
+    NumericLiteralContext(PrimaryExpressionContext* ctx);
 
     NumberContext* number();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class BooleanLiteralContext : public PrimaryExpressionContext {
    public:
-    explicit BooleanLiteralContext(PrimaryExpressionContext* ctx);
+    BooleanLiteralContext(PrimaryExpressionContext* ctx);
 
     BooleanValueContext* booleanValue();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class SimpleCaseContext : public PrimaryExpressionContext {
    public:
-    explicit SimpleCaseContext(PrimaryExpressionContext* ctx);
+    SimpleCaseContext(PrimaryExpressionContext* ctx);
 
     PrestoSqlParser::ExpressionContext* elseExpression = nullptr;
     antlr4::tree::TerminalNode* CASE();
@@ -3228,37 +3082,34 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ColumnReferenceContext : public PrimaryExpressionContext {
    public:
-    explicit ColumnReferenceContext(PrimaryExpressionContext* ctx);
+    ColumnReferenceContext(PrimaryExpressionContext* ctx);
 
     IdentifierContext* identifier();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class NullLiteralContext : public PrimaryExpressionContext {
    public:
-    explicit NullLiteralContext(PrimaryExpressionContext* ctx);
+    NullLiteralContext(PrimaryExpressionContext* ctx);
 
     antlr4::tree::TerminalNode* NULL_LITERAL();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class RowConstructorContext : public PrimaryExpressionContext {
    public:
-    explicit RowConstructorContext(PrimaryExpressionContext* ctx);
+    RowConstructorContext(PrimaryExpressionContext* ctx);
 
     std::vector<ExpressionContext*> expression();
     ExpressionContext* expression(size_t i);
@@ -3266,13 +3117,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class SubscriptContext : public PrimaryExpressionContext {
    public:
-    explicit SubscriptContext(PrimaryExpressionContext* ctx);
+    SubscriptContext(PrimaryExpressionContext* ctx);
 
     PrestoSqlParser::PrimaryExpressionContext* value = nullptr;
     PrestoSqlParser::ValueExpressionContext* index = nullptr;
@@ -3281,50 +3131,46 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class SubqueryExpressionContext : public PrimaryExpressionContext {
    public:
-    explicit SubqueryExpressionContext(PrimaryExpressionContext* ctx);
+    SubqueryExpressionContext(PrimaryExpressionContext* ctx);
 
     QueryContext* query();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class BinaryLiteralContext : public PrimaryExpressionContext {
    public:
-    explicit BinaryLiteralContext(PrimaryExpressionContext* ctx);
+    BinaryLiteralContext(PrimaryExpressionContext* ctx);
 
     antlr4::tree::TerminalNode* BINARY_LITERAL();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class CurrentUserContext : public PrimaryExpressionContext {
    public:
-    explicit CurrentUserContext(PrimaryExpressionContext* ctx);
+    CurrentUserContext(PrimaryExpressionContext* ctx);
 
     antlr4::Token* name = nullptr;
     antlr4::tree::TerminalNode* CURRENT_USER();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ExtractContext : public PrimaryExpressionContext {
    public:
-    explicit ExtractContext(PrimaryExpressionContext* ctx);
+    ExtractContext(PrimaryExpressionContext* ctx);
 
     antlr4::tree::TerminalNode* EXTRACT();
     IdentifierContext* identifier();
@@ -3333,25 +3179,23 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class StringLiteralContext : public PrimaryExpressionContext {
    public:
-    explicit StringLiteralContext(PrimaryExpressionContext* ctx);
+    StringLiteralContext(PrimaryExpressionContext* ctx);
 
     StringContext* string();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ArrayConstructorContext : public PrimaryExpressionContext {
    public:
-    explicit ArrayConstructorContext(PrimaryExpressionContext* ctx);
+    ArrayConstructorContext(PrimaryExpressionContext* ctx);
 
     antlr4::tree::TerminalNode* ARRAY();
     std::vector<ExpressionContext*> expression();
@@ -3359,13 +3203,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class FunctionCallContext : public PrimaryExpressionContext {
    public:
-    explicit FunctionCallContext(PrimaryExpressionContext* ctx);
+    FunctionCallContext(PrimaryExpressionContext* ctx);
 
     QualifiedNameContext* qualifiedName();
     antlr4::tree::TerminalNode* ASTERISK();
@@ -3382,26 +3225,24 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ExistsContext : public PrimaryExpressionContext {
    public:
-    explicit ExistsContext(PrimaryExpressionContext* ctx);
+    ExistsContext(PrimaryExpressionContext* ctx);
 
     antlr4::tree::TerminalNode* EXISTS();
     QueryContext* query();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class PositionContext : public PrimaryExpressionContext {
    public:
-    explicit PositionContext(PrimaryExpressionContext* ctx);
+    PositionContext(PrimaryExpressionContext* ctx);
 
     antlr4::tree::TerminalNode* POSITION();
     std::vector<ValueExpressionContext*> valueExpression();
@@ -3410,13 +3251,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class SearchedCaseContext : public PrimaryExpressionContext {
    public:
-    explicit SearchedCaseContext(PrimaryExpressionContext* ctx);
+    SearchedCaseContext(PrimaryExpressionContext* ctx);
 
     PrestoSqlParser::ExpressionContext* elseExpression = nullptr;
     antlr4::tree::TerminalNode* CASE();
@@ -3428,13 +3268,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class GroupingOperationContext : public PrimaryExpressionContext {
    public:
-    explicit GroupingOperationContext(PrimaryExpressionContext* ctx);
+    GroupingOperationContext(PrimaryExpressionContext* ctx);
 
     antlr4::tree::TerminalNode* GROUPING();
     std::vector<QualifiedNameContext*> qualifiedName();
@@ -3442,8 +3281,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   PrimaryExpressionContext* primaryExpression();
@@ -3461,7 +3299,7 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class UnicodeStringLiteralContext : public StringContext {
    public:
-    explicit UnicodeStringLiteralContext(StringContext* ctx);
+    UnicodeStringLiteralContext(StringContext* ctx);
 
     antlr4::tree::TerminalNode* UNICODE_STRING();
     antlr4::tree::TerminalNode* UESCAPE();
@@ -3469,20 +3307,18 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class BasicStringLiteralContext : public StringContext {
    public:
-    explicit BasicStringLiteralContext(StringContext* ctx);
+    BasicStringLiteralContext(StringContext* ctx);
 
     antlr4::tree::TerminalNode* STRING();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   StringContext* string();
@@ -3500,8 +3336,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   NullTreatmentContext* nullTreatment();
@@ -3521,7 +3356,7 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class TimeZoneIntervalContext : public TimeZoneSpecifierContext {
    public:
-    explicit TimeZoneIntervalContext(TimeZoneSpecifierContext* ctx);
+    TimeZoneIntervalContext(TimeZoneSpecifierContext* ctx);
 
     antlr4::tree::TerminalNode* TIME();
     antlr4::tree::TerminalNode* ZONE();
@@ -3529,13 +3364,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class TimeZoneStringContext : public TimeZoneSpecifierContext {
    public:
-    explicit TimeZoneStringContext(TimeZoneSpecifierContext* ctx);
+    TimeZoneStringContext(TimeZoneSpecifierContext* ctx);
 
     antlr4::tree::TerminalNode* TIME();
     antlr4::tree::TerminalNode* ZONE();
@@ -3543,8 +3377,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   TimeZoneSpecifierContext* timeZoneSpecifier();
@@ -3565,8 +3398,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   ComparisonOperatorContext* comparisonOperator();
@@ -3584,8 +3416,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   ComparisonQuantifierContext* comparisonQuantifier();
@@ -3602,8 +3433,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   BooleanValueContext* booleanValue();
@@ -3626,8 +3456,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   IntervalContext* interval();
@@ -3648,8 +3477,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   IntervalFieldContext* intervalField();
@@ -3666,8 +3494,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   NormalFormContext* normalForm();
@@ -3682,8 +3509,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   TypesContext* types();
@@ -3714,8 +3540,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   TypeContext* type();
@@ -3732,8 +3557,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   TypeParameterContext* typeParameter();
@@ -3750,8 +3574,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   BaseTypeContext* baseType();
@@ -3770,8 +3593,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   WhenClauseContext* whenClause();
@@ -3787,8 +3609,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   FilterContext* filter();
@@ -3813,8 +3634,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   OverContext* over();
@@ -3837,8 +3657,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   WindowFrameContext* windowFrame();
@@ -3856,7 +3675,7 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class BoundedFrameContext : public FrameBoundContext {
    public:
-    explicit BoundedFrameContext(FrameBoundContext* ctx);
+    BoundedFrameContext(FrameBoundContext* ctx);
 
     antlr4::Token* boundType = nullptr;
     ExpressionContext* expression();
@@ -3865,13 +3684,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class UnboundedFrameContext : public FrameBoundContext {
    public:
-    explicit UnboundedFrameContext(FrameBoundContext* ctx);
+    UnboundedFrameContext(FrameBoundContext* ctx);
 
     antlr4::Token* boundType = nullptr;
     antlr4::tree::TerminalNode* UNBOUNDED();
@@ -3880,21 +3698,19 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class CurrentRowBoundContext : public FrameBoundContext {
    public:
-    explicit CurrentRowBoundContext(FrameBoundContext* ctx);
+    CurrentRowBoundContext(FrameBoundContext* ctx);
 
     antlr4::tree::TerminalNode* CURRENT();
     antlr4::tree::TerminalNode* ROW();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   FrameBoundContext* frameBound();
@@ -3912,8 +3728,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   UpdateAssignmentContext* updateAssignment();
@@ -3933,7 +3748,7 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class ExplainFormatContext : public ExplainOptionContext {
    public:
-    explicit ExplainFormatContext(ExplainOptionContext* ctx);
+    ExplainFormatContext(ExplainOptionContext* ctx);
 
     antlr4::Token* value = nullptr;
     antlr4::tree::TerminalNode* FORMAT();
@@ -3943,13 +3758,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ExplainTypeContext : public ExplainOptionContext {
    public:
-    explicit ExplainTypeContext(ExplainOptionContext* ctx);
+    ExplainTypeContext(ExplainOptionContext* ctx);
 
     antlr4::Token* value = nullptr;
     antlr4::tree::TerminalNode* TYPE();
@@ -3960,8 +3774,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   ExplainOptionContext* explainOption();
@@ -3981,7 +3794,7 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class TransactionAccessModeContext : public TransactionModeContext {
    public:
-    explicit TransactionAccessModeContext(TransactionModeContext* ctx);
+    TransactionAccessModeContext(TransactionModeContext* ctx);
 
     antlr4::Token* accessMode = nullptr;
     antlr4::tree::TerminalNode* READ();
@@ -3990,13 +3803,12 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class IsolationLevelContext : public TransactionModeContext {
    public:
-    explicit IsolationLevelContext(TransactionModeContext* ctx);
+    IsolationLevelContext(TransactionModeContext* ctx);
 
     antlr4::tree::TerminalNode* ISOLATION();
     antlr4::tree::TerminalNode* LEVEL();
@@ -4004,8 +3816,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   TransactionModeContext* transactionMode();
@@ -4025,53 +3836,49 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class ReadUncommittedContext : public LevelOfIsolationContext {
    public:
-    explicit ReadUncommittedContext(LevelOfIsolationContext* ctx);
+    ReadUncommittedContext(LevelOfIsolationContext* ctx);
 
     antlr4::tree::TerminalNode* READ();
     antlr4::tree::TerminalNode* UNCOMMITTED();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class SerializableContext : public LevelOfIsolationContext {
    public:
-    explicit SerializableContext(LevelOfIsolationContext* ctx);
+    SerializableContext(LevelOfIsolationContext* ctx);
 
     antlr4::tree::TerminalNode* SERIALIZABLE();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class ReadCommittedContext : public LevelOfIsolationContext {
    public:
-    explicit ReadCommittedContext(LevelOfIsolationContext* ctx);
+    ReadCommittedContext(LevelOfIsolationContext* ctx);
 
     antlr4::tree::TerminalNode* READ();
     antlr4::tree::TerminalNode* COMMITTED();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class RepeatableReadContext : public LevelOfIsolationContext {
    public:
-    explicit RepeatableReadContext(LevelOfIsolationContext* ctx);
+    RepeatableReadContext(LevelOfIsolationContext* ctx);
 
     antlr4::tree::TerminalNode* REPEATABLE();
     antlr4::tree::TerminalNode* READ();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   LevelOfIsolationContext* levelOfIsolation();
@@ -4091,27 +3898,25 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class PositionalArgumentContext : public CallArgumentContext {
    public:
-    explicit PositionalArgumentContext(CallArgumentContext* ctx);
+    PositionalArgumentContext(CallArgumentContext* ctx);
 
     ExpressionContext* expression();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class NamedArgumentContext : public CallArgumentContext {
    public:
-    explicit NamedArgumentContext(CallArgumentContext* ctx);
+    NamedArgumentContext(CallArgumentContext* ctx);
 
     IdentifierContext* identifier();
     ExpressionContext* expression();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   CallArgumentContext* callArgument();
@@ -4128,8 +3933,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   PrivilegeContext* privilege();
@@ -4146,8 +3950,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   QualifiedNameContext* qualifiedName();
@@ -4167,7 +3970,7 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class TableVersionContext : public TableVersionExpressionContext {
    public:
-    explicit TableVersionContext(TableVersionExpressionContext* ctx);
+    TableVersionContext(TableVersionExpressionContext* ctx);
 
     antlr4::Token* tableVersionType = nullptr;
     antlr4::tree::TerminalNode* FOR();
@@ -4180,8 +3983,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   TableVersionExpressionContext* tableVersionExpression();
@@ -4201,27 +4003,25 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class TableversionbeforeContext : public TableVersionStateContext {
    public:
-    explicit TableversionbeforeContext(TableVersionStateContext* ctx);
+    TableversionbeforeContext(TableVersionStateContext* ctx);
 
     antlr4::tree::TerminalNode* BEFORE();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class TableversionasofContext : public TableVersionStateContext {
    public:
-    explicit TableversionasofContext(TableVersionStateContext* ctx);
+    TableversionasofContext(TableVersionStateContext* ctx);
 
     antlr4::tree::TerminalNode* AS();
     antlr4::tree::TerminalNode* OF();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   TableVersionStateContext* tableVersionState();
@@ -4239,38 +4039,35 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class CurrentUserGrantorContext : public GrantorContext {
    public:
-    explicit CurrentUserGrantorContext(GrantorContext* ctx);
+    CurrentUserGrantorContext(GrantorContext* ctx);
 
     antlr4::tree::TerminalNode* CURRENT_USER();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class SpecifiedPrincipalContext : public GrantorContext {
    public:
-    explicit SpecifiedPrincipalContext(GrantorContext* ctx);
+    SpecifiedPrincipalContext(GrantorContext* ctx);
 
     PrincipalContext* principal();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class CurrentRoleGrantorContext : public GrantorContext {
    public:
-    explicit CurrentRoleGrantorContext(GrantorContext* ctx);
+    CurrentRoleGrantorContext(GrantorContext* ctx);
 
     antlr4::tree::TerminalNode* CURRENT_ROLE();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   GrantorContext* grantor();
@@ -4288,40 +4085,37 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class UnspecifiedPrincipalContext : public PrincipalContext {
    public:
-    explicit UnspecifiedPrincipalContext(PrincipalContext* ctx);
+    UnspecifiedPrincipalContext(PrincipalContext* ctx);
 
     IdentifierContext* identifier();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class UserPrincipalContext : public PrincipalContext {
    public:
-    explicit UserPrincipalContext(PrincipalContext* ctx);
+    UserPrincipalContext(PrincipalContext* ctx);
 
     antlr4::tree::TerminalNode* USER();
     IdentifierContext* identifier();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class RolePrincipalContext : public PrincipalContext {
    public:
-    explicit RolePrincipalContext(PrincipalContext* ctx);
+    RolePrincipalContext(PrincipalContext* ctx);
 
     antlr4::tree::TerminalNode* ROLE();
     IdentifierContext* identifier();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   PrincipalContext* principal();
@@ -4336,8 +4130,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   RolesContext* roles();
@@ -4355,51 +4148,47 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class BackQuotedIdentifierContext : public IdentifierContext {
    public:
-    explicit BackQuotedIdentifierContext(IdentifierContext* ctx);
+    BackQuotedIdentifierContext(IdentifierContext* ctx);
 
     antlr4::tree::TerminalNode* BACKQUOTED_IDENTIFIER();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class QuotedIdentifierContext : public IdentifierContext {
    public:
-    explicit QuotedIdentifierContext(IdentifierContext* ctx);
+    QuotedIdentifierContext(IdentifierContext* ctx);
 
     antlr4::tree::TerminalNode* QUOTED_IDENTIFIER();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class DigitIdentifierContext : public IdentifierContext {
    public:
-    explicit DigitIdentifierContext(IdentifierContext* ctx);
+    DigitIdentifierContext(IdentifierContext* ctx);
 
     antlr4::tree::TerminalNode* DIGIT_IDENTIFIER();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class UnquotedIdentifierContext : public IdentifierContext {
    public:
-    explicit UnquotedIdentifierContext(IdentifierContext* ctx);
+    UnquotedIdentifierContext(IdentifierContext* ctx);
 
     antlr4::tree::TerminalNode* IDENTIFIER();
     NonReservedContext* nonReserved();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   IdentifierContext* identifier();
@@ -4417,38 +4206,35 @@ class PrestoSqlParser : public antlr4::Parser {
 
   class DecimalLiteralContext : public NumberContext {
    public:
-    explicit DecimalLiteralContext(NumberContext* ctx);
+    DecimalLiteralContext(NumberContext* ctx);
 
     antlr4::tree::TerminalNode* DECIMAL_VALUE();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class DoubleLiteralContext : public NumberContext {
    public:
-    explicit DoubleLiteralContext(NumberContext* ctx);
+    DoubleLiteralContext(NumberContext* ctx);
 
     antlr4::tree::TerminalNode* DOUBLE_VALUE();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   class IntegerLiteralContext : public NumberContext {
    public:
-    explicit IntegerLiteralContext(NumberContext* ctx);
+    IntegerLiteralContext(NumberContext* ctx);
 
     antlr4::tree::TerminalNode* INTEGER_VALUE();
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   NumberContext* number();
@@ -4465,8 +4251,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   ConstraintSpecificationContext* constraintSpecification();
@@ -4485,8 +4270,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   NamedConstraintSpecificationContext* namedConstraintSpecification();
@@ -4505,8 +4289,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   UnnamedConstraintSpecificationContext* unnamedConstraintSpecification();
@@ -4524,8 +4307,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   ConstraintTypeContext* constraintType();
@@ -4542,8 +4324,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   ConstraintQualifiersContext* constraintQualifiers();
@@ -4561,8 +4342,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   ConstraintQualifierContext* constraintQualifier();
@@ -4579,8 +4359,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   ConstraintRelyContext* constraintRely();
@@ -4597,8 +4376,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   ConstraintEnabledContext* constraintEnabled();
@@ -4615,8 +4393,7 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   ConstraintEnforcedContext* constraintEnforced();
@@ -4779,16 +4556,16 @@ class PrestoSqlParser : public antlr4::Parser {
     virtual void enterRule(antlr4::tree::ParseTreeListener* listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener* listener) override;
 
-    virtual antlrcpp::Any accept(
-        antlr4::tree::ParseTreeVisitor* visitor) override;
+    virtual std::any accept(antlr4::tree::ParseTreeVisitor* visitor) override;
   };
 
   NonReservedContext* nonReserved();
 
-  virtual bool sempred(
+  bool sempred(
       antlr4::RuleContext* _localctx,
       size_t ruleIndex,
       size_t predicateIndex) override;
+
   bool queryTermSempred(QueryTermContext* _localctx, size_t predicateIndex);
   bool relationSempred(RelationContext* _localctx, size_t predicateIndex);
   bool booleanExpressionSempred(
@@ -4802,22 +4579,10 @@ class PrestoSqlParser : public antlr4::Parser {
       size_t predicateIndex);
   bool typeSempred(TypeContext* _localctx, size_t predicateIndex);
 
+  // By default the static state used to implement the parser is lazily
+  // initialized during the first call to the constructor. You can call this
+  // function if you wish to initialize the static state ahead of time.
+  static void initialize();
+
  private:
-  static std::vector<antlr4::dfa::DFA> _decisionToDFA;
-  static antlr4::atn::PredictionContextCache _sharedContextCache;
-  static std::vector<std::string> _ruleNames;
-  static std::vector<std::string> _tokenNames;
-
-  static std::vector<std::string> _literalNames;
-  static std::vector<std::string> _symbolicNames;
-  static antlr4::dfa::Vocabulary _vocabulary;
-  static antlr4::atn::ATN _atn;
-  static std::vector<uint16_t> _serializedATN;
-
-  struct Initializer {
-    Initializer();
-  };
-  static Initializer _init;
 };
-
-} // namespace axiom::sql::presto

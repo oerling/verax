@@ -14,14 +14,12 @@
  * limitations under the License.
  */
 
-// Generated from PrestoSql.g4 by ANTLR 4.9.3
+// Generated from PrestoSql.g4 by ANTLR 4.13.2
 
 #pragma once
 
+#include "PrestoSqlListener.h"
 #include "antlr4-runtime.h"
-#include "axiom/sql/presto/grammar/PrestoSqlListener.h"
-
-namespace axiom::sql::presto {
 
 /**
  * This class provides an empty implementation of PrestoSqlListener,
@@ -1117,5 +1115,3 @@ class PrestoSqlBaseListener : public PrestoSqlListener {
   virtual void visitTerminal(antlr4::tree::TerminalNode* /*node*/) override {}
   virtual void visitErrorNode(antlr4::tree::ErrorNode* /*node*/) override {}
 };
-
-} // namespace axiom::sql::presto

@@ -31,11 +31,15 @@ class LogicalPlanMatcherBuilder {
  public:
   LogicalPlanMatcherBuilder& tableScan();
 
+  LogicalPlanMatcherBuilder& values();
+
   LogicalPlanMatcherBuilder& filter();
 
   LogicalPlanMatcherBuilder& project();
 
   LogicalPlanMatcherBuilder& aggregate();
+
+  LogicalPlanMatcherBuilder& unnest();
 
   LogicalPlanMatcherBuilder& join(
       const std::shared_ptr<LogicalPlanMatcher>& rightMatcher);

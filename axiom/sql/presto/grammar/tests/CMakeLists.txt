@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-add_executable(velox_presto_parser_test GrammarTest.cpp)
+add_executable(axiom_sql_presto_grammar_test GrammarTest.cpp)
 
-add_test(velox_presto_parser_test velox_presto_parser_test)
+add_test(axiom_sql_presto_grammar_test axiom_sql_presto_grammar_test)
 
 target_link_libraries(
-  velox_presto_parser_test
-  velox_presto_grammar_lib
+  axiom_sql_presto_grammar_test
+  axiom_sql_presto_grammar
   GTest::gtest
   GTest::gtest_main
   antlr4_shared)

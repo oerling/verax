@@ -47,12 +47,13 @@ The generated ANTLR4 code is currently checked into this directory. The BUCK bui
 
 2. **Regenerate the ANTLR files:**
    ```bash
-   buck build //axiom/sql/presto/grammar:gen_grammar
+   buck build //axiom/sql/presto/grammar:gen_grammar --show-output
    ```
 
 3. **Find the Buck output directory:**
    ```bash
-   BUCK_OUT_DIR=$(find buck-out -path "*gen_grammar_rewrite*" -name "out" -type d 2>/dev/null | head -1)
+
+   BUCK_OUT_DIR=$(find ../buck-out -path "*gen_grammar_rewrite*" -name "srcs" -type d -printf "%T@ %p\n" | sort -r -n -k1,1 | head -1 | awk '{print $2}')
    echo "Generated files are in: $BUCK_OUT_DIR"
    ```
 
@@ -66,16 +67,17 @@ The generated ANTLR4 code is currently checked into this directory. The BUCK bui
    cp "$BUCK_OUT_DIR"/* axiom/sql/presto/grammar/
    ```
 
+5. **Fix coding style:**
+   ```bash
+   arc lint -a
+   ```
+
 ### Complete One-Line Command
 
-For convenience, you can run all steps together:
+For convenience, run the provided shell script from fbcode directory:
 
 ```bash
-cd /path/to/fbsource/fbcode && \
-buck build //axiom/sql/presto/grammar:gen_grammar && \
-BUCK_OUT_DIR=$(find buck-out -path "*gen_grammar_rewrite*" -name "out" -type d 2>/dev/null | head -1) && \
-python3 axiom/sql/presto/grammar/add_license_headers.py "$BUCK_OUT_DIR" && \
-cp "$BUCK_OUT_DIR"/* axiom/sql/presto/grammar/
+./axiom/sql/presto/grammar/gen.sh
 ```
 
 ### Verification

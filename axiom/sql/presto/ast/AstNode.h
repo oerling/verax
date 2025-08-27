@@ -309,3 +309,13 @@ class Relation : public Node {
 using RelationPtr = std::shared_ptr<Relation>;
 
 } // namespace axiom::sql::presto
+
+template <>
+struct fmt::formatter<axiom::sql::presto::NodeType>
+    : fmt::formatter<string_view> {
+  template <typename FormatContext>
+  auto format(axiom::sql::presto::NodeType nodeType, FormatContext& ctx) const {
+    return formatter<string_view>::format(
+        axiom::sql::presto::NodeTypeName::toName(nodeType), ctx);
+  }
+};

@@ -62,8 +62,8 @@ class ParserHelper {
     return *parser_;
   }
 
-  PrestoSqlParser::QueryContext* parse() const {
-    auto ctx = parser_->query();
+  PrestoSqlParser::StatementContext* parse() const {
+    auto ctx = parser_->statement();
 
     if (parser_->getNumberOfSyntaxErrors() > 0) {
       throw std::runtime_error(errorListener_.firstError);

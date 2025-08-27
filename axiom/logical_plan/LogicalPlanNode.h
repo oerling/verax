@@ -611,16 +611,18 @@ using SetNodePtr = std::shared_ptr<const SetNode>;
 /// optional ordinality column of type BIGINT.
 class UnnestNode : public LogicalPlanNode {
  public:
+  /// @param input Optional input node. If not specified, 'unnestExpressions'
+  /// must be constant expressions.
+  /// @param unnestExpressions One or more expressions that produce ARRAYs
+  /// or MAPs.
+  /// @param unnestedNames Names to use for expanded relations. Must align
+  /// with 'unnestExpressions'. Each ARRAY requires one name. Each MAP
+  /// requires two maps. If 'flattenArrayOfRows' is true, each ARRAY(ROW)
+  /// requires as many names as there are fields in the ROW.
+  /// @param ordinalityName Optional name for the ordinality output column.
+  /// If not specified, ordinality column is not added. Ordinality is
+  /// 1-based.
   UnnestNode(
-      /// @param unnestExpressions One or more expressions that produce ARRAYs
-      /// or MAPs.
-      /// @param unnestedNames Names to use for expanded relations. Must align
-      /// with 'unnestExpressions'. Each ARRAY requires one name. Each MAP
-      /// requires two maps. If 'flattenArrayOfRows' is true, each ARRAY(ROW)
-      /// requires as many names as there are fields in the ROW.
-      /// @param ordinalityName Optional name for the ordinality output column.
-      /// If not specified, ordinality column is not added. Ordinality is
-      /// 1-based.
       const std::string& id,
       const LogicalPlanNodePtr& input,
       const std::vector<ExprPtr>& unnestExpressions,
@@ -630,7 +632,8 @@ class UnnestNode : public LogicalPlanNode {
       : LogicalPlanNode(
             NodeKind::kUnnest,
             id,
-            {input},
+            input == nullptr ? std::vector<LogicalPlanNodePtr>{}
+                             : std::vector<LogicalPlanNodePtr>{input},
             makeOutputType(
                 input,
                 unnestExpressions,

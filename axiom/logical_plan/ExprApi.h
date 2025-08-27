@@ -115,12 +115,21 @@ VELOX_MAKE_BINARY_CALLER(Or, "or")
 class ExprApi {
  public:
   /* implicit */ ExprApi(core::ExprPtr expr)
-      : expr_{std::move(expr)}, name_{expr_->alias()} {}
+      : expr_{std::move(expr)}, alias_{expr_->alias()} {}
 
-  ExprApi(core::ExprPtr expr, std::optional<std::string> name)
-      : expr_{std::move(expr)}, name_{std::move(name)} {
-    if (name_.has_value()) {
-      VELOX_CHECK(!name_.value().empty());
+  ExprApi(
+      core::ExprPtr expr,
+      std::optional<std::string> alias,
+      std::vector<std::string> unnestedAliases = {})
+      : expr_{std::move(expr)},
+        alias_{std::move(alias)},
+        unnestedAliases_{std::move(unnestedAliases)} {
+    if (alias_.has_value()) {
+      VELOX_CHECK(!alias_.value().empty());
+    }
+
+    for (const auto& alias : unnestedAliases_) {
+      VELOX_CHECK(!alias.empty());
     }
   }
 
@@ -214,17 +223,36 @@ class ExprApi {
 
   ExprApi operator!=(const Variant& value) const;
 
+  // TODO Remove in favor of 'alias'.
   const std::optional<std::string>& name() const {
-    return name_;
+    return alias_;
   }
 
-  ExprApi as(std::string name) const {
-    return ExprApi(expr_, std::move(name));
+  const std::optional<std::string>& alias() const {
+    return alias_;
+  }
+
+  const std::vector<std::string>& unnestedAliases() const {
+    return unnestedAliases_;
+  }
+
+  ExprApi as(std::string alias) const {
+    return ExprApi(expr_, std::move(alias));
+  }
+
+  ExprApi unnestAs(std::vector<std::string> aliases) const {
+    return ExprApi(expr_, alias_, aliases);
+  }
+
+  template <typename... T>
+  ExprApi unnestAs(T... aliases) const {
+    return unnestAs(std::vector<std::string>{std::forward<T>(aliases)...});
   }
 
  private:
   core::ExprPtr expr_;
-  std::optional<std::string> name_;
+  std::optional<std::string> alias_;
+  std::vector<std::string> unnestedAliases_;
 };
 
 ExprApi Lit(Variant&& val);

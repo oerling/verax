@@ -232,6 +232,39 @@ class PlanBuilder {
       const std::vector<ExprApi>& groupingKeys,
       const std::vector<ExprApi>& aggregates);
 
+  /// Starts or continues the plan with an Unnest node. Uses auto-generated
+  /// names for unnested columns. Use the version of 'unnest' API that takes
+  /// ExprApi together with ExprApi::unnestAs to provide aliases for unnested
+  /// columns.
+  ///
+  /// Example:
+  ///
+  ///     PlanBuilder()
+  ///       .unnest({Lit(Variant::array({1, 2, 3})).unnestAs("x")})
+  ///       .build();
+  ///
+  /// @param unnestExprs A list of constant expressions to unnest.
+  PlanBuilder& unnest(
+      const std::vector<std::string>& unnestExprs,
+      bool withOrdinality = false);
+
+  PlanBuilder& unnest(
+      const std::vector<ExprApi>& unnestExprs,
+      bool withOrdinality = false);
+
+  /// An alternative way to specify aliases for unnested columns. A preferred
+  /// way is by using ExprApi::unnestAs.
+  ///
+  /// @param alias Optional alias for the relation produced by unnest.
+  /// @param columnAliases An optional list of aliases for columns produced by
+  /// unnest. The list can be empty or must have a non-empty alias for each
+  /// column.
+  PlanBuilder& unnest(
+      const std::vector<ExprApi>& unnestExprs,
+      bool withOrdinality,
+      const std::optional<std::string>& alias,
+      const std::vector<std::string>& columnAliases);
+
   PlanBuilder& join(
       const PlanBuilder& right,
       const std::string& condition,

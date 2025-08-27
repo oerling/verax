@@ -65,7 +65,7 @@ class PrestoParserTest : public testing::Test {
     SCOPED_TRACE(sql);
     test::PrestoParser parser(kTpchConnectorId, pool());
 
-    auto statement = parser.parseQuery(sql);
+    auto statement = parser.parse(sql);
     ASSERT_TRUE(statement->isSelect());
 
     auto logicalPlan = statement->asUnchecked<test::SelectStatement>()->plan();
@@ -93,16 +93,55 @@ class PrestoParserTest : public testing::Test {
   std::shared_ptr<memory::MemoryPool> pool_{rootPool_->addLeafChild("leaf")};
 };
 
+TEST_F(PrestoParserTest, unnest) {
+  {
+    auto matcher = lp::LogicalPlanMatcherBuilder().unnest();
+    testSql("SELECT * FROM unnest(array[1, 2, 3])", matcher);
+
+    testSql(
+        "SELECT * FROM unnest(array[1, 2, 3], array[4, 5]) with ordinality",
+        matcher);
+
+    testSql(
+        "SELECT * FROM unnest(map(array[1, 2, 3], array[10, 20, 30]))",
+        matcher);
+  }
+
+  {
+    auto matcher = lp::LogicalPlanMatcherBuilder().unnest().project();
+    testSql("SELECT * FROM unnest(array[1, 2, 3]) as t(x)", matcher);
+
+    testSql(
+        "SELECT * FROM unnest(array[1, 2, 3], array[4, 5]) with ordinality as t(x, y)",
+        matcher);
+  }
+
+  {
+    auto matcher = lp::LogicalPlanMatcherBuilder().tableScan().unnest();
+    testSql(
+        "SELECT * FROM nation, unnest(array[n_nationkey, n_regionkey])",
+        matcher);
+  }
+
+  {
+    auto matcher = lp::LogicalPlanMatcherBuilder().tableScan().unnest();
+
+    testSql(
+        "SELECT * FROM nation, unnest(array[n_nationkey, n_regionkey]) as t(x)",
+        matcher);
+  }
+}
+
 TEST_F(PrestoParserTest, syntaxErrors) {
   test::PrestoParser parser(kTpchConnectorId, pool());
   EXPECT_THAT(
-      [&]() { parser.parseQuery("SELECT * FROM"); },
+      [&]() { parser.parse("SELECT * FROM"); },
       ThrowsMessage<std::runtime_error>(::testing::HasSubstr(
           "Syntax error at 1:13: mismatched input '<EOF>'")));
 
   EXPECT_THAT(
       [&]() {
-        parser.parseQuery(
+        parser.parse(
             "SELECT * FROM nation\n"
             "WHERE");
       },
@@ -403,6 +442,31 @@ TEST_F(PrestoParserTest, everything) {
       "GROUP BY 1 "
       "ORDER BY 2 DESC",
       matcher);
+}
+
+TEST_F(PrestoParserTest, explain) {
+  test::PrestoParser parser(kTpchConnectorId, pool());
+
+  auto statement = parser.parse("EXPLAIN SELECT * FROM nation");
+  ASSERT_TRUE(statement->isExplain());
+
+  auto selectStatement =
+      statement->asUnchecked<test::ExplainStatement>()->statement();
+  ASSERT_TRUE(selectStatement->isSelect());
+
+  auto matcher = lp::LogicalPlanMatcherBuilder().tableScan();
+
+  auto logicalPlan = selectStatement->asUnchecked<SelectStatement>()->plan();
+  ASSERT_TRUE(matcher.build()->match(logicalPlan));
+}
+
+TEST_F(PrestoParserTest, describe) {
+  auto matcher = lp::LogicalPlanMatcherBuilder().values();
+  testSql("DESCRIBE nation", matcher);
+
+  testSql("DESC orders", matcher);
+
+  testSql("SHOW COLUMNS FROM lineitem", matcher);
 }
 
 } // namespace

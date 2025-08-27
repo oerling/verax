@@ -13,7 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#pragma once
 
-// Generated from PrestoSql.g4 by ANTLR 4.13.2
+#include "axiom/optimizer/DerivedTable.h"
 
-#include "PrestoSqlBaseListener.h"
+namespace facebook::velox::optimizer {
+
+class DerivedTablePrinter {
+ public:
+  static std::string toText(const DerivedTable& root);
+};
+
+} // namespace facebook::velox::optimizer
