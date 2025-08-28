@@ -1,3 +1,75 @@
+/*
+ * Copyright (c) Meta Platforms, Inc. and its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "axiom/optimizer/Plan.h"
+#include "axiom/optimizer/Cost.h"
+#include "axiom/optimizer/Optimization.h"
+
+namespace facebook::velox::optimizer {
+
+namespace {
+
+// True if single worker, i.e. do not plan remote exchanges
+bool isSingleWorker() {
+  return queryCtx()->optimization()->runnerOptions().numWorkers == 1;
+}
+
+} // namespace
+
+// The dt for which we set a breakpoint for plan candidate.
+int32_t debugDt{-1};
+
+// Number of tables in 'debugPlacedTables'
+int32_t debugNumPlaced = 0;
+
+// Tables for setting a breakpoint. Join order selection calls planBreakpoint()
+// right before evaluating the cost for the tables in 'debugPlacedTables'.
+int32_t debugPlaced[10];
+
+void planBreakpoint() {
+  // Set breakpoint here for looking at cost of join order in
+  // 'debugPlacedTables'.
+  LOG(INFO) << "Join order breakpoint";
+}
+
+void PlanState::debugSetFirstTable(int32_t id) {
+  if (dt->id() == debugDt) {
+    debugPlacedTables.resize(1);
+    debugPlacedTables[0] = id;
+  }
+}
+
+PlanStateSaver::PlanStateSaver(PlanState& state, const JoinCandidate& candidate)
+    : PlanStateSaver(state) {
+  if (state.dt->id() != debugDt) {
+    return;
+  }
+  state.debugPlacedTables.push_back(candidate.tables[0]->id());
+  if (debugNumPlaced == 0) {
+    return;
+  }
+
+  for (auto i = 0; i < debugNumPlaced; ++i) {
+    if (debugPlaced[i] != state.debugPlacedTables[i]) {
+      return;
+    }
+  }
+  planBreakpoint();
+}
+
 Plan::Plan(RelationOpPtr _op, const PlanState& state)
     : op(std::move(_op)),
       cost(state.cost),
