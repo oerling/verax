@@ -1166,7 +1166,7 @@ TEST_F(PlanTest, values) {
   }
 }
 
-TEST_F(PlanTest, xxx) {
+TEST_F(PlanTest, parallelCse) {
   testConnector_->createTable("t", ROW({"a", "b", "c"}, {INTEGER(), INTEGER(), INTEGER()}));
 
   auto logicalPlan =
@@ -1181,7 +1181,22 @@ TEST_F(PlanTest, xxx) {
   optimizerOptions_.parallelProjectWidth = 2;
   auto plan = toSingleNodePlan(logicalPlan);
 
-  std::cout << plan->toString(true, true);
+  std::cout << "***Plan " << plan->toString(true, true);
+
+  logicalPlan =
+      lp::PlanBuilder(/* allowCoersions */ true)
+          .tableScan(kTestConnectorId, "t", {"a", "b", "c"})
+    .with({"a + b as ab"})
+	  .with({"ab + c as x"})
+          .map({
+              "contains(array[1], cast(if(cast(x as real) < 0, ceil(cast(x as real)), floor(cast(x as real))) as int)) as a",
+	      "ab"
+          })
+          .build();
+  plan = toSingleNodePlan(logicalPlan);
+
+  std::cout << "***Plan2" << plan->toString(true, true);
+
 }
   
 } // namespace

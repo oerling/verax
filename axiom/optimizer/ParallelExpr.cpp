@@ -47,6 +47,8 @@ void pushdownExpr(
   if (level >= levelData.size()) {
     levelData.resize(level + 1);
   }
+  levelData[defined].exprs.erase(expr);
+  levelData[level].exprs.add(expr);
   if (expr->is(PlanType::kCallExpr)) {
     for (auto& input : expr->as<Call>()->args()) {
       if (input->is(PlanType::kLiteralExpr)) {
@@ -240,7 +242,7 @@ float parallelBorder(
     ExprCP expr,
     const PlanObjectSet& placed,
     PlanObjectSet& result) {
-  // Cost returned for a subexpressoin that is parallelized. Siblings of these
+  // Cost returned for a subexpression that is parallelized. Siblings of these
   // that are themselves not split should b members of the border.
   constexpr float kSplit = -1;
   constexpr float kTargetCost = 50;
@@ -337,21 +339,21 @@ core::PlanNodePtr ToVelox::maybeParallelProject(
   top.forEach([&](PlanObjectCP object) {
     parallelBorder(object->as<Expr>(), placed, parallel);
   });
+  if (!parallel.empty()) {
+    auto previousPlaced = placed;
+    parallel.forEach([&](PlanObjectCP object) {
+      placed.unionSet(object->as<Expr>()->subexpressions());
+    });
+    placed.unionSet(parallel);
 
-  auto previousPlaced = placed;
-  parallel.forEach([&](PlanObjectCP object) {
-    placed.unionSet(object->as<Expr>()->subexpressions());
-  });
-  placed.unionSet(parallel);
+    auto extra = columnBorder(top, placed);
+    // The projected through columns are loaded here, so these go into the
+    // parallel exprs and not in the 'noLoadIdentities'.
+    parallel.unionSet(extra);
 
-  auto extra = columnBorder(top, placed);
-  // The projected through columns are loaded here, so these go into the
-  // parallel exprs and not in the 'noLoadIdentities'.
-  parallel.unionSet(extra);
-
-  PlanObjectSet empty;
-  input = makeParallelProject(input, parallel, previousPlaced, empty);
-
+    PlanObjectSet empty;
+    input = makeParallelProject(input, parallel, previousPlaced, empty);
+  }
   // One final project for the renames and final functions.
   auto& columns = project->columns();
 
