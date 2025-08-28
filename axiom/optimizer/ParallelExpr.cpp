@@ -25,12 +25,20 @@ namespace facebook::velox::optimizer {
 namespace {
 struct LevelData {
   PlanObjectSet exprs;
+
+  void add(ExprCP expr) {
+    exprs.add(expr);
+  }
+
+  void remove(ExprCP expr) {
+    exprs.erase(expr);
+  }
 };
 
-int32_t definitionLevel(std::vector<LevelData>& levels, ExprCP expr) {
+LevelData& levelOf(std::vector<LevelData>& levels, ExprCP expr) {
   for (auto i = 0; i < levels.size(); ++i) {
     if (levels[i].exprs.contains(expr)) {
-      return i;
+      return levels[i];
     }
   }
   VELOX_UNREACHABLE();
@@ -40,15 +48,15 @@ void pushdownExpr(
     ExprCP expr,
     int32_t level,
     std::vector<LevelData>& levelData) {
-  auto defined = definitionLevel(levelData, expr);
+  const auto defined = &levelOf(levelData, expr) - levelData.data();
   if (defined >= level) {
     return;
   }
   if (level >= levelData.size()) {
     levelData.resize(level + 1);
   }
-  levelData[defined].exprs.erase(expr);
-  levelData[level].exprs.add(expr);
+  levelData[defined].remove(expr);
+  levelData[level].add(expr);
   if (expr->is(PlanType::kCallExpr)) {
     for (auto& input : expr->as<Call>()->args()) {
       if (input->is(PlanType::kLiteralExpr)) {
@@ -110,8 +118,7 @@ PlanObjectSet makeCseBorder(
     std::unordered_map<ExprCP, int32_t>& refCount) {
   PlanObjectSet border;
   for (int32_t leafLevel = levelData.size() - 1; leafLevel >= 0; --leafLevel) {
-    levelData[leafLevel].exprs.forEach([&](PlanObjectCP o) {
-      ExprCP expr = o->as<const Expr>();
+    levelData[leafLevel].exprs.forEach<Expr>([&](auto expr) {
       if (placed.contains(expr)) {
         return;
       }
@@ -119,8 +126,8 @@ PlanObjectSet makeCseBorder(
         auto subexprs = expr->subexpressions();
         subexprs.intersect(border);
         if (!subexprs.empty()) {
-          // Is a multiply refd over another multiply refd in the same border.
-          // Not a member.
+          // Mmultiply referenced over another multiply referenced in the
+          // same border. Not a member.
           return;
         }
         border.add(expr);
@@ -137,15 +144,14 @@ core::PlanNodePtr ToVelox::makeParallelProject(
     const PlanObjectSet& topExprs,
     const PlanObjectSet& placed,
     const PlanObjectSet& extraColumns) {
-  std::vector<std::string> names;
   std::vector<int32_t> indices;
   std::vector<float> costs;
   std::vector<ExprCP> exprs;
   float totalCost = 0;
-  topExprs.forEach([&](PlanObjectCP o) {
-    exprs.push_back(o->as<Expr>());
+  topExprs.forEach<Expr>([&](auto expr) {
+    exprs.push_back(expr);
     indices.push_back(indices.size());
-    costs.push_back(costWithChildren(o->as<Expr>(), placed));
+    costs.push_back(costWithChildren(expr, placed));
     totalCost += costs.back();
   });
   std::sort(indices.begin(), indices.end(), [&](int32_t l, int32_t r) {
@@ -153,14 +159,26 @@ core::PlanNodePtr ToVelox::makeParallelProject(
   });
 
   // Sorted lowest cost first. Make even size groups.
-  float targetCost = totalCost / optimizerOptions_.parallelProjectWidth;
-  float groupCost = 0;
+  const float targetCost = totalCost / optimizerOptions_.parallelProjectWidth;
+
   std::vector<std::vector<core::TypedExprPtr>> groups;
   groups.emplace_back();
-  for (auto nth = 0; nth < indices.size(); ++nth) {
-    auto i = indices[nth];
+
+  auto* group = &groups.back();
+  float groupCost = 0;
+
+  std::vector<std::string> names;
+  for (auto i : indices) {
+    if (groupCost > targetCost) {
+      // Start new group after placing target cost worth.
+      groups.emplace_back();
+
+      group = &groups.back();
+      groupCost = 0;
+    }
+
     groupCost += costs[i];
-    groups.back().push_back(toTypedExpr(exprs[i]));
+    group->emplace_back(toTypedExpr(exprs[i]));
 
     auto expr = exprs[i];
     if (expr->is(PlanType::kColumnExpr)) {
@@ -170,28 +188,18 @@ core::PlanNodePtr ToVelox::makeParallelProject(
     }
 
     auto fieldAccess = std::make_shared<core::FieldAccessTypedExpr>(
-        groups.back().back()->type(), names.back());
+        group->back()->type(), names.back());
     projectedExprs_[expr] = fieldAccess;
-    if (groupCost > targetCost) {
-      if (nth == indices.size() - 1) {
-        break;
-      }
-      // Start new group after placing target cost worth.
-      groups.emplace_back();
-      groupCost = 0;
-    }
   }
 
   std::vector<std::string> extra;
-  extraColumns.forEach([&](PlanObjectCP o) {
-    auto e = toTypedExpr(o->as<Expr>());
-    if (auto* field =
-            dynamic_cast<const core::FieldAccessTypedExpr*>(e.get())) {
-      extra.push_back(field->name());
-    } else {
-      VELOX_UNREACHABLE();
-    }
+  extraColumns.forEach<Expr>([&](ExprCP expr) {
+    auto veloxExpr = toTypedExpr(expr);
+    VELOX_CHECK(veloxExpr->isFieldAccessKind());
+    extra.push_back(
+        veloxExpr->asUnchecked<core::FieldAccessTypedExpr>()->name());
   });
+
   return std::make_shared<core::ParallelProjectNode>(
       nextId(), std::move(names), std::move(groups), std::move(extra), input);
 }
@@ -207,20 +215,23 @@ void columnBorder(
   if (expr->is(PlanType::kLiteralExpr)) {
     return;
   }
+
   if (placed.contains(expr)) {
     result.add(expr);
     return;
   }
+
   switch (expr->type()) {
     case PlanType::kColumnExpr:
       result.add(expr);
       return;
-    case PlanType::kCallExpr: {
-      for (auto& in : expr->as<Call>()->args()) {
-        columnBorder(in, placed, result);
+
+    case PlanType::kCallExpr:
+      for (auto arg : expr->as<Call>()->args()) {
+        columnBorder(arg, placed, result);
       }
       return;
-    }
+
     case PlanType::kAggregateExpr:
       VELOX_UNREACHABLE();
     default:
@@ -232,9 +243,7 @@ PlanObjectSet columnBorder(
     const PlanObjectSet& top,
     const PlanObjectSet& placed) {
   PlanObjectSet result;
-  top.forEach(
-      [&](PlanObjectCP o) { columnBorder(o->as<Expr>(), placed, result); });
-
+  top.forEach<Expr>([&](auto expr) { columnBorder(expr, placed, result); });
   return result;
 }
 
@@ -249,11 +258,13 @@ float parallelBorder(
   if (placed.contains(expr)) {
     return 0;
   }
+
   switch (expr->type()) {
     case PlanType::kColumnExpr:
       return selfCost(expr);
+
     case PlanType::kCallExpr: {
-      float cost = selfCost(expr);
+      const float cost = selfCost(expr);
       auto call = expr->as<Call>();
       BitSet splitArgs;
       auto args = call->args();
@@ -270,6 +281,7 @@ float parallelBorder(
         }
         allArgsCost += argCost;
       }
+
       if (!splitArgs.empty()) {
         // If some arg produced parallel pieces, the non-parallelized siblings
         // are added to the border.
@@ -280,12 +292,11 @@ float parallelBorder(
         }
         return kSplit;
       }
+
       if (allArgsCost > kTargetCost && highestArgCost < allArgsCost / 2) {
         // The args are above the target and the biggest is less than half the
         // total. Add the args to the border.
-        for (auto i = 0; i < args.size(); ++i) {
-          result.add(args[i]);
-        }
+        result.unionObjects(args);
         return kSplit;
       }
       return cost + allArgsCost;
@@ -293,6 +304,7 @@ float parallelBorder(
 
     case PlanType::kAggregateExpr:
       VELOX_UNREACHABLE();
+
     default:
       return 0;
   }
@@ -304,7 +316,7 @@ core::PlanNodePtr ToVelox::maybeParallelProject(
     core::PlanNodePtr input) {
   PlanObjectSet top;
   PlanObjectSet allColumns;
-  auto& exprs = project->exprs();
+  const auto& exprs = project->exprs();
   for (auto expr : exprs) {
     allColumns.unionSet(expr->columns());
     top.add(expr);
@@ -323,9 +335,8 @@ core::PlanNodePtr ToVelox::maybeParallelProject(
     }
 
     auto previousPlaced = placed;
-    cses.forEach([&](PlanObjectCP object) {
-      placed.unionSet(object->as<Expr>()->subexpressions());
-    });
+    cses.forEach<Expr>(
+        [&](auto expr) { placed.unionSet(expr->subexpressions()); });
     placed.unionSet(cses);
 
     auto extraColumns = columnBorder(top, placed);
@@ -333,8 +344,8 @@ core::PlanNodePtr ToVelox::maybeParallelProject(
     input = makeParallelProject(input, cses, previousPlaced, extraColumns);
   }
 
-  // Common prerequisites are placed, the expressions that are left  are a tree
-  // with no order
+  // Common prerequisites are placed, the expressions that are left are a tree
+  // with no order.
   PlanObjectSet parallel;
   top.forEach([&](PlanObjectCP object) {
     parallelBorder(object->as<Expr>(), placed, parallel);
@@ -359,10 +370,14 @@ core::PlanNodePtr ToVelox::maybeParallelProject(
 
   std::vector<std::string> names;
   std::vector<core::TypedExprPtr> finalExprs;
+  names.reserve(exprs.size());
+  finalExprs.reserve(exprs.size());
+
   for (auto i = 0; i < exprs.size(); ++i) {
-    names.push_back(outputName(columns[i]));
-    finalExprs.push_back(toTypedExpr(exprs[i]));
+    names.emplace_back(outputName(columns[i]));
+    finalExprs.emplace_back(toTypedExpr(exprs[i]));
   }
+
   return std::make_shared<core::ProjectNode>(
       nextId(), std::move(names), std::move(finalExprs), input);
 }
