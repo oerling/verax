@@ -647,15 +647,25 @@ TEST_P(SubfieldTest, blackbox) {
           .build();
 
   auto plan = toSingleNodePlan(logicalPlan);
+
   verifyRequiredSubfields(
       plan, {{"m", {subfield("1"), subfield("2"), subfield("3")}}});
 
-  std::cout << plan->toString(true, true);
+  if (GetParam() == 1) {
+    auto matcher =
+        core::PlanMatcherBuilder()
+            .tableScan()
+            .project(
+                {"row_constructor(subscript(m_4,1),subscript(m_4,2),subscript(m_4,3))"})
+            .build();
 
-  auto matcher = core::PlanMatcherBuilder()
-                     .tableScan()
-                     .project({"row_constructor(.*)"})
-                     .build();
+    ASSERT_TRUE(matcher->match(plan));
+  } else {
+    auto matcher =
+        core::PlanMatcherBuilder().tableScan().project().project().build();
+
+    ASSERT_TRUE(matcher->match(plan));
+  }
 }
 
 VELOX_INSTANTIATE_TEST_SUITE_P(

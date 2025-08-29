@@ -25,7 +25,8 @@ namespace facebook::velox::optimizer {
 struct FunctionMetadata {
   bool processSubfields() const {
     return subfieldArg.has_value() || !fieldIndexForArg.empty() ||
-        isArrayConstructor || isMapConstructor || valuePathToArgPath;
+        isArrayConstructor || isMapConstructor || valuePathToArgPath ||
+        logicalExplode || expandFunction || !lambdas.empty();
   }
 
   const LambdaInfo* lambdaInfo(int32_t index) const {
