@@ -106,6 +106,7 @@ void ToGraph::markFieldAccessed(
   for (const auto& sortingField : aggregate->ordering()) {
     mark(sortingField.expression);
   }
+  `
 }
 
 void ToGraph::markFieldAccessed(
@@ -120,6 +121,26 @@ void ToGraph::markFieldAccessed(
     markFieldAccessed(
         inputSources[0], ordinal, steps, isControl, inputContext, inputSources);
   }
+}
+
+void ToGraph::markFieldAccessed(
+    const lp::TableWriteNode& write,
+    int32_t ordinal,
+    std::vector<Step>& steps,
+    bool isControl,
+    std::span<const RowType* const> context,
+    std::span<const LogicalContextSource> sources) {
+  std::vector<Step> empty;
+  auto& input = write.onlyInput();
+  const auto inputContext = std::array{input->outputType().get()};
+  const auto inputSources =
+      std::array{LogicalContextSource{.planNode = input.get()}};
+
+  for (auto& expr : write.values()) {
+    std::vector<Step> empty;
+    markSubfields(expr, empty, isControl, inputContext, inputSources);
+  }
+  return;
 }
 
 void ToGraph::markFieldAccessed(
@@ -170,6 +191,12 @@ void ToGraph::markFieldAccessed(
     return;
   }
 
+  if (kind == lp::NodeKind::kTableWrite) {
+    const auto* write = source.planNode->asUnchecked<lp::TableWriteNode>();
+    markFieldAccessed(*write, ordinal, steps, isControl);
+    return;
+  }
+
   const auto& sourceInputs = source.planNode->inputs();
   if (sourceInputs.empty()) {
     return;
@@ -192,29 +219,6 @@ void ToGraph::markFieldAccessed(
   VELOX_FAIL("Should have found source for expr {}", fieldName);
 }
 
-void ToGraph::markFieldAccessed(
-    const LogicalContextSource& source,
-    int32_t ordinal,
-    std::vector<Step>& steps,
-    bool isControl,
-    std::span<const RowType* const> context,
-    std::span<const LogicalContextSource> sources) {
-      std::vector<Step> empty;
-      auto& write = *source.planNode->asUnchecked<lp::TableWriteNode>();
-      auto& input = write.onlyInput();
-      for (auto& expr : write.values()) {
-	std::vector<Step> empty;
-	markSubfields(
-          expr,
-          empty,
-          isControl,
-          {input->outputType().get()},
-          {LogicalContextSource{.planNode = input.get()}});
-      }
-      return;
-
-}
-  
 std::optional<int32_t> ToGraph::stepToArg(
     const Step& step,
     const FunctionMetadata* metadata) {
@@ -635,4 +639,3 @@ std::string PlanSubfields::toString() const {
 }
 
 } // namespace facebook::velox::optimizer
-

@@ -416,6 +416,14 @@ class ToGraph {
       std::vector<Step>& steps,
       bool isControl);
 
+void markFieldAccessed(
+		       const logical_plan::TableWriteNode& write,
+    int32_t ordinal,
+    std::vector<Step>& steps,
+    bool isControl,
+    std::span<const RowType* const> context,
+		       std::span<const LogicalContextSource> sources);
+  
   void markFieldAccessed(
       const LogicalContextSource& source,
       int32_t ordinal,
