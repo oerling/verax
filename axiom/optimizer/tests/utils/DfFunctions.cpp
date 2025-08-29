@@ -71,8 +71,9 @@ std::pair<std::vector<Step>, int32_t> makeRowFromMapSubfield(
 }
 
 lp::ExprPtr addPaddingCoalesce(const lp::ExprPtr& expr) {
+  const auto& type = expr->type();
   lp::ConstantExprPtr deflt;
-  switch (expr->type()->kind()) {
+  switch (type->kind()) {
     case TypeKind::REAL:
       deflt = std::make_shared<lp::ConstantExpr>(
           REAL(), std::make_shared<Variant>(Variant(static_cast<float>(0))));
@@ -147,28 +148,31 @@ std::unordered_map<PathCP, lp::ExprPtr> paddedMakeRowFromMapExplode(
   return makeRowFromMapExplodeGeneric(call, paths, true);
 }
 
-lp::ExprPtr makeRowFromMapToConstructor(lp::CallExpr* call, bool isPadded) {
+lp::ExprPtr makeRowFromMapToConstructor(
+    const lp::CallExpr* call,
+    bool isPadded) {
   std::vector<lp::ExprPtr> inputs;
-  keys = call->inputAt(1);
-  VELOX_CHECK(keys->isConstantExpr());
+  auto keys = call->inputAt(1);
+  VELOX_CHECK(keys->isConstant());
   std::vector<Variant> keyIds =
       keys->asUnchecked<lp::ConstantExpr>()->value()->value<TypeKind::ARRAY>();
   for (auto& id : keyIds) {
     inputs.push_back(
         std::make_shared<lp::CallExpr>(
-            "subscript",
             call->type()->childAt(0),
-            {call->inputAt(0),
-             std::make_shared<lp::ConstantExpr>(
-                 keys->type()->childAt(0), std::make_shared<Variant>(key))}));
+            "subscript",
+            std::vector<lp::ExprPtr>{
+                call->inputAt(0),
+                std::make_shared<lp::ConstantExpr>(
+                    keys->type()->childAt(0), std::make_shared<Variant>(id))}));
   }
   if (isPadded) {
     for (auto& input : inputs) {
       input = addPaddingCoalesce(input);
     }
-    return std::make_shared<lp::CallExpr>(
-        "row_constructor", call->type(), std::move(inputs));
   }
+  return std::make_shared<lp::CallExpr>(
+      call->type(), "row_constructor", std::move(inputs));
 }
 
 lp::ExprPtr makeRowFromMapHook(
@@ -256,8 +260,8 @@ void registerDfFunctions() {
 
     auto metadata = std::make_unique<FunctionMetadata>();
     metadata->logicalExplode = makeRowFromMapExplode;
-    metadata->logicalExpand = [](const lp::CallExpr* call) {
-      return makeRowFromMapToConstructor(expr, false);
+    metadata->expandFunction = [](const lp::CallExpr* call) {
+      return makeRowFromMapToConstructor(call, false);
     };
 
     metadata->valuePathToArgPath = makeRowFromMapSubfield;
@@ -270,8 +274,8 @@ void registerDfFunctions() {
     auto metadata = std::make_unique<FunctionMetadata>();
     metadata->logicalExplode = paddedMakeRowFromMapExplode;
     metadata->valuePathToArgPath = makeRowFromMapSubfield;
-    metadata->logicalExpand = [](const lp::CallExpr* call) {
-      return makeRowFromMapToConstructor(expr, true);
+    metadata->expandFunction = [](const lp::CallExpr* call) {
+      return makeRowFromMapToConstructor(call, true);
     };
     registry->registerFunction(kPaddedMakeRowFromMap, std::move(metadata));
   }

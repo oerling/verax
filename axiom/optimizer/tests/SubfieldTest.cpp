@@ -63,6 +63,7 @@ class SubfieldTest : public QueryTestBase,
         break;
       case 3:
         optimizerOptions_ = OptimizerOptions{.pushdownSubfields = true};
+	optimizerOptions_.allMapsAsStruct = true; 
         optimizerOptions_.mapAsStruct["features"] = {
             "float_features", "id_list_features", "id_score_list_features"};
         break;
@@ -599,7 +600,8 @@ TEST_P(SubfieldTest, blackbox) {
 
   lp::PlanBuilder::Context ctx(kHiveConnectorId);
   ctx.hook = [](const auto& name, const auto& args) -> lp::ExprPtr {
-    if (name == "map_row_from_map") {
+    if (name == "map_row_from_map" || name == "make_row_from_map" ||
+        name == "padded_make_row_from_map") {
       VELOX_CHECK(args.at(2)->isConstant());
       auto names = args.at(2)
                        ->template asUnchecked<lp::ConstantExpr>()
@@ -637,19 +639,26 @@ TEST_P(SubfieldTest, blackbox) {
 
   ASSERT_NO_THROW(toSingleNodePlan(logicalPlan));
 
-logicalPlan =
+  logicalPlan =
       lp::PlanBuilder(ctx)
           .tableScan("t")
           .project(
               {"make_row_from_map(m, array[1, 2, 3], array['f1', 'f2', 'f3']) as m"})
-  .build();
+          .build();
 
- auto matcher = core::PlanMatcherBuilder()
-   .tableScan()
-   .project({"row_constructor(.*)"})
-   .build();
-   
+  auto plan = toSingleNodePlan(logicalPlan);
+    verifyRequiredSubfields(
+        plan,
+        {
+	  {"m", {subfield("1"), subfield("2"), subfield("3")}}});
 
+    std::cout << plan->toString(true, true);
+
+  
+  auto matcher = core::PlanMatcherBuilder()
+                     .tableScan()
+                     .project({"row_constructor(.*)"})
+                     .build();
 }
 
 VELOX_INSTANTIATE_TEST_SUITE_P(

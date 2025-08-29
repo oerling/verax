@@ -665,9 +665,10 @@ ExprCP ToGraph::translateExpr(const lp::ExprPtr& expr) {
 
   const auto* call = expr->asUnchecked<lp::CallExpr>();
   std::string callName;
+  const FunctionMetadata* metadata = nullptr;
   if (call) {
     callName = exec::sanitizeName(call->name());
-    auto* metadata = functionMetadata(callName);
+    metadata = functionMetadata(callName);
     if (metadata && metadata->processSubfields()) {
       auto translated = translateSubfieldFunction(call, metadata);
       if (translated.has_value()) {
