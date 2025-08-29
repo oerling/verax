@@ -102,14 +102,6 @@ class ToVelox {
   // only considers base relation columns of the given type.
   velox::RowTypePtr makeOutputType(const ColumnVector& columns);
 
-  // Produces a scan output type with only top level columns. Returns
-  // these in scanColumns. The scan->columns() is the leaf columns,
-  // not the top level ones if subfield pushdown.
-  RowTypePtr scanOutputType(
-      const TableScan& scan,
-      ColumnVector& scanColumns,
-      std::unordered_map<ColumnCP, TypePtr>& typeMap);
-
   // Makes a getter path over a top level column and can convert the top
   // map getter into struct getter if maps extracted as structs.
   core::TypedExprPtr
@@ -219,9 +211,10 @@ class ToVelox {
       const PlanObjectSet& extraColumns);
 
   // Makes projections for subfields as top level columns.
+  // @param scanNode TableScan or Filter input node.
   core::PlanNodePtr makeSubfieldProjections(
       const TableScan& scan,
-      const core::TableScanNodePtr& scanNode);
+      const core::PlanNodePtr& scanNode);
 
   axiom::runner::ExecutableFragment newFragment();
 

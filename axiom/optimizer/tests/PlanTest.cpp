@@ -22,6 +22,7 @@
 #include "axiom/optimizer/tests/ParquetTpchTest.h"
 #include "axiom/optimizer/tests/PlanMatcher.h"
 #include "axiom/optimizer/tests/QueryTestBase.h"
+#include "axiom/optimizer/tests/utils/DfFunctions.h"
 #include "velox/exec/tests/utils/TpchQueryBuilder.h"
 #include "velox/expression/ExprToSubfieldFilter.h"
 #include "velox/type/tests/SubfieldFiltersBuilder.h"
@@ -51,6 +52,8 @@ class PlanTest : public test::QueryTestBase {
     LocalRunnerTestBase::testDataPath_ = path;
     LocalRunnerTestBase::localFileFormat_ = "parquet";
     LocalRunnerTestBase::SetUpTestCase();
+
+    test::registerDfFunctions();
   }
 
   static void TearDownTestCase() {
@@ -214,21 +217,114 @@ TEST_F(PlanTest, agg) {
 // Verify that optimizer can handle connectors that do not support filter
 // pushdown.
 TEST_F(PlanTest, rejectedFilters) {
+  const auto mapType = MAP(BIGINT(), DOUBLE());
   testConnector_->createTable(
-      "numbers", ROW({"a", "b", "c"}, {BIGINT(), DOUBLE(), VARCHAR()}));
+      "t", ROW({"a", "b", "c"}, {BIGINT(), DOUBLE(), mapType}));
 
-  auto logicalPlan = lp::PlanBuilder()
-                         .tableScan(kTestConnectorId, "numbers", {"a", "b"})
-                         .filter("a > 10")
-                         .map({"a + 2"})
-                         .build();
+  auto scan = [&]() {
+    lp::PlanBuilder::Context ctx(
+        kTestConnectorId, getQueryCtx(), test::resolveDfFunction);
+    return lp::PlanBuilder(ctx, /* enableCoersions */ true).tableScan("t");
+  };
 
-  auto plan = toSingleNodePlan(logicalPlan);
+  // SELECT a + 2 FROM t WHERE a > 10.
+  {
+    auto logicalPlan = scan().filter("a > 10").map({"a + 2"});
 
-  auto matcher =
-      core::PlanMatcherBuilder().tableScan().filter().project().build();
+    auto plan = toSingleNodePlan(logicalPlan.build());
 
-  ASSERT_TRUE(matcher->match(plan));
+    auto matcher = core::PlanMatcherBuilder()
+                       .tableScan("t", ROW("a", BIGINT()))
+                       .filter("a > 10")
+                       .project()
+                       .build();
+
+    ASSERT_TRUE(matcher->match(plan));
+  }
+
+  // SELECT a + 2 FROM t WHERE b > 10.
+  {
+    auto logicalPlan = scan().filter("b > 10").map({"a + 2"});
+
+    auto plan = toSingleNodePlan(logicalPlan.build());
+
+    auto matcher = core::PlanMatcherBuilder()
+                       .tableScan("t", ROW({"a", "b"}, {BIGINT(), DOUBLE()}))
+                       .filter("b > 10")
+                       .project()
+                       .build();
+
+    ASSERT_TRUE(matcher->match(plan));
+  }
+
+  optimizerOptions_.pushdownSubfields = true;
+
+  // SELECT * FROM t WHERE c.x > 10.
+  {
+    auto logicalPlan =
+        scan()
+            .map(
+                {"make_row_from_map(c, array[1,2,3], array['x', 'y', 'z']) as c"})
+            .filter("c.x > 10")
+            .map({"c.x + 1", "c.y + 2", "c.z + 3"})
+            .build();
+
+    auto plan = toSingleNodePlan(logicalPlan);
+
+    auto matcher = core::PlanMatcherBuilder()
+                       .tableScan("t", ROW("c", mapType))
+                       .filter()
+                       .project() // project top-level columns c.x, c.y, c.z
+                       .project() // project c.x + 1, c.y + 2, c.z + 3
+                       .build();
+
+    ASSERT_TRUE(matcher->match(plan));
+  }
+
+  // SELECT 1 FROM t WHERE c.x > 10.
+  // -- Filter uses column that's not otherwise used.
+  {
+    auto logicalPlan =
+        scan()
+            .map(
+                {"make_row_from_map(c, array[1, 2, 3], array['x', 'y', 'z']) as c"})
+            .filter("c.x > 10")
+            .map({"1"})
+            .build();
+
+    auto plan = toSingleNodePlan(logicalPlan);
+
+    auto matcher = core::PlanMatcherBuilder()
+                       .tableScan("t", ROW("c", mapType))
+                       .filter("c[1] > 10")
+                       .project({"1"})
+                       .build();
+
+    ASSERT_TRUE(matcher->match(plan));
+  }
+
+  // SELECT c.y + 1 FROM t WHERE c.x > 10.
+  // -- Filter uses subfield that's not otherwise used.
+  {
+    auto logicalPlan =
+        scan()
+            .map(
+                {"make_row_from_map(c, array[1, 2, 3], array['x', 'y', 'z']) as c"})
+            .filter("c.x > 10")
+            .map({"c.y + 1"})
+            .build();
+
+    auto plan = toSingleNodePlan(logicalPlan);
+
+    auto matcher = core::PlanMatcherBuilder()
+                       .tableScan("t", ROW("c", mapType))
+                       .filter("c[1] > 10")
+                       .project() // project top-level column c.y
+                       .project() // project c.y + 1
+                       .build();
+
+    ASSERT_TRUE(matcher->match(plan));
+  }
 }
 
 TEST_F(PlanTest, specialFormConstantFold) {

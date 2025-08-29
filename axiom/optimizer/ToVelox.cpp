@@ -926,18 +926,6 @@ RowTypePtr skylineStruct(BaseTableCP baseTable, ColumnCP column) {
 }
 } // namespace
 
-RowTypePtr ToVelox::scanOutputType(
-    const TableScan& scan,
-    ColumnVector& scanColumns,
-    std::unordered_map<ColumnCP, TypePtr>& typeMap) {
-  if (!hasSubfieldPushdown(scan)) {
-    scanColumns = scan.columns();
-    return makeOutputType(scan.columns());
-  }
-  return subfieldPushdownScanType(
-      scan.baseTable, scan.columns(), scanColumns, typeMap);
-}
-
 RowTypePtr ToVelox::subfieldPushdownScanType(
     BaseTableCP baseTable,
     const ColumnVector& leafColumns,
@@ -961,6 +949,9 @@ RowTypePtr ToVelox::subfieldPushdownScanType(
         types.push_back(toTypePtr(topColumn->value().type));
       }
     } else {
+      if (top.contains(column)) {
+        continue;
+      }
       topColumns.push_back(column);
       names.push_back(column->name());
       types.push_back(toTypePtr(column->value().type));
@@ -972,7 +963,7 @@ RowTypePtr ToVelox::subfieldPushdownScanType(
 
 core::PlanNodePtr ToVelox::makeSubfieldProjections(
     const TableScan& scan,
-    const std::shared_ptr<const core::TableScanNode>& scanNode) {
+    const core::PlanNodePtr& scanNode) {
   ScopedVarSetter getters(&getterForPushdownSubfield_, true);
   ScopedVarSetter noAlias(&makeVeloxExprWithNoAlias_, true);
   std::vector<std::string> names;
@@ -986,21 +977,61 @@ core::PlanNodePtr ToVelox::makeSubfieldProjections(
 }
 
 namespace {
+
+void collectFieldNames(
+    const core::TypedExprPtr& expr,
+    std::unordered_set<Name>& names) {
+  if (expr->isFieldAccessKind()) {
+    auto fieldAccess = expr->asUnchecked<core::FieldAccessTypedExpr>();
+    if (fieldAccess->isInputColumn()) {
+      names.insert(queryCtx()->toName(fieldAccess->name()));
+    }
+  }
+
+  for (auto& input : expr->inputs()) {
+    collectFieldNames(input, names);
+  }
+}
+
+// Combines 'conjuncts' into a single expression using AND. Rewrites inputs to
+// replace column names from the table schema to correlated names used in the
+// output of table scan (foo -> t1.foo). Appends columns used in 'conjuncts'
+// to 'columns' unless these are already present.
 core::TypedExprPtr toAndWithAliases(
-    const std::vector<core::TypedExprPtr>& exprs,
-    const BaseTable* baseTable) {
-  auto result = exprs.size() == 1
-      ? exprs.at(0)
+    const std::vector<core::TypedExprPtr>& conjuncts,
+    const BaseTable* baseTable,
+    ColumnVector& columns) {
+  auto result = conjuncts.size() == 1
+      ? conjuncts.at(0)
       : std::make_shared<core::CallTypedExpr>(
-            BOOLEAN(), exprs, SpecialFormCallNames::kAnd);
+            BOOLEAN(), conjuncts, SpecialFormCallNames::kAnd);
+
+  std::unordered_set<Name> usedFieldNames;
+  collectFieldNames(result, usedFieldNames);
+
+  PlanObjectSet columnSet;
+  columnSet.unionObjects(columns);
 
   std::unordered_map<std::string, core::TypedExprPtr> mapping;
   for (const auto& column : baseTable->columns) {
-    mapping[column->name()] = std::make_shared<core::FieldAccessTypedExpr>(
+    auto name = column->name();
+    mapping[name] = std::make_shared<core::FieldAccessTypedExpr>(
         toTypePtr(column->value().type), ToVelox::outputName(column));
+
+    if (usedFieldNames.contains(name)) {
+      if (!columnSet.contains(column)) {
+        columns.push_back(column);
+      }
+      usedFieldNames.erase(name);
+    }
   }
+
+  // Verify that all fields used in 'conjuncts' are mapped to columns.
+  VELOX_CHECK_EQ(0, usedFieldNames.size());
+
   return result->rewriteInputNames(mapping);
 }
+
 } // namespace
 
 velox::core::PlanNodePtr ToVelox::makeScan(
@@ -1008,17 +1039,35 @@ velox::core::PlanNodePtr ToVelox::makeScan(
     axiom::runner::ExecutableFragment& fragment,
     std::vector<axiom::runner::ExecutableFragment>& stages) {
   columnAlteredTypes_.clear();
-  bool isSubfieldPushdown = hasSubfieldPushdown(scan);
-  auto handlePair = leafHandle(scan.baseTable->id());
-  if (!handlePair.first) {
-    queryCtx()->optimization()->filterUpdated(scan.baseTable, false);
-    handlePair = leafHandle(scan.baseTable->id());
+
+  const bool isSubfieldPushdown = hasSubfieldPushdown(scan);
+
+  auto [tableHandle, rejectedFilters] = leafHandle(scan.baseTable->id());
+  if (tableHandle == nullptr) {
+    filterUpdated(scan.baseTable, false);
+    std::tie(tableHandle, rejectedFilters) = leafHandle(scan.baseTable->id());
     VELOX_CHECK_NOT_NULL(
-        handlePair.first, "No table for scan {}", scan.toString(true, true));
+        tableHandle, "No table for scan {}", scan.toString(true, true));
   }
 
+  // Add columns used by rejected filters to scan columns.
+  ColumnVector allColumns = scan.columns();
+  core::TypedExprPtr filter;
+  if (!rejectedFilters.empty()) {
+    filter = toAndWithAliases(rejectedFilters, scan.baseTable, allColumns);
+  }
+
+  RowTypePtr outputType;
   ColumnVector scanColumns;
-  auto outputType = scanOutputType(scan, scanColumns, columnAlteredTypes_);
+  if (!isSubfieldPushdown) {
+    scanColumns = allColumns;
+    outputType = makeOutputType(allColumns);
+  } else {
+    outputType = subfieldPushdownScanType(
+        scan.baseTable, allColumns, scanColumns, columnAlteredTypes_);
+  }
+
+  auto connectorMetadata = scan.index->layout->connector()->metadata();
   connector::ColumnHandleMap assignments;
   for (auto column : scanColumns) {
     // TODO: Make assignments have a ConnectorTableHandlePtr instead of
@@ -1031,25 +1080,23 @@ velox::core::PlanNodePtr ToVelox::makeScan(
         isSubfieldPushdown ? column->name() : outputName(column);
     assignments[scanColumnName] =
         std::const_pointer_cast<connector::ColumnHandle>(
-            scan.index->layout->connector()->metadata()->createColumnHandle(
+            connectorMetadata->createColumnHandle(
                 *scan.index->layout, column->name(), std::move(subfields)));
   }
 
   auto scanNode = std::make_shared<core::TableScanNode>(
-      nextId(), outputType, handlePair.first, assignments);
+      nextId(), outputType, tableHandle, assignments);
 
   core::PlanNodePtr result = scanNode;
-  if (hasSubfieldPushdown(scan)) {
-    result = makeSubfieldProjections(scan, scanNode);
+  if (filter != nullptr) {
+    result = std::make_shared<core::FilterNode>(nextId(), filter, result);
   }
 
-  if (!handlePair.second.empty()) {
-    result = std::make_shared<core::FilterNode>(
-        nextId(), toAndWithAliases(handlePair.second, scan.baseTable), result);
-    makePredictionAndHistory(result->id(), &scan);
-  } else {
-    makePredictionAndHistory(scanNode->id(), &scan);
+  if (isSubfieldPushdown) {
+    result = makeSubfieldProjections(scan, result);
   }
+
+  makePredictionAndHistory(result->id(), &scan);
 
   fragment.scans.push_back(scanNode);
 

@@ -46,7 +46,6 @@ class SubfieldTest : public QueryTestBase,
     LocalRunnerTestBase::localFileFormat_ = "dwrf";
     LocalRunnerTestBase::SetUpTestCase();
     registerDfFunctions();
-    registerRowUdfs();
   }
 
   static void TearDownTestCase() {
