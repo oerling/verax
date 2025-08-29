@@ -710,7 +710,7 @@ void Optimization::addPostprocess(
     PlanState& state) {
   if (dt->write) {
     VELOX_CHECK(
-        dt->aggregation == nullptr && dt->orderByKeys.empty() &&
+        dt->aggregation == nullptr && dt->orderKeys.empty() &&
             dt->limit == -1 && dt->offset == 0,
         "A write does not mix with other postprocess");
     plan = repartitionForWrite(plan, state);

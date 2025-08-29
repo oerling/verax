@@ -106,7 +106,6 @@ void ToGraph::markFieldAccessed(
   for (const auto& sortingField : aggregate->ordering()) {
     mark(sortingField.expression);
   }
-  `
 }
 
 void ToGraph::markFieldAccessed(
@@ -127,9 +126,7 @@ void ToGraph::markFieldAccessed(
     const lp::TableWriteNode& write,
     int32_t ordinal,
     std::vector<Step>& steps,
-    bool isControl,
-    std::span<const RowType* const> context,
-    std::span<const LogicalContextSource> sources) {
+    bool isControl) {
   std::vector<Step> empty;
   auto& input = write.onlyInput();
   const auto inputContext = std::array{input->outputType().get()};

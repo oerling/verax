@@ -165,7 +165,7 @@ SchemaTableCP Schema::findTable(
       distribution,
       partition,
       columns,
-				   pk);
+      layout);
   queryCtx()->optimization()->retainConnectorTable(std::move(connectorTable));
   return schemaTable;
 }
