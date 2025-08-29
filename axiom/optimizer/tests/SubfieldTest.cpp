@@ -637,6 +637,20 @@ TEST_P(SubfieldTest, blackbox) {
           .build();
 
   ASSERT_NO_THROW(toSingleNodePlan(logicalPlan));
+
+logicalPlan =
+      lp::PlanBuilder(ctx)
+          .tableScan("t")
+          .project(
+              {"make_row_from_map(m, array[1, 2, 3], array['f1', 'f2', 'f3']) as m"})
+  .build();
+
+ auto matcher = core::PlanMatcherBuilder()
+   .tableScan()
+   .project({"row_constructor(.*)"})
+   .build();
+   
+
 }
 
 VELOX_INSTANTIATE_TEST_SUITE_P(

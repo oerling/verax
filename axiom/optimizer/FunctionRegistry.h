@@ -94,6 +94,13 @@ struct FunctionMetadata {
       const logical_plan::CallExpr* call,
       std::vector<PathCP>& paths)>
       logicalExplode;
+
+  /// Hook for rewriting a call to a function if it is accessed as a
+  /// whole as opposed to the result only being accessed through
+  /// getters. 'logicalExplode' is used if there are only geters over
+  /// the function. If nullptr is returned the original function is
+  /// used.
+  std::function<logical_plan::ExprPtr(const logical_plan::CallExpr*) expandFunction;
 };
 
 using FunctionMetadataCP = const FunctionMetadata*;

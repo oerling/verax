@@ -676,6 +676,13 @@ ExprCP ToGraph::translateExpr(const lp::ExprPtr& expr) {
     }
   }
 
+  if (metadata && metadata->expandFunction) {
+    auto newExpr = metadata->expandFunction(call);
+    if (newExpr) {
+      return translateExpr(newExpr);
+    }
+  }
+  
   const lp::SpecialFormExpr* specialForm = expr->isSpecialForm()
       ? expr->asUnchecked<lp::SpecialFormExpr>()
       : nullptr;
