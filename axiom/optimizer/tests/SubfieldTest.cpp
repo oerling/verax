@@ -63,7 +63,7 @@ class SubfieldTest : public QueryTestBase,
         break;
       case 3:
         optimizerOptions_ = OptimizerOptions{.pushdownSubfields = true};
-	optimizerOptions_.allMapsAsStruct = true; 
+        optimizerOptions_.allMapsAsStruct = true;
         optimizerOptions_.mapAsStruct["features"] = {
             "float_features", "id_list_features", "id_score_list_features"};
         break;
@@ -647,14 +647,11 @@ TEST_P(SubfieldTest, blackbox) {
           .build();
 
   auto plan = toSingleNodePlan(logicalPlan);
-    verifyRequiredSubfields(
-        plan,
-        {
-	  {"m", {subfield("1"), subfield("2"), subfield("3")}}});
+  verifyRequiredSubfields(
+      plan, {{"m", {subfield("1"), subfield("2"), subfield("3")}}});
 
-    std::cout << plan->toString(true, true);
+  std::cout << plan->toString(true, true);
 
-  
   auto matcher = core::PlanMatcherBuilder()
                      .tableScan()
                      .project({"row_constructor(.*)"})

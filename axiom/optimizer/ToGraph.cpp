@@ -683,7 +683,7 @@ ExprCP ToGraph::translateExpr(const lp::ExprPtr& expr) {
       return translateExpr(newExpr);
     }
   }
-  
+
   const lp::SpecialFormExpr* specialForm = expr->isSpecialForm()
       ? expr->asUnchecked<lp::SpecialFormExpr>()
       : nullptr;
