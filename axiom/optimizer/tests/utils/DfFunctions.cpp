@@ -59,14 +59,41 @@ std::pair<std::vector<Step>, int32_t> makeRowFromMapSubfield(
 
   auto newFields = steps;
   newFields.pop_back();
-  newFields.push_back(optimizer::Step{
-      .kind = optimizer::StepKind::kSubscript,
-      .id = call.inputAt(1)
-                ->asUnchecked<lp::ConstantExpr>()
-                ->value()
-                ->value<TypeKind::ARRAY>()[found]
-                .value<int32_t>()});
+  newFields.push_back(
+      optimizer::Step{
+          .kind = optimizer::StepKind::kSubscript,
+          .id = call.inputAt(1)
+                    ->asUnchecked<lp::ConstantExpr>()
+                    ->value()
+                    ->value<TypeKind::ARRAY>()[found]
+                    .value<int32_t>()});
   return std::make_pair(newFields, 0);
+}
+
+lp::ExprPtr addPaddingCoalesce(const lp::ExprPtr& expr) {
+  lp::ConstantExprPtr deflt;
+  switch (expr->type()->kind()) {
+    case TypeKind::REAL:
+      deflt = std::make_shared<lp::ConstantExpr>(
+          REAL(), std::make_shared<Variant>(Variant(static_cast<float>(0))));
+      break;
+    case TypeKind::ARRAY: {
+      auto emptyArray = Variant::array({});
+      deflt = std::make_shared<lp::ConstantExpr>(
+          type, std::make_shared<Variant>(Variant(emptyArray)));
+      break;
+    }
+    case TypeKind::MAP: {
+      auto emptyMap = Variant::map({});
+      deflt = std::make_shared<lp::ConstantExpr>(
+          type, std::make_shared<Variant>(Variant(emptyMap)));
+      break;
+    }
+    default:
+      VELOX_NYI("padded_make_row_from_map type {}", type->toString());
+  }
+  return std::make_shared<lp::SpecialFormExpr>(
+      type, lp::SpecialForm::kCoalesce, std::vector<lp::ExprPtr>{expr, deflt});
 }
 
 std::unordered_map<PathCP, lp::ExprPtr> makeRowFromMapExplodeGeneric(
@@ -101,32 +128,7 @@ std::unordered_map<PathCP, lp::ExprPtr> makeRowFromMapExplodeGeneric(
             std::make_shared<lp::ConstantExpr>(
                 subscriptType, std::make_shared<Variant>(keys[nth]))});
     if (addCoalesce) {
-      lp::ConstantExprPtr deflt;
-      switch (type->kind()) {
-        case TypeKind::REAL:
-          deflt = std::make_shared<lp::ConstantExpr>(
-              REAL(),
-              std::make_shared<Variant>(Variant(static_cast<float>(0))));
-          break;
-        case TypeKind::ARRAY: {
-          auto emptyArray = Variant::array({});
-          deflt = std::make_shared<lp::ConstantExpr>(
-              type, std::make_shared<Variant>(Variant(emptyArray)));
-          break;
-        }
-        case TypeKind::MAP: {
-          auto emptyMap = Variant::map({});
-          deflt = std::make_shared<lp::ConstantExpr>(
-              type, std::make_shared<Variant>(Variant(emptyMap)));
-          break;
-        }
-        default:
-          VELOX_NYI("padded_make_row_from_map type {}", type->toString());
-      }
-      getter = std::make_shared<lp::SpecialFormExpr>(
-          type,
-          lp::SpecialForm::kCoalesce,
-          std::vector<lp::ExprPtr>{getter, deflt});
+      getter = addPaddingCoalesce(getter);
     }
     result[prefixPath] = getter;
   }
@@ -143,6 +145,30 @@ std::unordered_map<PathCP, lp::ExprPtr> paddedMakeRowFromMapExplode(
     const lp::CallExpr* call,
     std::vector<PathCP>& paths) {
   return makeRowFromMapExplodeGeneric(call, paths, true);
+}
+
+lp::ExprPtr makeRowFromMapToConstructor(lp::CallExpr* call, bool isPadded) {
+  std::vector<lp::ExprPtr> inputs;
+  keys = call->inputAt(1);
+  VELOX_CHECK(keys->isConstantExpr());
+  std::vector<Variant> keyIds =
+      keys->asUnchecked<lp::ConstantExpr>()->value()->value<TypeKind::ARRAY>();
+  for (auto& id : keyIds) {
+    inputs.push_back(
+        std::make_shared<lp::CallExpr>(
+            "subscript",
+            call->type()->childAt(0),
+            {call->inputAt(0),
+             std::make_shared<lp::ConstantExpr>(
+                 keys->type()->childAt(0), std::make_shared<Variant>(key))}));
+  }
+  if (isPadded) {
+    for (auto& input : inputs) {
+      input = addPaddingCoalesce(input);
+    }
+    return std::make_shared<lp::CallExpr>(
+        "row_constructor", call->type(), std::move(inputs));
+  }
 }
 
 lp::ExprPtr makeRowFromMapHook(
@@ -171,10 +197,11 @@ lp::ExprPtr makeNamedRowHook(
   std::vector<TypePtr> types;
   for (auto i = 0; i < args.size(); i += 2) {
     VELOX_CHECK(args[i]->isConstant());
-    newNames.push_back(args[i]
-                           ->asUnchecked<lp::ConstantExpr>()
-                           ->value()
-                           ->value<TypeKind::VARCHAR>());
+    newNames.push_back(
+        args[i]
+            ->asUnchecked<lp::ConstantExpr>()
+            ->value()
+            ->value<TypeKind::VARCHAR>());
     types.push_back(args[i + 1]->type());
     values.push_back(args[i + 1]);
   }
@@ -229,6 +256,10 @@ void registerDfFunctions() {
 
     auto metadata = std::make_unique<FunctionMetadata>();
     metadata->logicalExplode = makeRowFromMapExplode;
+    metadata->logicalExpand = [](const lp::CallExpr* call) {
+      return makeRowFromMapToConstructor(expr, false);
+    };
+
     metadata->valuePathToArgPath = makeRowFromMapSubfield;
     registry->registerFunction(kMakeRowFromMap, std::move(metadata));
   }
@@ -239,6 +270,9 @@ void registerDfFunctions() {
     auto metadata = std::make_unique<FunctionMetadata>();
     metadata->logicalExplode = paddedMakeRowFromMapExplode;
     metadata->valuePathToArgPath = makeRowFromMapSubfield;
+    metadata->logicalExpand = [](const lp::CallExpr* call) {
+      return makeRowFromMapToConstructor(expr, true);
+    };
     registry->registerFunction(kPaddedMakeRowFromMap, std::move(metadata));
   }
 
