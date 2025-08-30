@@ -16,6 +16,7 @@
 
 #include "axiom/optimizer/ToVelox.h"
 #include "axiom/optimizer/Optimization.h"
+#include "velox/core/PlanConsistencyChecker.h"
 #include "velox/core/PlanNode.h"
 #include "velox/exec/HashPartitionFunction.h"
 #include "velox/exec/RoundRobinPartitionFunction.h"
@@ -197,8 +198,12 @@ PlanAndStats ToVelox::toVeloxPlan(
   ExecutableFragment top;
   std::vector<ExecutableFragment> stages;
   top.fragment.planNode = makeFragment(std::move(plan), top, stages);
-
   stages.push_back(std::move(top));
+
+  for (const auto& stage : stages) {
+    velox::core::PlanConsistencyChecker::check(stage.fragment.planNode);
+  }
+
   return PlanAndStats{
       std::make_shared<axiom::runner::MultiFragmentPlan>(
           std::move(stages), options),
@@ -1130,22 +1135,26 @@ velox::core::PlanNodePtr ToVelox::makeProject(
     }
   }
 
-  bool redundant = true;
-  for (auto i = 0; i < project.exprs().size(); ++i) {
-    auto expr = project.exprs()[i];
-    if (expr->type() != PlanType::kColumnExpr) {
-      redundant = false;
-      break;
-    }
+  const auto& inputType = *input->outputType();
+  const auto numOutputs = project.exprs().size();
+  VELOX_DCHECK_EQ(project.columns().size(), numOutputs);
 
-    auto column = project.columns()[i];
-
-    // TODO Why expr->sameOrEquals(*column) doesn't work?
-    if (input->outputType()->nameOf(i) != outputName(column)) {
-      redundant = false;
-      break;
+  const bool redundant = [&] {
+    if (inputType.size() != numOutputs) {
+      return false;
     }
-  }
+    for (size_t i = 0; i < numOutputs; ++i) {
+      const auto* expr = project.exprs()[i];
+      if (expr->type() != PlanType::kColumnExpr) {
+        return false;
+      }
+      const auto* column = project.columns()[i];
+      if (inputType.nameOf(i) != outputName(column)) {
+        return false;
+      }
+    }
+    return true;
+  }();
 
   if (redundant) {
     return input;
@@ -1153,14 +1162,16 @@ velox::core::PlanNodePtr ToVelox::makeProject(
 
   std::vector<std::string> names;
   std::vector<core::TypedExprPtr> exprs;
-  for (auto i = 0; i < project.exprs().size(); ++i) {
-    auto column = project.columns()[i];
+  names.reserve(numOutputs);
+  exprs.reserve(numOutputs);
+  for (auto i = 0; i < numOutputs; ++i) {
+    const auto* column = project.columns()[i];
     names.push_back(outputName(column));
     exprs.push_back(toTypedExpr(project.exprs()[i]));
   }
 
   return std::make_shared<core::ProjectNode>(
-      nextId(), std::move(names), std::move(exprs), input);
+      nextId(), std::move(names), std::move(exprs), std::move(input));
 }
 
 velox::core::PlanNodePtr ToVelox::makeJoin(

@@ -1307,6 +1307,29 @@ TEST_F(PlanTest, parallelCse) {
   EXPECT_TRUE(matcher->match(plan));
 }
 
+TEST_F(PlanTest, lastProjection) {
+  testConnector_->createTable(
+      "numbers", ROW({"a", "b", "c"}, {BIGINT(), DOUBLE(), VARCHAR()}));
+
+  auto logicalPlan = lp::PlanBuilder{}
+                         .tableScan(kTestConnectorId, "numbers", {"a", "b"})
+                         .aggregate({"a", "b"}, {"count(1)"})
+                         .project({"a"})
+                         .build();
+
+  auto plan = toSingleNodePlan(logicalPlan);
+
+  auto matcher = core::PlanMatcherBuilder()
+                     .tableScan()
+                     .partialAggregation()
+                     .localPartition()
+                     .finalAggregation()
+                     .project({"a"})
+                     .build();
+
+  ASSERT_TRUE(matcher->match(plan));
+}
+
 } // namespace
 } // namespace facebook::velox::optimizer
 
