@@ -91,9 +91,10 @@ class ToVelox {
     if (column->value().type->kind() != TypeKind::MAP) {
       return false;
     }
-    return optimizerOptions_.isMapAsStruct(column->relation()->as<BaseTable>()->schemaTable->name, column->name());
+    return optimizerOptions_.isMapAsStruct(
+        column->relation()->as<BaseTable>()->schemaTable->name, column->name());
   }
-  
+
  private:
   void setLeafHandle(
       int32_t id,

@@ -43,7 +43,7 @@ std::vector<common::Subfield> columnSubfields(BaseTableCP table, int32_t id) {
     auto steps = queryCtx()->pathById(id)->steps();
     std::vector<std::unique_ptr<common::Subfield::PathElement>> elements;
     elements.push_back(
-		       std::make_unique<common::Subfield::NestedField>(column->name()));
+        std::make_unique<common::Subfield::NestedField>(column->name()));
     bool first = true;
     for (auto& step : steps) {
       switch (step.kind) {
@@ -53,15 +53,13 @@ std::vector<common::Subfield> columnSubfields(BaseTableCP table, int32_t id) {
           elements.push_back(
               std::make_unique<common::Subfield::NestedField>(step.field));
           break;
-      case StepKind::kSubscript:
+        case StepKind::kSubscript:
           if (step.allFields) {
             elements.push_back(
                 std::make_unique<common::Subfield::AllSubscripts>());
             break;
           }
-          if (first &&
-              optimization->isMapAsStruct(
-					  column)) {
+          if (first && optimization->isMapAsStruct(column)) {
             elements.push_back(
                 std::make_unique<common::Subfield::NestedField>(
                     step.field ? std::string(step.field)
@@ -351,8 +349,7 @@ ToVelox::pathToGetter(ColumnCP column, PathCP path, core::TypedExprPtr field) {
   // becomes a struct getter.
   auto alterStep = [&](ColumnCP, const Step& step, Step& newStep) {
     auto* rel = column->relation();
-    if (rel->is(PlanType::kTableNode) &&
-        isMapAsStruct(column)) {
+    if (rel->is(PlanType::kTableNode) && isMapAsStruct(column)) {
       // This column is a map to project out as struct.
       newStep.kind = StepKind::kField;
       if (step.field) {
