@@ -267,8 +267,8 @@ class VeloxRunner : public QueryBenchmarkBase {
     auto& tables = dynamic_cast<connector::hive::LocalHiveConnectorMetadata*>(
                        connector_->metadata())
                        ->tables();
-    for (auto& pair : tables) {
-      parser->registerTable(pair.first, pair.second->rowType());
+    for (const auto& [name, table] : tables) {
+      parser->registerTable(name, table->type());
     }
 
     return parser;

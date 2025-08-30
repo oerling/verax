@@ -130,10 +130,10 @@ class Optimization {
     return history_;
   }
 
-  /// Retain a reference to the provided ConnectorTablePtr to ensure
+  /// Retain a reference to the provided TablePtr to ensure
   /// the Table is retained for the duration of Optimization, even if
   /// dropped by the corresponding ConnectorMetadata.
-  void retainConnectorTable(connector::ConnectorTablePtr table) {
+  void retainConnectorTable(connector::TablePtr table) {
     retainedTables_.insert(std::move(table));
   }
 
@@ -307,7 +307,7 @@ class Optimization {
   std::shared_ptr<core::QueryCtx> veloxQueryCtx_;
 
   // Set of tables in use by the Optimizer.
-  std::unordered_set<connector::ConnectorTablePtr> retainedTables_;
+  std::unordered_set<connector::TablePtr> retainedTables_;
 
   // Top DerivedTable when making a QueryGraph from PlanNode.
   DerivedTableP root_;

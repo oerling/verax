@@ -345,7 +345,7 @@ struct SchemaTable {
   ColumnCP findColumn(const std::string& name) const;
 
   int64_t numRows() const {
-    return columnGroups[0]->layout->table()->numRows();
+    return columnGroups[0]->layout->table().numRows();
   }
 
   /// True if 'columns' match no more than one row.

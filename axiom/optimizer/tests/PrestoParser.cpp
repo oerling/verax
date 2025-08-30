@@ -454,7 +454,10 @@ class RelationPlanner : public sql::AstVisitor {
         if (query->is(sql::NodeType::kQuery)) {
           auto builder = std::move(builder_);
 
-          builder_ = newBuilder();
+          lp::PlanBuilder::Scope scope;
+          builder->captureScope(scope);
+
+          builder_ = newBuilder(scope);
           processQuery(query->as<sql::Query>());
           auto subqueryBuider = builder_;
 
@@ -1182,7 +1185,7 @@ SqlStatementPtr PrestoParser::doParse(
 
     VELOX_USER_CHECK_NOT_NULL(table, "Table not found: {}", tableName);
 
-    const auto& schema = table->rowType();
+    const auto& schema = table->type();
 
     std::vector<Variant> data;
     data.reserve(schema->size());

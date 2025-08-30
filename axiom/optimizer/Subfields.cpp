@@ -24,12 +24,6 @@ namespace lp = facebook::velox::logical_plan;
 namespace facebook::velox::optimizer {
 namespace {
 
-const RowTypePtr& lambdaArgType(const lp::Expr* expr) {
-  auto* lambda = expr->asUnchecked<lp::LambdaExpr>();
-  VELOX_CHECK_NOT_NULL(lambda);
-  return lambda->signature();
-}
-
 PathCP stepsToPath(const std::vector<Step>& steps) {
   std::vector<Step> reverse;
   for (int32_t i = steps.size() - 1; i >= 0; --i) {
@@ -38,26 +32,44 @@ PathCP stepsToPath(const std::vector<Step>& steps) {
   return queryCtx()->toPath(make<Path>(std::move(reverse)));
 }
 
-} // namespace
+struct MarkFieldsAccessedContextArray {
+  std::array<const RowType* const, 1> rowTypes;
+  std::array<const LogicalContextSource, 1> sources;
 
-void ToGraph::markFieldAccessed(
-    const lp::CallExpr& call,
-    int32_t lambdaOrdinal,
-    int32_t ordinal,
-    std::vector<Step>& steps,
-    bool isControl,
-    std::span<const RowType* const> context,
-    std::span<const LogicalContextSource> sources) {
-  // The source is a lambda arg. We apply the path to the corresponding
-  // container arg of the 2nd order function call that has the lambda.
-  const auto* md = functionMetadata(toName(call.name()));
-  const auto* lambdaInfo = md->lambdaInfo(lambdaOrdinal);
-  const auto nth = lambdaInfo->argOrdinal[ordinal];
+  MarkFieldsAccessedContext toCtx() const {
+    return {rowTypes, sources};
+  }
+};
 
-  auto callContext = context.subspan(1);
-  auto callSources = sources.subspan(1);
-  markSubfields(call.inputAt(nth), steps, isControl, callContext, callSources);
+struct MarkFieldsAccessedContextVector {
+  std::vector<const RowType*> rowTypes;
+  std::vector<LogicalContextSource> sources;
+
+  MarkFieldsAccessedContext toCtx() const {
+    return {rowTypes, sources};
+  }
+};
+
+MarkFieldsAccessedContextArray fromNode(const lp::LogicalPlanNodePtr& node) {
+  return {
+      {node->outputType().get()},
+      {LogicalContextSource{.planNode = node.get()}}};
 }
+
+MarkFieldsAccessedContextVector fromNodes(
+    const std::vector<lp::LogicalPlanNodePtr>& nodes) {
+  std::vector<const RowType*> rowTypes;
+  std::vector<LogicalContextSource> sources;
+  rowTypes.reserve(nodes.size());
+  sources.reserve(nodes.size());
+  for (const auto& node : nodes) {
+    rowTypes.push_back(node->outputType().get());
+    sources.push_back(LogicalContextSource{.planNode = node.get()});
+  }
+  return {std::move(rowTypes), std::move(sources)};
+}
+
+} // namespace
 
 void ToGraph::markFieldAccessed(
     const lp::ProjectNode& project,
@@ -66,11 +78,7 @@ void ToGraph::markFieldAccessed(
     bool isControl) {
   const auto& input = project.onlyInput();
   markSubfields(
-      project.expressionAt(ordinal),
-      steps,
-      isControl,
-      std::array{input->outputType().get()},
-      std::array{LogicalContextSource{.planNode = input.get()}});
+      project.expressionAt(ordinal), steps, isControl, fromNode(input).toCtx());
 }
 
 void ToGraph::markFieldAccessed(
@@ -80,12 +88,10 @@ void ToGraph::markFieldAccessed(
     bool isControl) {
   const auto& input = agg.onlyInput();
 
-  const auto inputContext = std::array{input->outputType().get()};
-  const auto inputSources =
-      std::array{LogicalContextSource{.planNode = input.get()}};
   std::vector<Step> subSteps;
+  auto context = fromNode(input);
   auto mark = [&](const lp::ExprPtr& expr) {
-    markSubfields(expr, subSteps, isControl, inputContext, inputSources);
+    markSubfields(expr, subSteps, isControl, context.toCtx());
   };
 
   const auto& keys = agg.groupingKeys();
@@ -114,11 +120,9 @@ void ToGraph::markFieldAccessed(
     std::vector<Step>& steps,
     bool isControl) {
   for (const auto& input : set.inputs()) {
-    const auto inputContext = std::array{input->outputType().get()};
-    const auto inputSources =
-        std::array{LogicalContextSource{.planNode = input.get()}};
+    auto context = fromNode(input);
     markFieldAccessed(
-        inputSources[0], ordinal, steps, isControl, inputContext, inputSources);
+        context.sources[0], ordinal, steps, isControl, context.toCtx());
   }
 }
 
@@ -145,17 +149,19 @@ void ToGraph::markFieldAccessed(
     int32_t ordinal,
     std::vector<Step>& steps,
     bool isControl,
-    std::span<const RowType* const> context,
-    std::span<const LogicalContextSource> sources) {
+    const MarkFieldsAccessedContext& context) {
   if (!source.planNode) {
-    markFieldAccessed(
-        *source.call,
-        source.lambdaOrdinal,
-        ordinal,
+    // The source is a lambda arg. We apply the path to the corresponding
+    // container arg of the 2nd order function call that has the lambda.
+    const auto* metadata = functionMetadata(toName(source.call->name()));
+    const auto* lambdaInfo = metadata->lambdaInfo(source.lambdaOrdinal);
+    const auto nth = lambdaInfo->argOrdinal[ordinal];
+
+    markSubfields(
+        source.call->inputAt(nth),
         steps,
         isControl,
-        context,
-        sources);
+        {context.rowTypes.subspan(1), context.sources.subspan(1)});
     return;
   }
 
@@ -208,8 +214,7 @@ void ToGraph::markFieldAccessed(
           maybeIdx.value(),
           steps,
           isControl,
-          context,
-          sources);
+          context);
       return;
     }
   }
@@ -251,6 +256,7 @@ lp::ConstantExprPtr ToGraph::tryFoldConstant(const lp::ExprPtr expr) {
   if (expr->isConstant()) {
     return std::static_pointer_cast<const lp::ConstantExpr>(expr);
   }
+
   if (looksConstant(expr)) {
     auto literal = translateExpr(expr);
     if (literal->is(PlanType::kLiteralExpr)) {
@@ -263,17 +269,16 @@ lp::ConstantExprPtr ToGraph::tryFoldConstant(const lp::ExprPtr expr) {
 }
 
 void ToGraph::markSubfields(
-    const lp::Expr* expr,
+    const lp::ExprPtr& expr,
     std::vector<Step>& steps,
     bool isControl,
-    std::span<const RowType* const> context,
-    std::span<const LogicalContextSource> sources) {
+    const MarkFieldsAccessedContext& context) {
   if (expr->isInputReference()) {
     const auto& name = expr->asUnchecked<lp::InputReferenceExpr>()->name();
-    for (auto i = 0; i < sources.size(); ++i) {
-      if (auto maybeIdx = context[i]->getChildIdxIfExists(name)) {
+    for (auto i = 0; i < context.sources.size(); ++i) {
+      if (auto maybeIdx = context.rowTypes[i]->getChildIdxIfExists(name)) {
         markFieldAccessed(
-            sources[i], maybeIdx.value(), steps, isControl, context, sources);
+            context.sources[i], maybeIdx.value(), steps, isControl, context);
         return;
       }
     }
@@ -283,7 +288,7 @@ void ToGraph::markSubfields(
   if (isSpecialForm(expr, lp::SpecialForm::kDereference)) {
     VELOX_CHECK(expr->inputAt(1)->isConstant());
     const auto* field = expr->inputAt(1)->asUnchecked<lp::ConstantExpr>();
-    const auto* input = expr->inputAt(0).get();
+    const auto& input = expr->inputAt(0);
 
     // Always fill both index and name for a struct getter.
     auto fieldIndex = maybeIntegerLiteral(field);
@@ -298,7 +303,7 @@ void ToGraph::markSubfields(
 
     steps.push_back(
         {.kind = StepKind::kField, .field = name, .id = fieldIndex.value()});
-    markSubfields(input, steps, isControl, context, sources);
+    markSubfields(input, steps, isControl, context);
     steps.pop_back();
     return;
   }
@@ -307,7 +312,7 @@ void ToGraph::markSubfields(
     const auto& name = expr->asUnchecked<lp::CallExpr>()->name();
     if (name == "cardinality") {
       steps.push_back({.kind = StepKind::kCardinality});
-      markSubfields(expr->inputAt(0), steps, isControl, context, sources);
+      markSubfields(expr->inputAt(0), steps, isControl, context);
       steps.pop_back();
       return;
     }
@@ -316,9 +321,10 @@ void ToGraph::markSubfields(
       auto constant = tryFoldConstant(expr->inputAt(1));
       if (!constant) {
         std::vector<Step> subSteps;
-        markSubfields(expr->inputAt(1), subSteps, isControl, context, sources);
+        markSubfields(expr->inputAt(1), subSteps, isControl, context);
+
         steps.push_back({.kind = StepKind::kSubscript, .allFields = true});
-        markSubfields(expr->inputAt(0), steps, isControl, context, sources);
+        markSubfields(expr->inputAt(0), steps, isControl, context);
         steps.pop_back();
         return;
       }
@@ -332,7 +338,7 @@ void ToGraph::markSubfields(
         steps.push_back({.kind = StepKind::kSubscript, .id = id});
       }
 
-      markSubfields(expr->inputAt(0), steps, isControl, context, sources);
+      markSubfields(expr->inputAt(0), steps, isControl, context);
       steps.pop_back();
       return;
     }
@@ -341,7 +347,7 @@ void ToGraph::markSubfields(
     if (!metadata || !metadata->processSubfields()) {
       for (const auto& input : expr->inputs()) {
         std::vector<Step> steps;
-        markSubfields(input, steps, isControl, context, sources);
+        markSubfields(input, steps, isControl, context);
       }
       return;
     }
@@ -363,14 +369,13 @@ void ToGraph::markSubfields(
     // implicitly accessed.
     if (metadata->valuePathToArgPath && !steps.empty()) {
       auto pair = metadata->valuePathToArgPath(steps, *call);
-      markSubfields(
-          expr->inputAt(pair.second), pair.first, isControl, context, sources);
+      markSubfields(expr->inputAt(pair.second), pair.first, isControl, context);
       return;
     }
     for (auto i = 0; i < expr->inputs().size(); ++i) {
       if (metadata->subfieldArg == i) {
         // A subfield of func is a subfield of one arg.
-        markSubfields(expr->inputAt(i), steps, isControl, context, sources);
+        markSubfields(expr->inputAt(i), steps, isControl, context);
         continue;
       }
 
@@ -379,15 +384,11 @@ void ToGraph::markSubfields(
         if (maybeNth.has_value() && maybeNth.value() == i) {
           auto newSteps = steps;
           const auto* argPath = stepsToPath(newSteps);
-          fields->argFields[expr].resultPaths[maybeNth.value()].add(
+          fields->argFields[expr.get()].resultPaths[maybeNth.value()].add(
               argPath->id());
           newSteps.pop_back();
           markSubfields(
-              expr->inputs()[maybeNth.value()],
-              newSteps,
-              isControl,
-              context,
-              sources);
+              expr->inputs()[maybeNth.value()], newSteps, isControl, context);
           continue;
         }
 
@@ -403,23 +404,28 @@ void ToGraph::markSubfields(
       }
 
       if (metadata->lambdaInfo(i)) {
-        const auto& argType = lambdaArgType(expr->inputAt(i).get());
+        const auto* lambda = expr->inputAt(i)->asUnchecked<lp::LambdaExpr>();
+        const auto& argType = lambda->signature();
 
-        std::vector<const RowType*> newContext = {argType.get()};
-        newContext.insert(newContext.end(), context.begin(), context.end());
+        std::vector<const RowType*> newRowTypes = {argType.get()};
+        newRowTypes.insert(
+            newRowTypes.end(),
+            context.rowTypes.begin(),
+            context.rowTypes.end());
 
         std::vector<LogicalContextSource> newSources = {
             {.call = call, .lambdaOrdinal = i}};
-        newSources.insert(newSources.end(), sources.begin(), sources.end());
+        newSources.insert(
+            newSources.end(), context.sources.begin(), context.sources.end());
 
-        const auto* lambda = expr->inputAt(i)->asUnchecked<lp::LambdaExpr>();
         std::vector<Step> empty;
-        markSubfields(lambda->body(), empty, isControl, newContext, newSources);
+        markSubfields(
+            lambda->body(), empty, isControl, {newRowTypes, newSources});
         continue;
       }
       // The argument is not special, just mark through without path.
       std::vector<Step> empty;
-      markSubfields(expr->inputAt(i), empty, isControl, context, sources);
+      markSubfields(expr->inputAt(i), empty, isControl, context);
     }
     return;
   }
@@ -431,7 +437,7 @@ void ToGraph::markSubfields(
   if (expr->isSpecialForm()) {
     for (const auto& input : expr->inputs()) {
       std::vector<Step> steps;
-      markSubfields(input, steps, isControl, context, sources);
+      markSubfields(input, steps, isControl, context);
     }
     return;
   }
@@ -442,12 +448,10 @@ void ToGraph::markSubfields(
 void ToGraph::markColumnSubfields(
     const lp::LogicalPlanNodePtr& source,
     std::span<const lp::ExprPtr> columns) {
-  const auto context = std::array{source->outputType().get()};
-  const auto sources =
-      std::array{LogicalContextSource{.planNode = source.get()}};
   for (const auto& column : columns) {
     std::vector<Step> steps;
-    markSubfields(column, steps, /* isControl */ true, context, sources);
+    markSubfields(
+        column, steps, /* isControl */ true, fromNode(source).toCtx());
   }
 }
 
@@ -456,19 +460,22 @@ void ToGraph::markControl(const lp::LogicalPlanNode& node) {
   if (kind == lp::NodeKind::kJoin) {
     const auto* join = node.asUnchecked<lp::JoinNode>();
     if (const auto& condition = join->condition()) {
-      std::vector<const RowType*> context{
-          join->left()->outputType().get(), join->right()->outputType().get()};
-      std::vector<LogicalContextSource> sources{
-          {.planNode = join->left().get()}, {.planNode = join->right().get()}};
-      std::vector<Step> steps;
-      markSubfields(condition, steps, /* isControl */ true, context, sources);
+      std::vector<Step> empty;
+      markSubfields(
+          condition,
+          empty,
+          /* isControl */ true,
+          fromNodes(join->inputs()).toCtx());
     }
+
   } else if (kind == lp::NodeKind::kFilter) {
     const auto& filter = node.asUnchecked<lp::FilterNode>();
     markColumnSubfields(node.onlyInput(), std::array{filter->predicate()});
+
   } else if (kind == lp::NodeKind::kAggregate) {
     const auto* agg = node.asUnchecked<lp::AggregateNode>();
     markColumnSubfields(node.onlyInput(), agg->groupingKeys());
+
   } else if (kind == lp::NodeKind::kSort) {
     const auto* order = node.asUnchecked<lp::SortNode>();
     std::vector<lp::ExprPtr> keys;
@@ -476,18 +483,18 @@ void ToGraph::markControl(const lp::LogicalPlanNode& node) {
       keys.push_back(key.expression);
     }
     markColumnSubfields(node.onlyInput(), keys);
+
   } else if (kind == lp::NodeKind::kSet) {
-    auto* set = reinterpret_cast<const lp::SetNode*>(&node);
+    auto* set = node.asUnchecked<lp::SetNode>();
     if (set->operation() != lp::SetOperation::kUnionAll) {
       // If this is with a distinct every column is a control column.
+      std::vector<Step> empty;
       for (auto i = 0; i < set->outputType()->size(); ++i) {
         for (auto& in : set->inputs()) {
-          std::vector<Step> empty;
-          std::vector<const RowType*> inputContext = {in->outputType().get()};
-          std::vector<LogicalContextSource> inputSources = {
-              LogicalContextSource{.planNode = in.get()}};
+          auto context = fromNode(in);
           markFieldAccessed(
-              inputSources[0], i, empty, true, inputContext, inputSources);
+              context.sources[0], i, empty, true, context.toCtx());
+          VELOX_CHECK(empty.empty());
         }
       }
     }
@@ -498,19 +505,14 @@ void ToGraph::markControl(const lp::LogicalPlanNode& node) {
   }
 }
 
-void ToGraph::markAllSubfields(
-    const RowType* type,
-    const lp::LogicalPlanNode& node) {
+void ToGraph::markAllSubfields(const lp::LogicalPlanNode& node) {
   markControl(node);
 
   LogicalContextSource source = {.planNode = &node};
-
-  std::vector<const RowType*> context;
-  std::vector<LogicalContextSource> sources;
-  for (auto i = 0; i < type->size(); ++i) {
-    std::vector<Step> steps;
-    markFieldAccessed(
-        source, i, steps, /* isControl */ false, context, sources);
+  std::vector<Step> empty;
+  for (auto i = 0; i < node.outputType()->size(); ++i) {
+    markFieldAccessed(source, i, empty, /* isControl */ false, {});
+    VELOX_CHECK(empty.empty());
   }
 }
 

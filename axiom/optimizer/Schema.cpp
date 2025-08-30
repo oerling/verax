@@ -117,7 +117,7 @@ SchemaTableCP Schema::findTable(
   }
 
   auto* schemaTable = make<SchemaTable>(
-      internedName, connectorTable->rowType(), connectorTable->numRows());
+      internedName, connectorTable->type(), connectorTable->numRows());
   schemaTable->connectorTable = connectorTable.get();
 
   ColumnVector columns;

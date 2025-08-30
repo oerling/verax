@@ -53,10 +53,18 @@ struct BuiltinNames {
 
 /// Struct for resolving which logical PlanNode or Lambda defines which
 /// field for column and subfield tracking.
+/// Only one of planNode or call + lambdaOrdinal is set.
 struct LogicalContextSource {
   const logical_plan::LogicalPlanNode* planNode{nullptr};
   const logical_plan::CallExpr* call{nullptr};
   int32_t lambdaOrdinal{-1};
+};
+
+struct MarkFieldsAccessedContext {
+  // 1:1 with 'sources'. Either output type of the plan node or signature of a
+  // lambda.
+  std::span<const RowType* const> rowTypes;
+  std::span<const LogicalContextSource> sources;
 };
 
 struct ITypedExprHasher {
@@ -228,11 +236,12 @@ class ToGraph {
 
  private:
   static bool isSpecialForm(
-      const logical_plan::Expr* expr,
+      const logical_plan::ExprPtr& expr,
       logical_plan::SpecialForm form) {
     return expr->isSpecialForm() &&
         expr->asUnchecked<logical_plan::SpecialFormExpr>()->form() == form;
   }
+
   // For comparisons, swaps the args to have a canonical form for
   // deduplication. E.g column op constant, and Smaller plan object id
   // to the left.
@@ -352,7 +361,7 @@ class ToGraph {
   PlanObjectP addWrite(const logical_plan::TableWriteNode& TableWriteNode);
 
   bool isSubfield(
-      const logical_plan::Expr* expr,
+      const logical_plan::ExprPtr& expr,
       Step& step,
       logical_plan::ExprPtr& input);
 
@@ -374,29 +383,10 @@ class ToGraph {
       ColumnCP column);
 
   void markSubfields(
-      const logical_plan::Expr* expr,
-      std::vector<Step>& steps,
-      bool isControl,
-      std::span<const RowType* const> context,
-      std::span<const LogicalContextSource> sources);
-
-  void markSubfields(
       const logical_plan::ExprPtr& expr,
       std::vector<Step>& steps,
       bool isControl,
-      std::span<const RowType* const> context,
-      std::span<const LogicalContextSource> sources) {
-    markSubfields(expr.get(), steps, isControl, context, sources);
-  }
-
-  void markFieldAccessed(
-      const logical_plan::CallExpr& call,
-      int32_t lambdaOrdinal,
-      int32_t ordinal,
-      std::vector<Step>& steps,
-      bool isControl,
-      std::span<const RowType* const> context,
-      std::span<const LogicalContextSource> sources);
+      const MarkFieldsAccessedContext& context);
 
   void markFieldAccessed(
       const logical_plan::ProjectNode& project,
@@ -427,12 +417,9 @@ void markFieldAccessed(
       int32_t ordinal,
       std::vector<Step>& steps,
       bool isControl,
-      std::span<const RowType* const> context,
-      std::span<const LogicalContextSource> sources);
+      const MarkFieldsAccessedContext& context);
 
-  void markAllSubfields(
-      const RowType* type,
-      const logical_plan::LogicalPlanNode& node);
+  void markAllSubfields(const logical_plan::LogicalPlanNode& node);
 
   void markControl(const logical_plan::LogicalPlanNode& node);
 

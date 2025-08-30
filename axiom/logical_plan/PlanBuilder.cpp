@@ -120,7 +120,7 @@ PlanBuilder& PlanBuilder::tableScan(
   auto* metadata = connector::getConnector(connectorId)->metadata();
   auto table = metadata->findTable(tableName);
   VELOX_USER_CHECK_NOT_NULL(table, "Table not found: {}", tableName);
-  const auto& schema = table->rowType();
+  const auto& schema = table->type();
 
   const auto numColumns = schema->size();
 
@@ -165,7 +165,7 @@ PlanBuilder& PlanBuilder::tableScan(
   auto* metadata = connector::getConnector(connectorId)->metadata();
   auto table = metadata->findTable(tableName);
   VELOX_USER_CHECK_NOT_NULL(table, "Table not found: {}", tableName);
-  const auto& schema = table->rowType();
+  const auto& schema = table->type();
 
   const auto numColumns = columnNames.size();
 

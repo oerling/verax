@@ -50,7 +50,7 @@ std::unique_ptr<DuckParser> makeDuckParser(velox::memory::MemoryPool* pool) {
     auto table = connector::getConnector(exec::test::kHiveConnectorId)
                      ->metadata()
                      ->findTable(name);
-    parser->registerTable(name, table->rowType());
+    parser->registerTable(name, table->type());
   };
 
   registerTable("region");
@@ -82,7 +82,7 @@ RowTypePtr HiveQueriesTestBase::getSchema(const std::string& tableName) {
   return connector::getConnector(exec::test::kHiveConnectorId)
       ->metadata()
       ->findTable(tableName)
-      ->rowType();
+      ->type();
 }
 
 void HiveQueriesTestBase::checkResults(
