@@ -108,7 +108,7 @@ TEST_F(WritePartitionTest, write) {
       {"file_format", "parquet"},
       {"compression_kind", "snappy"}};
 
-  metadata_->createTableWithOptions("test", tableType, options, session, false);
+  metadata_->createTable("test", tableType, options, session, false);
 
   auto data = makeTestData(10, kTestBatchSize);
 
@@ -177,7 +177,7 @@ TEST_F(WritePartitionTest, write) {
       {"partitioned_by", "ds"},
       {"file_format", "parquet"},
       {"compression_kind", "snappy"}};
-  metadata_->createTableWithOptions(
+  metadata_->createTable(
       "test2", tableType, options2, session, false);
 
   auto copyPlan = lp::PlanBuilder(context)

@@ -1341,7 +1341,7 @@ PlanObjectP ToGraph::addWrite(const lp::TableWriteNode& tableWrite) {
         tableWrite.columnNames().begin(), tableWrite.columnNames().end(), name);
     if (it == tableWrite.columnNames().end()) {
       columns.push_back(toName(name));
-      auto connectorColumn = layout->table()->findColumn(name);
+      auto connectorColumn = layout->table().findColumn(name);
       values.push_back(
           make<Literal>(
               Value(toType(rowType->childAt(i)), 1),

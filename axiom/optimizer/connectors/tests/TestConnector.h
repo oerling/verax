@@ -287,6 +287,7 @@ class TestConnectorMetadata : public ConnectorMetadata {
   void finishWrite(
       const TableLayout& layout,
       const ConnectorInsertTableHandlePtr& handle,
+      bool success,
       const std::vector<RowVectorPtr>& writerResult,
       WriteKind kind,
       const ConnectorSessionPtr& session) override {

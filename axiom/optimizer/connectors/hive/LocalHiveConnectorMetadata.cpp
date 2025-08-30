@@ -970,7 +970,7 @@ void LocalHiveConnectorMetadata::finishWrite(
       localHandle->locationHandle()->writePath(),
       localHandle->locationHandle()->targetPath());
   loadTable(
-      layout.table()->name(), localHandle->locationHandle()->targetPath());
+      layout.table().name(), localHandle->locationHandle()->targetPath());
 }
 
 namespace {

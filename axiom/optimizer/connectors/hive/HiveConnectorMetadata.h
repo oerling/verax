@@ -178,10 +178,6 @@ class HiveConnectorMetadata : public ConnectorMetadata {
   RowTypePtr tableWriteOutputType(const RowTypePtr& rowType, WriteKind kind)
       const override;
 
-  virtual dwio::common::FileFormat fileFormat() const {
-    VELOX_UNSUPPORTED();
-  }
-
   void createTable(
       const std::string& tableName,
       const velox::RowTypePtr& rowType,
@@ -196,6 +192,7 @@ class HiveConnectorMetadata : public ConnectorMetadata {
   void finishWrite(
       const velox::connector::TableLayout& layout,
       const velox::connector::ConnectorInsertTableHandlePtr& handle,
+      bool success,
       const std::vector<velox::RowVectorPtr>& writerResult,
       velox::connector::WriteKind kind,
       const velox::connector::ConnectorSessionPtr& session) override {

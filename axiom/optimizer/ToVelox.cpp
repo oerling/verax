@@ -1515,7 +1515,7 @@ core::PlanNodePtr ToVelox::makeWrite(
   }
   auto* metadata = write->layout()->connector()->metadata();
   auto session = queryCtx()->optimization()->options().session;
-  std::unordered_set<connector::ConnectorTablePtr> retainedTables =
+  std::unordered_set<connector::TablePtr> retainedTables =
       queryCtx()->optimization()->retainedTables();
   // The finish function needs to capture the retained tables, which also keeps
   // layout live past the Optimization.
@@ -1537,7 +1537,7 @@ core::PlanNodePtr ToVelox::makeWrite(
       nextId(),
       input->outputType(),
       columnNames,
-      nullptr,
+      std::nullopt,
       std::make_shared<const core::InsertTableHandle>(
           write->layout()->connector()->connectorId(), handle),
       false,

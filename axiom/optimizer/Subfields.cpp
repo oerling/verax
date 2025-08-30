@@ -127,14 +127,10 @@ void ToGraph::markFieldAccessed(
     std::vector<Step>& steps,
     bool isControl) {
   std::vector<Step> empty;
-  auto& input = write.onlyInput();
-  const auto inputContext = std::array{input->outputType().get()};
-  const auto inputSources =
-      std::array{LogicalContextSource{.planNode = input.get()}};
-
+  const auto ctx = fromNode(write.onlyInput());
   for (auto& expr : write.values()) {
     std::vector<Step> empty;
-    markSubfields(expr, empty, isControl, inputContext, inputSources);
+    markSubfields(expr, empty, isControl, ctx.toCtx());
   }
   return;
 }

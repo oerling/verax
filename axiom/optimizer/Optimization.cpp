@@ -663,7 +663,7 @@ RelationOpPtr repartitionForWrite(const RelationOpPtr& plan, PlanState& state) {
     auto it = std::find(write->columns().begin(), write->columns().end(), name);
     if (it == write->columns().end()) {
       // Not given. column default.
-      auto* column = write->layout()->table()->findColumn(name);
+      auto* column = write->layout()->table().findColumn(name);
       keyValues.push_back(
           make<Literal>(
               Value(toType(column->type()), 1),
