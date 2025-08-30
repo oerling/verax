@@ -566,7 +566,8 @@ class TempProjections {
 
   /// Returns a projection that has exactly the fields in 'names'.
   core::PlanNodePtr projectNamed(
-				 core::PlanNodePtr inputNode, const std::vector<std::string>& names) {
+      core::PlanNodePtr inputNode,
+      const std::vector<std::string>& names) {
     std::vector<core::TypedExprPtr> exprs;
     for (auto& name : names) {
       auto it = std::find(names_.begin(), names_.end(), name);
@@ -1493,7 +1494,8 @@ core::PlanNodePtr ToVelox::makeWrite(
     std::vector<column_index_t> channels;
     std::vector<VectorPtr> constants;
     for (auto i = 0; i < partitionColumns.size(); ++i) {
-      channels.push_back(input->outputType()->getChildIdx(partitionColumns[i]->name()));
+      channels.push_back(
+          input->outputType()->getChildIdx(partitionColumns[i]->name()));
       constants.push_back(nullptr);
     }
 

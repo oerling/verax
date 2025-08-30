@@ -208,7 +208,8 @@ void HiveConnectorMetadata::validateOptions(
 }
 
 RowTypePtr HiveConnectorMetadata::tableWriteOutputType(
-						       const RowTypePtr& /*rowType*/, WriteKind kind) const {
+    const RowTypePtr& /*rowType*/,
+    WriteKind kind) const {
   VELOX_CHECK_EQ(kind, WriteKind::kInsert);
   return ROW(
       {"numWrittenRows", "fragment", "tableCommitContext"},

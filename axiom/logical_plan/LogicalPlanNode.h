@@ -687,7 +687,8 @@ using UnnestNodePtr = std::shared_ptr<const UnnestNode>;
 
 /// Corresponds to connector::WriteKind.
 enum class WriteKind {
-  // Rows are added . All columns are written and either have a value in from an expression in the table writer or get a default from the schema. This
+  // Rows are added . All columns are written and either have a value in from an
+  // expression in the table writer or get a default from the schema. This
   // covers insert, create table and replacing a Hive partition and any other
   // use that adds whole rows.
   kInsert,
@@ -713,7 +714,8 @@ class TableWriteNode : public LogicalPlanNode {
   /// @param connectorId ID of the connector to use to access the table.
   /// @param tableName Table name.
   /// @param kind - Indicates the type of write (insert/delete/update)
-  /// @param values - Expressions producing the values to write.. Correspond 1:1 to 'columnNames'.
+  /// @param values - Expressions producing the values to write.. Correspond 1:1
+  /// to 'columnNames'.
   /// @param columnNames A List of columns in the table being written. 1:1 to
   /// 'inputNames'. 'columnNames' must refer to columns in the table but their
   /// number or order does not have to correspond to the table. Missing columns
@@ -736,7 +738,7 @@ class TableWriteNode : public LogicalPlanNode {
         connectorId_(connectorId),
         tableName_(tableName),
         writeKind_(kind),
-	values_(values), 
+        values_(values),
         columnNames_(columnNames),
         options_(options) {}
 
@@ -755,7 +757,7 @@ class TableWriteNode : public LogicalPlanNode {
   const std::vector<ExprPtr>& values() const {
     return values_;
   }
-  
+
   const std::vector<std::string>& columnNames() const {
     return columnNames_;
   }

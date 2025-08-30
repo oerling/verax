@@ -175,12 +175,13 @@ class HiveConnectorMetadata : public ConnectorMetadata {
       WriteKind kind,
       const ConnectorSessionPtr& session) override;
 
-  RowTypePtr tableWriteOutputType(const RowTypePtr& rowType, WriteKind kind) const override;
+  RowTypePtr tableWriteOutputType(const RowTypePtr& rowType, WriteKind kind)
+      const override;
 
   virtual dwio::common::FileFormat fileFormat() const {
     VELOX_UNSUPPORTED();
   }
-  
+
   void createTable(
       const std::string& tableName,
       const velox::RowTypePtr& rowType,

@@ -827,7 +827,6 @@ void moveFilesRecursively(
   if (fs::is_empty(sourceDir)) {
     fs::remove(sourceDir);
   }
-
 }
 
 // Helper: Check if directory exists

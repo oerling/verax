@@ -53,7 +53,7 @@ const connector::PartitionType* copartitionType(
   }
   return first->copartition(*second);
 }
-  
+
 void PlanState::debugSetFirstTable(int32_t id) {
   if (dt->id() == debugDt) {
     debugPlacedTables.resize(1);

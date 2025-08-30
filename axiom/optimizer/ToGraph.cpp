@@ -1350,8 +1350,7 @@ PlanObjectP ToGraph::addWrite(const lp::TableWriteNode& tableWrite) {
     } else {
       auto nth = it - tableWrite.columnNames().begin();
       columns.push_back(toName(name));
-      values.push_back(
-		       translateExpr(tableWrite.values()[nth]));
+      values.push_back(translateExpr(tableWrite.values()[nth]));
     }
   }
   ColumnVector outputColumns;
@@ -1362,7 +1361,7 @@ PlanObjectP ToGraph::addWrite(const lp::TableWriteNode& tableWrite) {
             name,
             currentDt_,
             Value(toType(tableWrite.outputType()->childAt(i)), 1),
-	    name));
+            name));
     renames_[tableWrite.outputType()->nameOf(i)] = outputColumns.back();
   }
   currentDt_->write = make<WritePlan>(
@@ -1372,7 +1371,7 @@ PlanObjectP ToGraph::addWrite(const lp::TableWriteNode& tableWrite) {
       std::move(values),
       std::move(columns),
       outputColumns);
-  //currentDt_->columns = outputColumns;
+  // currentDt_->columns = outputColumns;
 
   auto& options = queryCtx()->optimization()->options();
   VELOX_CHECK_NOT_NULL(

@@ -168,7 +168,7 @@ class Optimization {
       const {
     return retainedTables_;
   }
- 
+
  private:
   // Retrieves or makes a plan from 'key'. 'key' specifies a set of top level
   // joined tables or a hash join build side table or join.
