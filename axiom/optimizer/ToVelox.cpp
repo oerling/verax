@@ -60,10 +60,9 @@ std::vector<common::Subfield> columnSubfields(BaseTableCP table, int32_t id) {
             break;
           }
           if (first && optimization->isMapAsStruct(column)) {
-            elements.push_back(
-                std::make_unique<common::Subfield::NestedField>(
-                    step.field ? std::string(step.field)
-                               : fmt::format("{}", step.id)));
+            elements.push_back(std::make_unique<common::Subfield::NestedField>(
+                step.field ? std::string(step.field)
+                           : fmt::format("{}", step.id)));
             break;
           }
           if (step.field) {
@@ -223,10 +222,9 @@ RowTypePtr ToVelox::makeOutputType(const ColumnVector& columns) {
 
       auto runnerTable = schemaTable->connectorTable;
       if (runnerTable) {
-        auto* runnerColumn = runnerTable->findColumn(
-            std::string(
-                column->topColumn() ? column->topColumn()->name()
-                                    : column->name()));
+        auto* runnerColumn = runnerTable->findColumn(std::string(
+            column->topColumn() ? column->topColumn()->name()
+                                : column->name()));
         VELOX_CHECK_NOT_NULL(runnerColumn);
       }
     }
@@ -510,9 +508,8 @@ class TempProjections {
       exprs_.push_back(queryCtx()->optimization()->toTypedExpr(expr));
       names_.push_back(
           optName ? *optName : fmt::format("__r{}", nextChannel_ - 1));
-      fieldRefs_.push_back(
-          std::make_shared<core::FieldAccessTypedExpr>(
-              toTypePtr(expr->value().type), names_.back()));
+      fieldRefs_.push_back(std::make_shared<core::FieldAccessTypedExpr>(
+          toTypePtr(expr->value().type), names_.back()));
       return fieldRefs_.back();
     }
     auto fieldRef = fieldRefs_[it->second];
@@ -1394,9 +1391,8 @@ core::PlanNodePtr ToVelox::makeValues(
 
     newValues.reserve(rows->size());
     for (const auto& row : *rows) {
-      newValues.emplace_back(
-          std::dynamic_pointer_cast<RowVector>(BaseVector::wrappedVectorShared(
-              variantToVector(type, row, pool))));
+      newValues.emplace_back(std::dynamic_pointer_cast<RowVector>(
+          BaseVector::wrappedVectorShared(variantToVector(type, row, pool))));
     }
 
   } else {

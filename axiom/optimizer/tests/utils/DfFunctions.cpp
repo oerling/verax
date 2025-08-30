@@ -59,14 +59,13 @@ std::pair<std::vector<Step>, int32_t> makeRowFromMapSubfield(
 
   auto newFields = steps;
   newFields.pop_back();
-  newFields.push_back(
-      optimizer::Step{
-          .kind = optimizer::StepKind::kSubscript,
-          .id = call.inputAt(1)
-                    ->asUnchecked<lp::ConstantExpr>()
-                    ->value()
-                    ->value<TypeKind::ARRAY>()[found]
-                    .value<int32_t>()});
+  newFields.push_back(optimizer::Step{
+      .kind = optimizer::StepKind::kSubscript,
+      .id = call.inputAt(1)
+                ->asUnchecked<lp::ConstantExpr>()
+                ->value()
+                ->value<TypeKind::ARRAY>()[found]
+                .value<int32_t>()});
   return std::make_pair(newFields, 0);
 }
 
@@ -157,14 +156,13 @@ lp::ExprPtr makeRowFromMapToConstructor(
   std::vector<Variant> keyIds =
       keys->asUnchecked<lp::ConstantExpr>()->value()->value<TypeKind::ARRAY>();
   for (auto& id : keyIds) {
-    inputs.push_back(
-        std::make_shared<lp::CallExpr>(
-            call->type()->childAt(0),
-            "subscript",
-            std::vector<lp::ExprPtr>{
-                call->inputAt(0),
-                std::make_shared<lp::ConstantExpr>(
-                    keys->type()->childAt(0), std::make_shared<Variant>(id))}));
+    inputs.push_back(std::make_shared<lp::CallExpr>(
+        call->type()->childAt(0),
+        "subscript",
+        std::vector<lp::ExprPtr>{
+            call->inputAt(0),
+            std::make_shared<lp::ConstantExpr>(
+                keys->type()->childAt(0), std::make_shared<Variant>(id))}));
   }
   if (isPadded) {
     for (auto& input : inputs) {
@@ -201,11 +199,10 @@ lp::ExprPtr makeNamedRowHook(
   std::vector<TypePtr> types;
   for (auto i = 0; i < args.size(); i += 2) {
     VELOX_CHECK(args[i]->isConstant());
-    newNames.push_back(
-        args[i]
-            ->asUnchecked<lp::ConstantExpr>()
-            ->value()
-            ->value<TypeKind::VARCHAR>());
+    newNames.push_back(args[i]
+                           ->asUnchecked<lp::ConstantExpr>()
+                           ->value()
+                           ->value<TypeKind::VARCHAR>());
     types.push_back(args[i + 1]->type());
     values.push_back(args[i + 1]);
   }
