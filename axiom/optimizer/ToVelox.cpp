@@ -33,7 +33,7 @@ namespace {
 std::vector<common::Subfield> columnSubfields(BaseTableCP table, int32_t id) {
   auto* optimization = queryCtx()->optimization();
 
-  const auto columnName = queryCtx()->objectAt(id)->as<Column>()->name();
+  const auto column = queryCtx()->objectAt(id)->as<Column>();
 
   BitSet set = table->columnSubfields(id, false, false);
 
@@ -42,7 +42,7 @@ std::vector<common::Subfield> columnSubfields(BaseTableCP table, int32_t id) {
     auto steps = queryCtx()->pathById(id)->steps();
     std::vector<std::unique_ptr<common::Subfield::PathElement>> elements;
     elements.push_back(
-        std::make_unique<common::Subfield::NestedField>(columnName));
+		       std::make_unique<common::Subfield::NestedField>(column->name()));
     bool first = true;
     for (auto& step : steps) {
       switch (step.kind) {
@@ -52,18 +52,19 @@ std::vector<common::Subfield> columnSubfields(BaseTableCP table, int32_t id) {
           elements.push_back(
               std::make_unique<common::Subfield::NestedField>(step.field));
           break;
-        case StepKind::kSubscript:
+      case StepKind::kSubscript:
           if (step.allFields) {
             elements.push_back(
                 std::make_unique<common::Subfield::AllSubscripts>());
             break;
           }
           if (first &&
-              optimization->options().isMapAsStruct(
-                  table->schemaTable->name, columnName)) {
-            elements.push_back(std::make_unique<common::Subfield::NestedField>(
-                step.field ? std::string(step.field)
-                           : fmt::format("{}", step.id)));
+              optimization->isMapAsStruct(
+					  column)) {
+            elements.push_back(
+                std::make_unique<common::Subfield::NestedField>(
+                    step.field ? std::string(step.field)
+                               : fmt::format("{}", step.id)));
             break;
           }
           if (step.field) {
@@ -219,9 +220,10 @@ RowTypePtr ToVelox::makeOutputType(const ColumnVector& columns) {
 
       auto runnerTable = schemaTable->connectorTable;
       if (runnerTable) {
-        auto* runnerColumn = runnerTable->findColumn(std::string(
-            column->topColumn() ? column->topColumn()->name()
-                                : column->name()));
+        auto* runnerColumn = runnerTable->findColumn(
+            std::string(
+                column->topColumn() ? column->topColumn()->name()
+                                    : column->name()));
         VELOX_CHECK_NOT_NULL(runnerColumn);
       }
     }
@@ -345,8 +347,7 @@ ToVelox::pathToGetter(ColumnCP column, PathCP path, core::TypedExprPtr field) {
   auto alterStep = [&](ColumnCP, const Step& step, Step& newStep) {
     auto* rel = column->relation();
     if (rel->is(PlanType::kTableNode) &&
-        isMapAsStruct(
-            rel->as<BaseTable>()->schemaTable->name, column->name())) {
+        isMapAsStruct(column)) {
       // This column is a map to project out as struct.
       newStep.kind = StepKind::kField;
       if (step.field) {
@@ -507,8 +508,9 @@ class TempProjections {
       exprs_.push_back(queryCtx()->optimization()->toTypedExpr(expr));
       names_.push_back(
           optName ? *optName : fmt::format("__r{}", nextChannel_ - 1));
-      fieldRefs_.push_back(std::make_shared<core::FieldAccessTypedExpr>(
-          toTypePtr(expr->value().type), names_.back()));
+      fieldRefs_.push_back(
+          std::make_shared<core::FieldAccessTypedExpr>(
+              toTypePtr(expr->value().type), names_.back()));
       return fieldRefs_.back();
     }
     auto fieldRef = fieldRefs_[it->second];
@@ -942,7 +944,7 @@ RowTypePtr ToVelox::subfieldPushdownScanType(
       top.add(topColumn);
       topColumns.push_back(topColumn);
       names.push_back(topColumn->name());
-      if (isMapAsStruct(baseTable->schemaTable->name, topColumn->name())) {
+      if (isMapAsStruct(topColumn)) {
         types.push_back(skylineStruct(baseTable, topColumn));
         typeMap[topColumn] = types.back();
       } else {
@@ -1384,8 +1386,9 @@ core::PlanNodePtr ToVelox::makeValues(
 
     newValues.reserve(rows->size());
     for (const auto& row : *rows) {
-      newValues.emplace_back(std::dynamic_pointer_cast<RowVector>(
-          BaseVector::wrappedVectorShared(variantToVector(type, row, pool))));
+      newValues.emplace_back(
+          std::dynamic_pointer_cast<RowVector>(BaseVector::wrappedVectorShared(
+              variantToVector(type, row, pool))));
     }
 
   } else {
