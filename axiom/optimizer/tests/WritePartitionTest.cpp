@@ -177,8 +177,7 @@ TEST_F(WritePartitionTest, write) {
       {"partitioned_by", "ds"},
       {"file_format", "parquet"},
       {"compression_kind", "snappy"}};
-  metadata_->createTable(
-      "test2", tableType, options2, session, false);
+  metadata_->createTable("test2", tableType, options2, session, false);
 
   auto copyPlan = lp::PlanBuilder(context)
                       .tableScan(

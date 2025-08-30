@@ -164,8 +164,7 @@ class Optimization {
     return toGraph_.writeHandles().at(id);
   }
 
-  const std::unordered_set<connector::TablePtr> retainedTables()
-      const {
+  const std::unordered_set<connector::TablePtr> retainedTables() const {
     return retainedTables_;
   }
 

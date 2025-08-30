@@ -969,8 +969,7 @@ void LocalHiveConnectorMetadata::finishWrite(
   moveFilesRecursively(
       localHandle->locationHandle()->writePath(),
       localHandle->locationHandle()->targetPath());
-  loadTable(
-      layout.table().name(), localHandle->locationHandle()->targetPath());
+  loadTable(layout.table().name(), localHandle->locationHandle()->targetPath());
 }
 
 namespace {
