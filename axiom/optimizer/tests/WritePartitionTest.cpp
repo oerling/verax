@@ -48,6 +48,7 @@ class WritePartitionTest : public test::HiveQueriesTestBase {
   }
 
   void TearDown() override {
+    HiveQueriesTestBase::TearDown();
     parquet::unregisterParquetReaderFactory();
     parquet::unregisterParquetWriterFactory();
   }
@@ -69,7 +70,6 @@ class WritePartitionTest : public test::HiveQueriesTestBase {
            makeFlatVector<StringView>(batchSize, [&](auto row) {
              str = fmt::format("2025-09-{}", dayOffset + ((row + start) % 2));
              return StringView(str);
-             ;
            })}));
     }
     return data;
@@ -146,7 +146,7 @@ TEST_F(WritePartitionTest, write) {
               exprs({"key1", "key2", "key1 % (key1 - 200000)", "ds"}),
               {"key1", "key2", "data", "ds"})
           .build();
-  EXPECT_THROW(runVelox(errorPlan), VeloxException);
+  VELOX_ASSERT_THROW(runVelox(errorPlan), "ivide by");
 
   {
     auto result = runVelox(countPlan);
