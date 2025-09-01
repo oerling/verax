@@ -17,6 +17,7 @@
 #include "axiom/logical_plan/PlanBuilder.h"
 #include "axiom/optimizer/connectors/hive/HiveConnectorMetadata.h"
 #include "axiom/optimizer/tests/HiveQueriesTestBase.h"
+#include "velox/common/base/tests/GTestUtils.h"
 #include "velox/dwio/parquet/RegisterParquetReader.h"
 #include "velox/dwio/parquet/RegisterParquetWriter.h"
 #include "velox/exec/tests/utils/PlanBuilder.h"

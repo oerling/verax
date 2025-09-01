@@ -58,16 +58,7 @@ class HivePartitionType : public connector::PartitionType {
   // Types are compatible if the bucket count one is an interger multiple of the
   // other. The partition to use for copartitioning is the one with the fewer
   // buckets.
-  const PartitionType* copartition(const PartitionType& any) const override {
-    auto* other = dynamic_cast<const HivePartitionType*>(&any);
-    if (other == nullptr) {
-      return nullptr;
-    }
-    if (numBuckets_ <= other->numBuckets_) {
-      return other->numBuckets_ % numBuckets_ == 0 ? this : nullptr;
-    }
-    return numBuckets_ % other->numBuckets_ == 0 ? &any : nullptr;
-  }
+  const PartitionType* copartition(const PartitionType& any) const override;
 
   core::PartitionFunctionSpecPtr makeSpec(
       const std::vector<column_index_t>& channels,
