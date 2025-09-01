@@ -49,8 +49,11 @@ class HiveConnectorSession : public connector::ConnectorSession {
 
 class HivePartitionType : public connector::PartitionType {
  public:
-  HivePartitionType(int32_t numBuckets, std::vector<TypePtr> partitionKeyTypes = {}) 
-      : numBuckets_(numBuckets), partitionKeyTypes_(std::move(partitionKeyTypes)) {}
+  HivePartitionType(
+      int32_t numBuckets,
+      std::vector<TypePtr> partitionKeyTypes = {})
+      : numBuckets_(numBuckets),
+        partitionKeyTypes_(std::move(partitionKeyTypes)) {}
 
   virtual std::optional<int32_t> numPartitions() const {
     return numBuckets_;
@@ -111,8 +114,9 @@ class HiveTableLayout : public TableLayout {
         fileFormat_(fileFormat),
         hivePartitionColumns_(hivePartitionColumns),
         numBuckets_(numBuckets),
-        partitionType_{numBuckets.has_value() ? numBuckets.value() : 0, 
-                       extractPartitionKeyTypes(partitioning)} {}
+        partitionType_{
+            numBuckets.has_value() ? numBuckets.value() : 0,
+            extractPartitionKeyTypes(partitioning)} {}
 
   const PartitionType* partitionType() const override {
     return partitionColumns().empty() ? nullptr : &partitionType_;

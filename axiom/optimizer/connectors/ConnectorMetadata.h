@@ -242,7 +242,7 @@ class PartitionType {
 
   /// Returns the types of the partitioning keys. Empty if no partitioning.
   virtual const std::vector<TypePtr>& partitionKeyTypes() const = 0;
-  
+
   /// Returns a factory that makes partition functions. The function
   /// gets a RowVector and calculates a partition number from the
   /// columns identified by 'channels'. If channels[i] ==
@@ -252,7 +252,7 @@ class PartitionType {
   virtual core::PartitionFunctionSpecPtr makeSpec(
       const std::vector<column_index_t>& channels,
       const std::vector<VectorPtr>& constants,
-      bool isLocal) const =0;
+      bool isLocal) const = 0;
 
   virtual std::string toString() const = 0;
 };

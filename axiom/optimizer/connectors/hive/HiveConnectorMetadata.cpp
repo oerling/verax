@@ -28,7 +28,7 @@ const PartitionType* HivePartitionType::copartition(
           dynamic_cast<const HivePartitionType*>(&any)) {
     const auto& myTypes = partitionKeyTypes();
     const auto& otherTypes = hivePartitionType->partitionKeyTypes();
-    
+
     if (myTypes.size() == otherTypes.size()) {
       bool typesCompatible = true;
       for (size_t i = 0; i < myTypes.size(); ++i) {
@@ -37,7 +37,7 @@ const PartitionType* HivePartitionType::copartition(
           break;
         }
       }
-      
+
       if (typesCompatible) {
         if (numBuckets_ % hivePartitionType->numBuckets_ == 0) {
           return hivePartitionType;
