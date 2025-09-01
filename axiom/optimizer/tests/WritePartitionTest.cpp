@@ -49,6 +49,7 @@ class WritePartitionTest : public test::HiveQueriesTestBase {
   }
 
   void TearDown() override {
+    connector_.reset();
     HiveQueriesTestBase::TearDown();
     parquet::unregisterParquetReaderFactory();
     parquet::unregisterParquetWriterFactory();

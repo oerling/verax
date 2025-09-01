@@ -49,7 +49,8 @@ class HiveConnectorSession : public connector::ConnectorSession {
 
 class HivePartitionType : public connector::PartitionType {
  public:
-  HivePartitionType(int32_t numBuckets) : numBuckets_(numBuckets) {}
+  HivePartitionType(int32_t numBuckets, std::vector<TypePtr> partitionKeyTypes = {}) 
+      : numBuckets_(numBuckets), partitionKeyTypes_(std::move(partitionKeyTypes)) {}
 
   virtual std::optional<int32_t> numPartitions() const {
     return numBuckets_;
@@ -65,12 +66,15 @@ class HivePartitionType : public connector::PartitionType {
       const std::vector<VectorPtr>& constants,
       bool isLocal) const override;
 
-  std::string toString() const override {
-    return fmt::format("Hive {} buckets", numBuckets_);
+  const std::vector<TypePtr>& partitionKeyTypes() const override {
+    return partitionKeyTypes_;
   }
+
+  std::string toString() const override;
 
  private:
   const int32_t numBuckets_;
+  const std::vector<TypePtr> partitionKeyTypes_;
 };
 
 /// Describes a Hive table layout. Adds a file format and a list of
@@ -107,7 +111,8 @@ class HiveTableLayout : public TableLayout {
         fileFormat_(fileFormat),
         hivePartitionColumns_(hivePartitionColumns),
         numBuckets_(numBuckets),
-        partitionType_{numBuckets.has_value() ? numBuckets.value() : 0} {}
+        partitionType_{numBuckets.has_value() ? numBuckets.value() : 0, 
+                       extractPartitionKeyTypes(partitioning)} {}
 
   const PartitionType* partitionType() const override {
     return partitionColumns().empty() ? nullptr : &partitionType_;
@@ -129,6 +134,17 @@ class HiveTableLayout : public TableLayout {
   const dwio::common::FileFormat fileFormat_;
   const std::vector<const Column*> hivePartitionColumns_;
   std::optional<int32_t> numBuckets_;
+
+ private:
+  static std::vector<TypePtr> extractPartitionKeyTypes(
+      const std::vector<const Column*>& partitionColumns) {
+    std::vector<TypePtr> types;
+    types.reserve(partitionColumns.size());
+    for (const auto* column : partitionColumns) {
+      types.push_back(column->type());
+    }
+    return types;
+  }
 
   // Feeds 'data' into 'builders'. Builders and children of 'data' correspond
   // pairwise. 'builders' may have a nullptr for some columns.
