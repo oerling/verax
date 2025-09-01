@@ -840,9 +840,29 @@ std::string TableWrite::toString(bool recursive, bool detail) const {
     out << input()->toString(true, detail) << " ";
   }
 
-  out << fmt::format(
-      "Writer {}",
-      itemsToString(write->values().data(), write->values().size()));
+  if (detail) {
+    out << fmt::format("TableWrite to {} ({} columns)", 
+                      write->table(), write->columns().size());
+    
+    const auto& values = write->values();
+    const auto& columnNames = write->columns();
+    
+    if (!values.empty()) {
+      out << " expressions:";
+      for (size_t i = 0; i < values.size() && i < columnNames.size(); ++i) {
+        out << " " << columnNames[i] << "=" << values[i]->toString();
+        if (i < values.size() - 1) {
+          out << ",";
+        }
+      }
+    }
+    
+    printCost(detail, out);
+  } else {
+    out << fmt::format("TableWrite {} columns to {}", 
+                      write->columns().size(), write->table());
+  }
+  
   return out.str();
 }
 
