@@ -183,6 +183,7 @@ class Column {
     if (auto* s = stats()) {
       return s->numDistinct.value_or(defaultValue);
     }
+    return defaultValue;
   }
 
  protected:
