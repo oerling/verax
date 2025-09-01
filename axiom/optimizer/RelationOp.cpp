@@ -841,12 +841,14 @@ std::string TableWrite::toString(bool recursive, bool detail) const {
   }
 
   if (detail) {
-    out << fmt::format("TableWrite to {} ({} columns)", 
-                      write->table(), write->columns().size());
-    
+    out << fmt::format(
+        "TableWrite to {} ({} columns)",
+        write->table(),
+        write->columns().size());
+
     const auto& values = write->values();
     const auto& columnNames = write->columns();
-    
+
     if (!values.empty()) {
       out << " expressions:";
       for (size_t i = 0; i < values.size() && i < columnNames.size(); ++i) {
@@ -856,13 +858,13 @@ std::string TableWrite::toString(bool recursive, bool detail) const {
         }
       }
     }
-    
+
     printCost(detail, out);
   } else {
-    out << fmt::format("TableWrite {} columns to {}", 
-                      write->columns().size(), write->table());
+    out << fmt::format(
+        "TableWrite {} columns to {}", write->columns().size(), write->table());
   }
-  
+
   return out.str();
 }
 

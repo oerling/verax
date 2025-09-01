@@ -1342,11 +1342,10 @@ PlanObjectP ToGraph::addWrite(const lp::TableWriteNode& tableWrite) {
     if (it == tableWrite.columnNames().end()) {
       columns.push_back(toName(name));
       auto connectorColumn = layout->table().findColumn(name);
-      values.push_back(
-          make<Literal>(
-              Value(toType(rowType->childAt(i)), 1),
-              queryCtx()->registerVariant(
-                  std::make_unique<Variant>(connectorColumn->defaultValue()))));
+      values.push_back(make<Literal>(
+          Value(toType(rowType->childAt(i)), 1),
+          queryCtx()->registerVariant(
+              std::make_unique<Variant>(connectorColumn->defaultValue()))));
     } else {
       auto nth = it - tableWrite.columnNames().begin();
       columns.push_back(toName(name));
@@ -1356,12 +1355,11 @@ PlanObjectP ToGraph::addWrite(const lp::TableWriteNode& tableWrite) {
   ColumnVector outputColumns;
   for (auto i = 0; i < tableWrite.outputType()->size(); ++i) {
     auto name = toName(tableWrite.outputType()->nameOf(i));
-    outputColumns.push_back(
-        make<Column>(
-            name,
-            currentDt_,
-            Value(toType(tableWrite.outputType()->childAt(i)), 1),
-            name));
+    outputColumns.push_back(make<Column>(
+        name,
+        currentDt_,
+        Value(toType(tableWrite.outputType()->childAt(i)), 1),
+        name));
     renames_[tableWrite.outputType()->nameOf(i)] = outputColumns.back();
   }
   currentDt_->write = make<WritePlan>(

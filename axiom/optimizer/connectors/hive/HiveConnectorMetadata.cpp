@@ -190,9 +190,8 @@ ConnectorInsertTableHandlePtr HiveConnectorMetadata::createInsertTableHandle(
   std::vector<HiveColumnHandlePtr> inputColumns;
   inputColumns.reserve(rowType->size());
   for (const auto& name : rowType->names()) {
-    inputColumns.push_back(
-        std::static_pointer_cast<const HiveColumnHandle>(
-            createColumnHandle(layout, name)));
+    inputColumns.push_back(std::static_pointer_cast<const HiveColumnHandle>(
+        createColumnHandle(layout, name)));
   }
 
   std::shared_ptr<const HiveBucketProperty> bucketProperty;
@@ -206,12 +205,11 @@ ConnectorInsertTableHandlePtr HiveConnectorMetadata::createInsertTableHandle(
     std::vector<std::shared_ptr<const HiveSortingColumn>> sortedBy;
     sortedBy.reserve(layout.orderColumns().size());
     for (auto i = 0; i < layout.orderColumns().size(); ++i) {
-      sortedBy.push_back(
-          std::make_shared<HiveSortingColumn>(
-              layout.orderColumns()[i]->name(),
-              core::SortOrder(
-                  layout.sortOrder()[i].isAscending,
-                  layout.sortOrder()[i].isNullsFirst)));
+      sortedBy.push_back(std::make_shared<HiveSortingColumn>(
+          layout.orderColumns()[i]->name(),
+          core::SortOrder(
+              layout.sortOrder()[i].isAscending,
+              layout.sortOrder()[i].isNullsFirst)));
     }
 
     bucketProperty = std::make_shared<HiveBucketProperty>(

@@ -294,12 +294,12 @@ class TestConnectorMetadata : public ConnectorMetadata {
     VELOX_UNSUPPORTED();
   }
 
-RowTypePtr tableWriteOutputType(
-				const RowTypePtr& /*rowType*/,
-				WriteKind /*kind*/) const override {
-  return ROW({}, {});
-}
-  
+  RowTypePtr tableWriteOutputType(
+      const RowTypePtr& /*rowType*/,
+      WriteKind /*kind*/) const override {
+    return ROW({}, {});
+  }
+
   std::vector<ColumnHandlePtr> rowIdHandles(
       const TableLayout& layout,
       WriteKind kind) override {
