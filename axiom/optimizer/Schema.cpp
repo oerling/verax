@@ -157,7 +157,7 @@ SchemaTableCP Schema::findTable(
     order.push_back(findColumn(column->name()));
   }
 
-  auto* pk = schemaTable->addIndex(
+  schemaTable->addIndex(
       toName("pk"),
       layout->uniquePrifixColumns(),
       order.size(),

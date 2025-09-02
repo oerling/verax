@@ -658,30 +658,25 @@ RelationOpPtr repartitionForWrite(const RelationOpPtr& plan, PlanState& state) {
 
   ExprVector keyValues;
   for (auto i = 0; i < partition.size(); ++i) {
-    // find the value for the partition column.
+    // find the value for each partition column.
     auto name = toName(partition[i]->name());
     auto it = std::find(write->columns().begin(), write->columns().end(), name);
-    if (it == write->columns().end()) {
-      // Not given. column default.
-      auto* column = write->layout()->table().findColumn(name);
-      keyValues.push_back(make<Literal>(
-          Value(toType(column->type()), 1),
-          queryCtx()->registerVariant(
-              std::make_unique<Variant>(column->defaultValue()))));
-    } else {
-      keyValues.push_back(write->values()[i]);
-    }
+    VELOX_CHECK(
+        it == write->columns().end(), "No value for partition column {}", name);
+    keyValues.push_back(write->values()[i]);
   }
 
   auto partitionType = write->layout()->partitionType();
-  auto co = copartitionType(
+  auto copartition = copartitionType(
       plan->distribution().distributionType.partitionType,
       write->layout()->partitionType());
-  // Copartitioning is possible if the same kind of function and the destination
-  // is not narrower.
-  bool shuffle = !co || co == write->layout()->partitionType();
+  // Copartitioning is possible if PartitionTypes are compatible and the table
+  // has no fewer partitions than the plan.
+  bool shuffle =
+      !copartition || copartition == write->layout()->partitionType();
   if (!shuffle) {
-    // Then chekc that the partition keys are in the same order.
+    // Check that the partition keys of the plan are assigned pairwise to the
+    // partition columns of the layout.
     for (auto i = 0; i < keyValues.size(); ++i) {
       auto key = keyValues[i];
       auto nthKey = position(plan->distribution().partition, *key);
