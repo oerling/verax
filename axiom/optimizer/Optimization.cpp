@@ -666,7 +666,6 @@ RelationOpPtr repartitionForWrite(const RelationOpPtr& plan, PlanState& state) {
     keyValues.push_back(write->values()[i]);
   }
 
-  auto partitionType = write->layout()->partitionType();
   auto copartition = copartitionType(
       plan->distribution().distributionType.partitionType,
       write->layout()->partitionType());
