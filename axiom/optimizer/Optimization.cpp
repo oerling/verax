@@ -92,6 +92,18 @@ PlanAndStats Optimization::toVeloxPlan(
   return opt.toVeloxPlan(best->op);
 }
 
+std::string Optimization::memoString() const {
+  std::stringstream out;
+  for (auto& [key, planSet] : memo_) {
+    out << key.toString() << " plans= " << std::endl;
+    for (auto& plan : planSet.plans) {
+      out << plan->toString(true) << std::endl;
+    }
+  }
+  return out.str();
+}
+
+  
 void Optimization::trace(
     uint32_t event,
     int32_t id,
@@ -859,16 +871,17 @@ void Optimization::addAggregation(
     auto args = precompute.toColumns(
         agg->args(), /*aliases=*/nullptr, /*preserveLiterals=*/true);
     auto orderKeys = precompute.toColumns(agg->orderKeys());
-    aggregates.emplace_back(make<Aggregate>(
-        agg->name(),
-        agg->value(),
-        std::move(args),
-        agg->functions(),
-        agg->isDistinct(),
-        condition,
-        agg->intermediateType(),
-        std::move(orderKeys),
-        agg->orderTypes()));
+    aggregates.emplace_back(
+        make<Aggregate>(
+            agg->name(),
+            agg->value(),
+            std::move(args),
+            agg->functions(),
+            agg->isDistinct(),
+            condition,
+            agg->intermediateType(),
+            std::move(orderKeys),
+            agg->orderTypes()));
   }
 
   plan = std::move(precompute).maybeProject();
@@ -1013,6 +1026,21 @@ void Optimization::joinByIndex(
   }
 }
 
+namespace {
+// Given a MemoKey for a build side, picks the deterministic conjuncts from
+// 'state.dt' that are fully defined in terms of 'key.tables'.
+void gatherConjunctsForKey(PlanState& state, MemoKey& key) {
+  for (auto& conjunct : state.dt->conjuncts) {
+    if (conjunct->containsFunction(FunctionSet::kNonDeterministic)) {
+      continue;
+    }
+    if (conjunct->allTables().isSubset(key.tables)) {
+      key.extraConjuncts.add(conjunct);
+    }
+  }
+}
+} // namespace
+
 void Optimization::joinByHash(
     const RelationOpPtr& plan,
     const JoinCandidate& candidate,
@@ -1050,6 +1078,9 @@ void Optimization::joinByHash(
   MemoKey memoKey{
       candidate.tables[0], buildColumns, buildTables, candidate.existences};
 
+  if (candidate.join->isInner()) {
+    gatherConjunctsForKey(state, memoKey);
+  }
   Distribution forBuild;
   if (plan->distribution().isGather()) {
     forBuild = Distribution::gather();
@@ -1071,7 +1102,7 @@ void Optimization::joinByHash(
   } else {
     state.placed.unionSet(buildTables);
   }
-
+  state.placed.unionSet(memoKey.extraConjuncts);
   PlanState buildState(state.optimization, state.dt, buildPlan);
   RelationOpPtr buildInput = buildPlan->op;
   RelationOpPtr probeInput = plan;
@@ -1886,7 +1917,13 @@ PlanP Optimization::makeDtPlan(
     DerivedTable dt;
     dt.cname = newCName("tmp_dt");
     dt.import(
-        *state.dt, key.firstTable, key.tables, key.existences, existsFanout);
+        *state.dt,
+        key.firstTable,
+        key.tables,
+        key.existences,
+        existsFanout,
+        key.extraConjuncts,
+        key.columns);
 
     PlanState inner(*this, &dt);
     if (key.firstTable->is(PlanType::kDerivedTableNode)) {
@@ -1921,3 +1958,4 @@ ExprCP Optimization::combineLeftDeep(Name func, const ExprVector& exprs) {
 }
 
 } // namespace facebook::axiom::optimizer
+

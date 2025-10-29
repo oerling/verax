@@ -27,6 +27,9 @@
 #include "velox/expression/ExprToSubfieldFilter.h"
 #include "velox/type/tests/SubfieldFiltersBuilder.h"
 
+#define AXIOM_ASSERT_PLAN(plan, matcher) \
+  ASSERT_TRUE(matcher->match(plan)) << plan->toString(true, true);
+
 namespace facebook::axiom::optimizer {
 namespace {
 
@@ -505,8 +508,9 @@ TEST_F(PlanTest, filterToJoinEdge) {
   lp::PlanBuilder::Context context;
   auto logicalPlan = lp::PlanBuilder(context)
                          .tableScan(connectorId, "nation", nationType->names())
-                         .crossJoin(lp::PlanBuilder(context).tableScan(
-                             connectorId, "region", regionType->names()))
+                         .crossJoin(
+                             lp::PlanBuilder(context).tableScan(
+                                 connectorId, "region", regionType->names()))
                          .filter("n_regionkey + 1 = r_regionkey + 1")
                          .build();
 
@@ -515,10 +519,11 @@ TEST_F(PlanTest, filterToJoinEdge) {
     auto matcher = core::PlanMatcherBuilder()
                        .tableScan("region")
                        .project()
-                       .hashJoin(core::PlanMatcherBuilder()
-                                     .tableScan("nation")
-                                     .project()
-                                     .build())
+                       .hashJoin(
+                           core::PlanMatcherBuilder()
+                               .tableScan("nation")
+                               .project()
+                               .build())
                        .build();
 
     ASSERT_TRUE(matcher->match(plan));
@@ -544,9 +549,10 @@ TEST_F(PlanTest, filterToJoinEdge) {
       lp::PlanBuilder(context)
           .tableScan(connectorId, "nation", nationType->names())
           .filter("rand() < 2.0")
-          .crossJoin(lp::PlanBuilder(context)
-                         .tableScan(connectorId, "region", regionType->names())
-                         .filter("rand() < 3.0"))
+          .crossJoin(
+              lp::PlanBuilder(context)
+                  .tableScan(connectorId, "region", regionType->names())
+                  .filter("rand() < 3.0"))
           .filter("n_regionkey + 1 = r_regionkey + 1 and rand() < 4.0")
           .build();
 
@@ -557,11 +563,12 @@ TEST_F(PlanTest, filterToJoinEdge) {
                        // TODO Why is this filter not pushed down into scan?
                        .filter("rand() < 2.0")
                        .project()
-                       .hashJoin(core::PlanMatcherBuilder()
-                                     .tableScan("region")
-                                     .filter("rand() < 3.0")
-                                     .project()
-                                     .build())
+                       .hashJoin(
+                           core::PlanMatcherBuilder()
+                               .tableScan("region")
+                               .filter("rand() < 3.0")
+                               .project()
+                               .build())
                        .filter("rand() < 4.0")
                        .project()
                        .build();
@@ -657,8 +664,9 @@ TEST_F(PlanTest, filterBreakup) {
   auto logicalPlan =
       lp::PlanBuilder(context)
           .tableScan(connectorId, "lineitem", lineitemType->names())
-          .crossJoin(lp::PlanBuilder(context).tableScan(
-              connectorId, "part", partType->names()))
+          .crossJoin(
+              lp::PlanBuilder(context).tableScan(
+                  connectorId, "part", partType->names()))
           .filter(filterText)
           .project({"l_extendedprice * (1.0 - l_discount) as part_revenue"})
           .aggregate({}, {"sum(part_revenue)"})
@@ -741,13 +749,14 @@ TEST_F(PlanTest, unionAll) {
         core::PlanMatcherBuilder()
             .hiveScan(
                 "nation", lte("n_nationkey", 10), "(n_regionkey + 1) % 3 = 1")
-            .localPartition(core::PlanMatcherBuilder()
-                                .hiveScan(
-                                    "nation",
-                                    gte("n_nationkey", 14),
-                                    "(n_regionkey + 1) % 3 = 1")
-                                .project()
-                                .build())
+            .localPartition(
+                core::PlanMatcherBuilder()
+                    .hiveScan(
+                        "nation",
+                        gte("n_nationkey", 14),
+                        "(n_regionkey + 1) % 3 = 1")
+                    .project()
+                    .build())
             .project()
             .build();
 
@@ -1201,8 +1210,13 @@ TEST_F(PlanTest, values) {
     const int leafType3 = bits::isBitSet(&i, 2);
     const int leafType4 = bits::isBitSet(&i, 3);
 
-    SCOPED_TRACE(fmt::format(
-        "Join: {} x {} x {} x {}", leafType1, leafType2, leafType3, leafType4));
+    SCOPED_TRACE(
+        fmt::format(
+            "Join: {} x {} x {} x {}",
+            leafType1,
+            leafType2,
+            leafType3,
+            leafType4));
 
     auto logicalPlan =
         makeLogicalPlan(leafType1, "n_regionkey < 3", "x")
@@ -1409,6 +1423,114 @@ TEST_F(PlanTest, lambdaArgs) {
 
   auto matcher = core::PlanMatcherBuilder{}.tableScan("t").project().build();
   ASSERT_TRUE(matcher->match(plan));
+}
+
+TEST_F(PlanTest, joinWithFilterOverLimit) {
+  testConnector_->addTable("t", ROW({"a", "b", "c"}, BIGINT()));
+  testConnector_->addTable("u", ROW({"x", "y", "z"}, BIGINT()));
+
+  lp::PlanBuilder::Context ctx(kTestConnectorId);
+  auto logicalPlan =
+      lp::PlanBuilder(ctx)
+          .tableScan("t")
+          .limit(100)
+          .filter("b > 50")
+          .join(
+              lp::PlanBuilder(ctx).tableScan("u").limit(50).filter("y < 100"),
+              "a = x",
+              lp::JoinType::kInner)
+          .build();
+
+  {
+    auto plan = toSingleNodePlan(logicalPlan);
+    auto matcher = core::PlanMatcherBuilder()
+                       .tableScan("t")
+                       .limit()
+                       .filter("b > 50")
+                       .hashJoin(
+                           core::PlanMatcherBuilder()
+                               .tableScan("u")
+                               .limit()
+                               .filter("y < 100")
+                               .build())
+                       .build();
+
+    AXIOM_ASSERT_PLAN(plan, matcher);
+  }
+}
+
+TEST_F(PlanTest, outerJoinWithInnerJoin) {
+  testConnector_->addTable("t", ROW({"a", "b", "c"}, BIGINT()));
+  testConnector_->addTable("v", ROW({"vx", "vy", "vz"}, BIGINT()));
+  testConnector_->addTable("u", ROW({"x", "y", "z"}, BIGINT()));
+
+  lp::PlanBuilder::Context ctx(kTestConnectorId);
+  auto logicalPlan = lp::PlanBuilder(ctx)
+                         .tableScan("t")
+                         .filter("b > 50")
+                         .join(
+                             lp::PlanBuilder(ctx).tableScan("u").join(
+                                 lp::PlanBuilder(ctx).tableScan("v"),
+                                 "x = vx",
+                                 lp::JoinType::kInner),
+                             "a = x",
+                             lp::JoinType::kLeft)
+                         .build();
+
+  {
+        SCOPED_TRACE("left join with inner join on right");
+
+    auto plan = toSingleNodePlan(logicalPlan);
+    auto matcher =
+        core::PlanMatcherBuilder()
+            .tableScan("t")
+            .filter("b > 50")
+            .hashJoin(
+                core::PlanMatcherBuilder()
+                    .tableScan("u")
+                    .hashJoin(core::PlanMatcherBuilder().tableScan("v").build())
+
+                    .build())
+            .build();
+
+    AXIOM_ASSERT_PLAN(plan, matcher);
+  }
+
+  logicalPlan = lp::PlanBuilder(ctx)
+                    .tableScan("t")
+                    .filter("b > 50")
+                    .aggregate({"a", "b"}, {"sum(c)"})
+                    .join(
+                        lp::PlanBuilder(ctx)
+                            .tableScan("u")
+                            .join(
+                                lp::PlanBuilder(ctx).tableScan("v"),
+                                "x = vx",
+                                lp::JoinType::kInner)
+                            .filter("not(x = vy)"),
+                        "a = x",
+                        lp::JoinType::kLeft)
+                    .build();
+
+  {
+    SCOPED_TRACE("Aggregation left join filter over inner join");
+    auto plan = toSingleNodePlan(logicalPlan);
+    auto matcher =
+        core::PlanMatcherBuilder()
+            .tableScan("t")
+            .filter()
+      .aggregation()
+      .hashJoin(
+                core::PlanMatcherBuilder()
+                    .tableScan("u")
+                    .hashJoin(core::PlanMatcherBuilder().tableScan("v").build())
+                    .filter()
+                    .build())
+      .project()
+      .build();
+
+    AXIOM_ASSERT_PLAN(plan, matcher);
+  }
 }
 
 } // namespace
