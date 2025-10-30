@@ -165,8 +165,7 @@ TEST_F(TpchPlanTest, q01) {
 }
 
 TEST_F(TpchPlanTest, q02) {
-  // TODO Add support for subqueries.
-  parseTpchSql(2);
+  checkTpchSql(2);
 }
 
 TEST_F(TpchPlanTest, q03) {
@@ -194,11 +193,14 @@ TEST_F(TpchPlanTest, q03) {
 }
 
 TEST_F(TpchPlanTest, q04) {
-  // Incorrect with distributed plan at larger scales.
-  // TODO Implement.
+  // TODO Fix the plan when 'syntacticJoinOrder' is false.
+  const bool originalSyntacticJoinOrder = optimizerOptions_.syntacticJoinOrder;
+  optimizerOptions_.syntacticJoinOrder = true;
+  SCOPE_EXIT {
+    optimizerOptions_.syntacticJoinOrder = originalSyntacticJoinOrder;
+  };
 
-  // TODO Add support for subqueries.
-  parseTpchSql(4);
+  checkTpchSql(4);
 }
 
 TEST_F(TpchPlanTest, q05) {
@@ -529,8 +531,7 @@ TEST_F(TpchPlanTest, q16) {
 }
 
 TEST_F(TpchPlanTest, q17) {
-  // TODO Implement.
-  parseTpchSql(17);
+  checkTpchSql(17);
 }
 
 TEST_F(TpchPlanTest, q18) {
@@ -574,18 +575,35 @@ TEST_F(TpchPlanTest, q19) {
 }
 
 TEST_F(TpchPlanTest, q20) {
-  // TODO Add support for subqueries.
-  parseTpchSql(20);
+  // TODO Fix the plan when 'syntacticJoinOrder' is false.
+  const bool originalSyntacticJoinOrder = optimizerOptions_.syntacticJoinOrder;
+  optimizerOptions_.syntacticJoinOrder = true;
+  SCOPE_EXIT {
+    optimizerOptions_.syntacticJoinOrder = originalSyntacticJoinOrder;
+  };
+  checkTpchSql(20);
 }
 
 TEST_F(TpchPlanTest, q21) {
-  // TODO Add support for subqueries.
-  parseTpchSql(21);
+  // TODO Fix the plan when 'syntacticJoinOrder' is false.
+  const bool originalSyntacticJoinOrder = optimizerOptions_.syntacticJoinOrder;
+  optimizerOptions_.syntacticJoinOrder = true;
+  SCOPE_EXIT {
+    optimizerOptions_.syntacticJoinOrder = originalSyntacticJoinOrder;
+  };
+
+  checkTpchSql(21);
 }
 
 TEST_F(TpchPlanTest, q22) {
-  // TODO Add support for subqueries.
-  parseTpchSql(22);
+  // TODO Fix the plan when 'syntacticJoinOrder' is false.
+  const bool originalSyntacticJoinOrder = optimizerOptions_.syntacticJoinOrder;
+  optimizerOptions_.syntacticJoinOrder = true;
+  SCOPE_EXIT {
+    optimizerOptions_.syntacticJoinOrder = originalSyntacticJoinOrder;
+  };
+
+  checkTpchSql(22);
 }
 
 } // namespace

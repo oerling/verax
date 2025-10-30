@@ -534,6 +534,18 @@ TEST_F(PrestoParserTest, union) {
   testSql("SELECT n_name FROM nation UNION SELECT r_name FROM region", matcher);
 }
 
+TEST_F(PrestoParserTest, exists) {
+  auto matcher = lp::test::LogicalPlanMatcherBuilder().tableScan().filter();
+
+  testSql(
+      "SELECT * FROM region WHERE exists (SELECT * from nation WHERE n_name like 'A%' and r_regionkey = n_regionkey)",
+      matcher);
+
+  testSql(
+      "SELECT * FROM region WHERE not exists (SELECT * from nation WHERE n_name like 'A%' and r_regionkey = n_regionkey)",
+      matcher);
+}
+
 TEST_F(PrestoParserTest, everything) {
   auto matcher =
       lp::test::LogicalPlanMatcherBuilder()

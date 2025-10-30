@@ -244,7 +244,8 @@ using FunctionMetadataCP = const FunctionMetadata*;
 /// Represents a function call or a special form, any expression with
 /// subexpressions.
 class Call : public Expr {
- public:
+ protected:
+  /// To be used by derived classes only.
   Call(
       PlanType type,
       Name name,
@@ -252,6 +253,7 @@ class Call : public Expr {
       ExprVector args,
       FunctionSet functions);
 
+ public:
   Call(Name name, Value value, ExprVector args, FunctionSet functions)
       : Call(PlanType::kCallExpr, name, value, std::move(args), functions) {}
 
@@ -523,6 +525,8 @@ class JoinEdge {
     return rightTable_;
   }
 
+  PlanObjectSet allTables() const;
+
   size_t numKeys() const {
     VELOX_DCHECK_LE(rightKeys_.size(), leftKeys_.size());
     return rightKeys_.size();
@@ -558,6 +562,10 @@ class JoinEdge {
 
   bool rightNotExists() const {
     return rightNotExists_;
+  }
+
+  ColumnCP markColumn() const {
+    return markColumn_;
   }
 
   bool directed() const {

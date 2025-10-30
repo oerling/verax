@@ -1049,7 +1049,8 @@ std::any AstBuilder::visitExpression(PrestoSqlParser::ExpressionContext* ctx) {
 
 std::any AstBuilder::visitLogicalNot(PrestoSqlParser::LogicalNotContext* ctx) {
   trace("visitLogicalNot");
-  return visitChildren(ctx);
+  return std::static_pointer_cast<Expression>(std::make_shared<NotExpression>(
+      getLocation(ctx), visitExpression(ctx->booleanExpression())));
 }
 
 std::any AstBuilder::visitPredicated(PrestoSqlParser::PredicatedContext* ctx) {

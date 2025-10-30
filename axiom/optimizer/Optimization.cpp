@@ -312,7 +312,8 @@ void forJoinedTables(const PlanState& state, Func func) {
             break;
           }
         }
-        if (usable && state.mayConsiderNext(join->rightTable())) {
+        if (usable &&
+            (state.mayConsiderNext(join->rightTable()) || join->markColumn())) {
           func(join, join->rightTable(), join->lrFanout());
         }
       } else {
@@ -1564,6 +1565,10 @@ bool Optimization::placeConjuncts(
             placeable[i],
             (i == placeable.size() - 1 ? conjunct : nullptr),
             state);
+
+        plan = make<Filter>(plan, ExprVector{conjunct});
+        state.addCost(*plan);
+
         makeJoins(plan, state);
         return true;
       }

@@ -29,10 +29,10 @@
 #include "velox/expression/FunctionSignature.h"
 #include "velox/functions/FunctionRegistry.h"
 
+namespace lp = facebook::axiom::logical_plan;
+
 namespace facebook::axiom::optimizer {
 namespace {
-
-namespace lp = facebook::axiom::logical_plan;
 
 OrderType toOrderType(lp::SortOrder sort) {
   if (sort.isAscending()) {
@@ -175,9 +175,8 @@ ExprCP ToGraph::tryFoldConstant(
     const ExprVector& literals) {
   try {
     Value value(toType(returnType), 1);
-    auto* veraxExpr = make<Call>(
-        PlanType::kCallExpr, toName(callName), value, literals, FunctionSet());
-    auto typedExpr = queryCtx()->optimization()->toTypedExpr(veraxExpr);
+    auto* call = make<Call>(toName(callName), value, literals, FunctionSet());
+    auto typedExpr = queryCtx()->optimization()->toTypedExpr(call);
     auto exprSet = evaluator_.compile(typedExpr);
     const auto& first = *exprSet->exprs().front();
     if (first.specialFormKind() != velox::exec::SpecialFormKind::kConstant) {
@@ -620,7 +619,8 @@ ExprCP ToGraph::deduppedCall(
 
 bool ToGraph::isJoinEquality(
     ExprCP expr,
-    std::vector<PlanObjectP>& tables,
+    PlanObjectCP leftTable,
+    PlanObjectCP rightTable,
     ExprCP& left,
     ExprCP& right) const {
   if (expr->is(PlanType::kCallExpr)) {
@@ -629,16 +629,17 @@ bool ToGraph::isJoinEquality(
       left = call->argAt(0);
       right = call->argAt(1);
 
-      auto leftTable = left->singleTable();
-      auto rightTable = right->singleTable();
-      if (!leftTable || !rightTable) {
-        return false;
+      auto* lt = left->singleTable();
+      auto* rt = right->singleTable();
+
+      if (lt == rightTable && rt == leftTable) {
+        std::swap(left, right);
+        return true;
       }
 
-      if (leftTable == tables[1]) {
-        std::swap(left, right);
+      if (lt == leftTable && rt == rightTable) {
+        return true;
       }
-      return true;
     }
   }
   return false;
@@ -883,13 +884,20 @@ std::optional<ExprCP> ToGraph::translateSubfieldFunction(
   return callExpr;
 }
 
-ExprCP ToGraph::translateColumn(std::string_view name) {
+ExprCP ToGraph::translateColumn(std::string_view name) const {
   if (auto it = lambdaSignature_.find(name); it != lambdaSignature_.end()) {
     return it->second;
   }
   if (auto it = renames_.find(name); it != renames_.end()) {
     return it->second;
   }
+
+  if (allowCorrelations_ && correlations_ != nullptr) {
+    if (auto it = correlations_->find(name); it != correlations_->end()) {
+      return it->second;
+    }
+  }
+
   VELOX_FAIL("Cannot resolve column name: {}", name);
 }
 
@@ -904,7 +912,7 @@ ExprVector ToGraph::translateExprs(const std::vector<lp::ExprPtr>& source) {
 void ToGraph::translateUnnest(const lp::UnnestNode& unnest, bool isNewDt) {
   if (unnest.ordinalityName().has_value()) {
     VELOX_NYI(
-        "Unnest ordinality column is not supported in Verax optimizer. Unnest node: {}",
+        "Unnest ordinality column is not supported in the optimizer. Unnest node: {}",
         unnest.id());
   }
   PlanObjectCP leftTable = nullptr;
@@ -1288,6 +1296,8 @@ DerivedTableP ToGraph::wrapInDt(const lp::LogicalPlanNode& node) {
 DerivedTableP ToGraph::finalizeDt(
     const lp::LogicalPlanNode& node,
     DerivedTableP outerDt) {
+  VELOX_CHECK_EQ(0, correlatedConjuncts_.size());
+
   DerivedTableP dt = currentDt_;
   setDtUsedOutput(dt, node);
 
@@ -1480,7 +1490,8 @@ namespace {
 void extractSubqueries(
     const lp::ExprPtr& expr,
     std::vector<lp::SubqueryExprPtr>& subqueries,
-    std::vector<lp::ExprPtr>& inPredicateSubqueries) {
+    std::vector<lp::ExprPtr>& inPredicateSubqueries,
+    std::vector<lp::ExprPtr>& existsSubqueries) {
   if (expr->isSubquery()) {
     subqueries.push_back(
         std::static_pointer_cast<const lp::SubqueryExpr>(expr));
@@ -1494,36 +1505,130 @@ void extractSubqueries(
       inPredicateSubqueries.push_back(expr);
       return;
     }
+
+    if (specialForm->form() == lp::SpecialForm::kExists) {
+      existsSubqueries.push_back(expr);
+      return;
+    }
   }
 
   for (const auto& input : expr->inputs()) {
-    extractSubqueries(input, subqueries, inPredicateSubqueries);
+    extractSubqueries(
+        input, subqueries, inPredicateSubqueries, existsSubqueries);
   }
 }
 } // namespace
 
+DerivedTableP ToGraph::translateSubquery(
+    const logical_plan::LogicalPlanNode& node) {
+  auto originalRenames = std::move(renames_);
+  renames_.clear();
+
+  correlations_ = &originalRenames;
+  SCOPE_EXIT {
+    correlations_ = nullptr;
+  };
+
+  VELOX_CHECK(correlatedConjuncts_.empty());
+
+  DerivedTableP dt;
+  {
+    DerivedTableP previousDt = currentDt_;
+
+    currentDt_ = newDt();
+    makeQueryGraph(node, kAllAllowedInDt);
+
+    dt = currentDt_;
+    setDtUsedOutput(dt, node);
+
+    currentDt_ = previousDt;
+    currentDt_->addTable(dt);
+
+    dt->makeInitialPlan();
+  }
+
+  renames_ = std::move(originalRenames);
+
+  for (const auto* column : dt->columns) {
+    renames_[column->name()] = column;
+  }
+
+  return dt;
+}
+
+ColumnCP ToGraph::addMarkColumn() {
+  auto* mark = toName(fmt::format("__mark{}", markCounter_++));
+  auto* markColumn =
+      make<Column>(mark, currentDt_, Value{toType(velox::BOOLEAN()), 2});
+  renames_[mark] = markColumn;
+  return markColumn;
+}
+
 void ToGraph::processSubqueries(const logical_plan::FilterNode& filter) {
-  // Assuming subqueries are not correlated, extract each into its own DT.
   std::vector<lp::SubqueryExprPtr> subqueries;
   std::vector<lp::ExprPtr> inPredicateSubqueries;
-  extractSubqueries(filter.predicate(), subqueries, inPredicateSubqueries);
+  std::vector<lp::ExprPtr> existsSubqueries;
+  extractSubqueries(
+      filter.predicate(), subqueries, inPredicateSubqueries, existsSubqueries);
 
   for (const auto& subquery : subqueries) {
-    auto subqueryDt = wrapInDt(*subquery->subquery());
-    VELOX_CHECK_EQ(1, subqueryDt->columns.size());
-    subqueries_.emplace(subquery, subqueryDt->columns.front());
+    auto subqueryDt = translateSubquery(*subquery->subquery());
+
+    if (correlatedConjuncts_.empty()) {
+      VELOX_CHECK_EQ(1, subqueryDt->columns.size());
+      subqueries_.emplace(subquery, subqueryDt->columns.front());
+    } else {
+      VELOX_CHECK_EQ(
+          correlatedConjuncts_.size() + 1, subqueryDt->columns.size());
+
+      // Add LEFT join.
+      PlanObjectCP leftTable = nullptr;
+      ExprVector leftKeys;
+      ExprVector rightKeys;
+      for (const auto* conjunct : correlatedConjuncts_) {
+        const auto tables = conjunct->allTables().toObjects();
+        VELOX_CHECK_EQ(2, tables.size());
+
+        ExprCP left = nullptr;
+        ExprCP right = nullptr;
+        if (isJoinEquality(conjunct, tables[0], tables[1], left, right)) {
+          if (tables[1] == subqueryDt) {
+            leftKeys.push_back(left);
+            rightKeys.push_back(right);
+            leftTable = tables[0];
+          } else {
+            leftKeys.push_back(right);
+            rightKeys.push_back(left);
+            leftTable = tables[1];
+          }
+        } else {
+          VELOX_FAIL(
+              "Expected correlated conjunct of the form a = b: {}",
+              conjunct->toString());
+        }
+      }
+
+      correlatedConjuncts_.clear();
+
+      auto* join = make<JoinEdge>(
+          leftTable, subqueryDt, JoinEdge::Spec{.rightOptional = true});
+      for (auto i = 0; i < leftKeys.size(); ++i) {
+        join->addEquality(leftKeys[i], rightKeys[i]);
+      }
+
+      currentDt_->joins.push_back(join);
+      subqueries_.emplace(subquery, subqueryDt->columns.back());
+    }
   }
 
   for (const auto& expr : inPredicateSubqueries) {
-    auto subqueryDt =
-        wrapInDt(*expr->inputAt(1)->as<lp::SubqueryExpr>()->subquery());
+    auto subqueryDt = translateSubquery(
+        *expr->inputAt(1)->as<lp::SubqueryExpr>()->subquery());
     VELOX_CHECK_EQ(1, subqueryDt->columns.size());
+    VELOX_CHECK(correlatedConjuncts_.empty());
 
     // Add a join edge and replace 'expr' with 'mark' column in the join output.
-    auto* mark = toName("mark");
-    auto* markColumn =
-        make<Column>(mark, currentDt_, Value{toType(velox::BOOLEAN()), 2});
-    renames_[mark] = markColumn;
+    const auto* markColumn = addMarkColumn();
 
     auto leftKey = translateExpr(expr->inputAt(0));
     auto leftTable = leftKey->singleTable();
@@ -1539,23 +1644,94 @@ void ToGraph::processSubqueries(const logical_plan::FilterNode& filter) {
 
     subqueries_.emplace(expr, markColumn);
   }
+
+  for (const auto& expr : existsSubqueries) {
+    auto subqueryDt = translateSubquery(
+        *expr->inputAt(0)->as<lp::SubqueryExpr>()->subquery());
+    VELOX_CHECK(!correlatedConjuncts_.empty());
+
+    PlanObjectCP leftTable = nullptr;
+    ExprVector leftKeys;
+    ExprVector rightKeys;
+    ExprVector filter;
+    for (auto i = 0; i < correlatedConjuncts_.size(); ++i) {
+      const auto* conjunct = subqueryDt->exportExpr(correlatedConjuncts_[i]);
+
+      auto tables = conjunct->allTables();
+      tables.erase(subqueryDt);
+
+      VELOX_CHECK_EQ(1, tables.size());
+      if (leftTable == nullptr) {
+        leftTable = tables.toObjects().front();
+      } else {
+        VELOX_CHECK(leftTable == tables.toObjects().front());
+      }
+
+      ExprCP left = nullptr;
+      ExprCP right = nullptr;
+      if (isJoinEquality(conjunct, leftTable, subqueryDt, left, right)) {
+        leftKeys.push_back(left);
+        rightKeys.push_back(right);
+      } else {
+        filter.push_back(conjunct);
+      }
+    }
+
+    VELOX_CHECK(!leftKeys.empty());
+
+    correlatedConjuncts_.clear();
+
+    const auto* markColumn = addMarkColumn();
+
+    auto* existsEdge = make<JoinEdge>(
+        leftTable,
+        subqueryDt,
+        JoinEdge::Spec{.filter = filter, .markColumn = markColumn});
+    currentDt_->joins.push_back(existsEdge);
+
+    for (auto i = 0; i < leftKeys.size(); ++i) {
+      existsEdge->addEquality(leftKeys[i], rightKeys[i]);
+    }
+
+    subqueries_.emplace(expr, markColumn);
+  }
 }
 
 void ToGraph::addFilter(const lp::FilterNode& filter) {
   exprSource_ = filter.onlyInput().get();
 
-  // TODO Add support for correlated subqueries.
   processSubqueries(filter);
 
   ExprVector flat;
-  translateConjuncts(filter.predicate(), flat);
+  {
+    allowCorrelations_ = true;
+    SCOPE_EXIT {
+      allowCorrelations_ = false;
+    };
 
-  if (currentDt_->hasAggregation()) {
-    currentDt_->having.insert(
-        currentDt_->having.end(), flat.begin(), flat.end());
-  } else {
-    currentDt_->conjuncts.insert(
-        currentDt_->conjuncts.end(), flat.begin(), flat.end());
+    translateConjuncts(filter.predicate(), flat);
+
+    PlanObjectSet tables = currentDt_->tableSet;
+    tables.add(currentDt_);
+    for (auto it = flat.begin(); it != flat.end();) {
+      const auto* conjunct = *it;
+      if (conjunct->allTables().isSubset(tables)) {
+        ++it;
+      } else {
+        correlatedConjuncts_.push_back(conjunct);
+        it = flat.erase(it);
+      }
+    }
+  }
+
+  if (!flat.empty()) {
+    if (currentDt_->hasAggregation()) {
+      currentDt_->having.insert(
+          currentDt_->having.end(), flat.begin(), flat.end());
+    } else {
+      currentDt_->conjuncts.insert(
+          currentDt_->conjuncts.end(), flat.begin(), flat.end());
+    }
   }
 }
 
@@ -1815,7 +1991,7 @@ DerivedTableP ToGraph::translateUnion(
 }
 
 DerivedTableP ToGraph::makeQueryGraph(const lp::LogicalPlanNode& logicalPlan) {
-  markAllSubfields(logicalPlan);
+  markAllSubfields(logicalPlan, {});
 
   currentDt_ = newDt();
   makeQueryGraph(logicalPlan, kAllAllowedInDt);
@@ -1898,8 +2074,77 @@ void ToGraph::makeQueryGraph(
         currentDt_->orderTypes.clear();
       }
 
-      currentDt_->aggregation =
-          translateAggregation(*node.as<lp::AggregateNode>());
+      auto* agg = translateAggregation(*node.as<lp::AggregateNode>());
+
+      if (!correlatedConjuncts_.empty()) {
+        VELOX_CHECK(agg->groupingKeys().empty());
+
+        // Expect all conjuncts to have the form of f(outer) = g(inner).
+        ExprVector groupingKeys;
+        ColumnVector columns;
+        ExprVector leftKeys;
+        for (const auto* conjunct : correlatedConjuncts_) {
+          const auto tables = conjunct->allTables().toObjects();
+          VELOX_CHECK_EQ(2, tables.size());
+
+          ExprCP left = nullptr;
+          ExprCP right = nullptr;
+          ExprCP key = nullptr;
+          if (isJoinEquality(conjunct, tables[0], tables[1], left, right)) {
+            if (currentDt_->tableSet.contains(tables[0])) {
+              key = left;
+              leftKeys.push_back(right);
+            } else {
+              key = right;
+              leftKeys.push_back(left);
+            }
+
+            if (key->is(PlanType::kColumnExpr)) {
+              columns.push_back(key->as<Column>());
+            } else {
+              auto* column =
+                  make<Column>(newCName("__gk"), currentDt_, key->value());
+              columns.push_back(column);
+            }
+
+            groupingKeys.push_back(key);
+          } else {
+            VELOX_FAIL(
+                "Expected correlated conjunct of the form a = b: {}",
+                conjunct->toString());
+          }
+        }
+
+        correlatedConjuncts_.clear();
+        for (auto i = 0; i < leftKeys.size(); ++i) {
+          currentDt_->exprs.push_back(columns[i]);
+          currentDt_->columns.push_back(
+              make<Column>(newCName("__gk"), currentDt_, columns[i]->value()));
+
+          correlatedConjuncts_.push_back(
+              make<Call>(
+                  equality_,
+                  Value(toType(velox::BOOLEAN()), 2),
+                  ExprVector{leftKeys[i], currentDt_->columns.back()},
+                  FunctionSet()));
+        }
+
+        auto intermediateColumns = columns;
+
+        for (const auto* column : agg->columns()) {
+          columns.push_back(column);
+        }
+
+        for (const auto* column : agg->intermediateColumns()) {
+          intermediateColumns.push_back(column);
+        }
+
+        currentDt_->aggregation = make<AggregationPlan>(
+            groupingKeys, agg->aggregates(), columns, intermediateColumns);
+
+      } else {
+        currentDt_->aggregation = agg;
+      }
 
       return;
     }
