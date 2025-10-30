@@ -1206,8 +1206,10 @@ void ToGraph::translateJoin(const lp::JoinNode& join) {
   // TODO Allow mixing Unnest with Join in a single DT.
   // https://github.com/facebookexperimental/verax/issues/286
 <<<<<<< HEAD
-  const auto kAllowScan = allow(PlanType::kTableNode) | allow(PlanType::kValuesTableNode);
-  const auto allowedInDt = allow(PlanType::kJoinNode) | allow(PlanType::kFilterNode) | kAllowScan;
+  const auto kAllowScan =
+      allow(PlanType::kTableNode) | allow(PlanType::kValuesTableNode);
+  const auto allowedInDt =
+      allow(PlanType::kJoinNode) | allow(PlanType::kFilterNode) | kAllowScan;
 =======
   const auto allowedInDt = allow(lp::NodeKind::kJoin);
 >>>>>>> main
@@ -1228,7 +1230,7 @@ void ToGraph::translateJoin(const lp::JoinNode& join) {
       *joinRight,
       (isInner && !queryCtx()->optimization()->options().syntacticJoinOrder)
           ? allowedInDt
-      : kAllowScan);
+          : kAllowScan);
 
   if (previousDt) {
     finalizeDt(*joinRight, previousDt);
@@ -1861,7 +1863,8 @@ void ToGraph::makeQueryGraph(
 
       isNondeterministicWrap_ = false;
 
-      // For example on the right of left outer join, a filter must not go to the enclosing dt but must make its own dt.
+      // For example on the right of left outer join, a filter must not go to
+      // the enclosing dt but must make its own dt.
       if (!contains(allowedInDt, PlanType::kFilterNode)) {
         return wrapInDt(node);
       }
@@ -1932,7 +1935,6 @@ void ToGraph::makeQueryGraph(
     }
     case lp::NodeKind::kLimit: {
 <<<<<<< HEAD
-
       if (!contains(allowedInDt, PlanType::kLimitNode)) {
         return wrapInDt(node);
 =======

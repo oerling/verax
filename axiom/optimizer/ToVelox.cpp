@@ -15,6 +15,7 @@
  */
 
 #include "axiom/optimizer/ToVelox.h"
+#include "axiom/optimizer/DerivedTablePrinter.h"
 #include "axiom/optimizer/FunctionRegistry.h"
 #include "axiom/optimizer/Optimization.h"
 #include "velox/core/PlanConsistencyChecker.h"
@@ -24,7 +25,6 @@
 #include "velox/expression/ExprToSubfieldFilter.h"
 #include "velox/expression/ScopedVarSetter.h"
 #include "velox/vector/VariantToVector.h"
-#include "axiom/optimizer/DerivedTablePrinter.h"
 
 namespace facebook::axiom::optimizer {
 
@@ -1529,7 +1529,7 @@ extern std::string planString(const runner::MultiFragmentPlan* plan) {
   return plan->toString(true);
 }
 
-  extern std::string dtString(const DerivedTable* dt) {
+extern std::string dtString(const DerivedTable* dt) {
   return DerivedTablePrinter::toText(*dt);
 }
 

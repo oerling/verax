@@ -204,9 +204,10 @@ struct DerivedTable : public PlanObject {
     return limit >= 0;
   }
 
-  // True if contains one derived table in 'tables'  and adds no change to its result set.
+  // True if contains one derived table in 'tables'  and adds no change to its
+  // result set.
   bool isWrapOnly() const;
-  
+
   void addJoinedBy(JoinEdgeP join);
 
   /// Memoizes plans for 'this' and fills in 'cardinality'. Needed before adding

@@ -1484,7 +1484,7 @@ TEST_F(PlanTest, outerJoinWithInnerJoin) {
                          .build();
 
   {
-        SCOPED_TRACE("left join with inner join on right");
+    SCOPED_TRACE("left join with inner join on right");
 
     auto plan = toSingleNodePlan(logicalPlan);
     auto matcher =
@@ -1525,15 +1525,15 @@ TEST_F(PlanTest, outerJoinWithInnerJoin) {
         core::PlanMatcherBuilder()
             .tableScan("t")
             .filter()
-      .aggregation()
-      .hashJoin(
+            .aggregation()
+            .hashJoin(
                 core::PlanMatcherBuilder()
                     .tableScan("u")
                     .hashJoin(core::PlanMatcherBuilder().tableScan("v").build())
                     .filter()
                     .build())
-      .project()
-      .build();
+            .project()
+            .build();
 
     AXIOM_ASSERT_PLAN(plan, matcher);
   }

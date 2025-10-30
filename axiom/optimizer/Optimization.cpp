@@ -103,7 +103,6 @@ std::string Optimization::memoString() const {
   return out.str();
 }
 
-  
 void Optimization::trace(
     uint32_t event,
     int32_t id,
@@ -1918,7 +1917,11 @@ PlanP Optimization::makeDtPlan(
     auto dt = make<DerivedTable>();
     dt->cname = newCName("tmp_dt");
     dt->import(
-        *state.dt, key.firstTable, key.tables, key.existences, existsFanout,
+        *state.dt,
+        key.firstTable,
+        key.tables,
+        key.existences,
+        existsFanout,
         key.extraConjuncts,
         key.columns);
 
@@ -1955,4 +1958,3 @@ ExprCP Optimization::combineLeftDeep(Name func, const ExprVector& exprs) {
 }
 
 } // namespace facebook::axiom::optimizer
-

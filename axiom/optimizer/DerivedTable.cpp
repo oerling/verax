@@ -357,8 +357,8 @@ void DerivedTable::import(
   if (tables.size() > 1 || tables[0]->is(PlanType::kDerivedTableNode)) {
     projected.forEach<Column>([&](auto column) {
       if (std::find(columns.begin(), columns.end(), column) == columns.end()) {
-	exprs.push_back(column);
-	columns.push_back(column);
+        exprs.push_back(column);
+        columns.push_back(column);
       }
     });
   }
