@@ -17,6 +17,7 @@
 #include "axiom/optimizer/Plan.h"
 #include "axiom/optimizer/Cost.h"
 #include "axiom/optimizer/Optimization.h"
+#include "axiom/optimizer/RelationOpPrinter.h"
 
 namespace facebook::axiom::optimizer {
 
@@ -115,14 +116,12 @@ Plan::Plan(RelationOpPtr op, const PlanState& state)
       columns(exprColumns(state.targetExprs)),
       fullyImported(state.dt->fullyImported) {}
 
-bool Plan::isStateBetter(const PlanState& state, float perRowMargin) const {
-  return cost.unitCost * cost.inputCardinality + cost.setupCost >
-      state.cost.unitCost * state.cost.inputCardinality + state.cost.setupCost +
-      perRowMargin * state.cost.fanout;
+bool Plan::isStateBetter(const PlanState& state, float margin) const {
+  return cost.cost > state.cost.cost + margin;
 }
 
 std::string Plan::printCost() const {
-  return cost.toString(true, false);
+  return cost.toString();
 }
 
 std::string Plan::toString(bool detail) const {
@@ -133,12 +132,8 @@ std::string Plan::toString(bool detail) const {
 }
 
 void PlanState::addCost(RelationOp& op) {
-  VELOX_DCHECK_EQ(cost.inputCardinality, 1);
-  cost.unitCost += cost.fanout * op.cost().unitCost;
-  cost.setupCost += op.cost().setupCost;
-  cost.fanout *= op.cost().fanout;
-  cost.totalBytes += op.cost().totalBytes;
-  cost.transferBytes += op.cost().transferBytes;
+  cost.cost += op.cost().totalCost();
+  cost.cardinality = op.cost().resultCardinality();
 }
 
 bool PlanState::mayConsiderNext(PlanObjectCP table) const {
@@ -198,14 +193,16 @@ const PlanObjectSet& PlanState::downstreamColumns() const {
 
   PlanObjectSet result;
 
-  auto addExpr = [&](ExprCP expr) {
+  auto translateExpr = [&](ExprCP expr) {
     auto it = exprToColumn.find(expr);
     if (it != exprToColumn.end()) {
-      result.unionColumns(it->second);
+      return it->second;
     } else {
-      result.unionColumns(expr);
+      return expr;
     }
   };
+
+  auto addExpr = [&](ExprCP expr) { result.unionColumns(translateExpr(expr)); };
 
   auto addExprs = [&](ExprVector exprs) {
     for (auto expr : exprs) {
@@ -215,6 +212,31 @@ const PlanObjectSet& PlanState::downstreamColumns() const {
 
   // Joins.
   for (auto join : dt->joins) {
+    if (join->rightExists() || join->rightNotExists()) {
+      if (placed.contains(join->rightTable())) {
+        continue;
+      }
+
+      // For an unplaced exists/not exists downstream, we need the left side
+      // columns but not the right side since nothing is projected out from the
+      // right side.
+      addExprs(join->leftKeys());
+
+      if (!join->filter().empty()) {
+        // If there is a filter, then the filter columns that do not come from
+        // the right side are needed.
+        for (auto& conjunct : join->filter()) {
+          translateExpr(conjunct)->columns().forEach<Column>(
+              [&](ColumnCP column) {
+                if (column->relation() != join->rightTable()) {
+                  result.add(column);
+                }
+              });
+        }
+      }
+      continue;
+    }
+
     bool addFilter = false;
     if (!placed.contains(join->rightTable())) {
       addFilter = true;
@@ -281,7 +303,7 @@ ExprCP PlanState::toColumn(ExprCP expr) const {
 }
 
 std::string PlanState::printCost() const {
-  return cost.toString(true, true);
+  return cost.toString();
 }
 
 std::string PlanState::printPlan(RelationOpPtr op, bool detail) const {
@@ -291,8 +313,7 @@ std::string PlanState::printPlan(RelationOpPtr op, bool detail) const {
 
 PlanP PlanSet::addPlan(RelationOpPtr plan, PlanState& state) {
   int32_t replaceIndex = -1;
-  const float shuffleCostPerRow =
-      shuffleCost(plan->columns()) * state.cost.fanout;
+  const float shuffle = shuffleCost(plan->columns()) * state.cost.cardinality;
 
   if (!plans.empty()) {
     // Compare with existing. If there is one with same distribution and new is
@@ -306,8 +327,7 @@ PlanP PlanSet::addPlan(RelationOpPtr plan, PlanState& state) {
       }
 
       const bool newIsBetter = old->isStateBetter(state);
-      const bool newIsBetterWithShuffle =
-          old->isStateBetter(state, shuffleCostPerRow);
+      const bool newIsBetterWithShuffle = old->isStateBetter(state, shuffle);
       const bool sameDist =
           old->op->distribution().isSamePartition(plan->distribution());
       const bool sameOrder =
@@ -335,7 +355,7 @@ PlanP PlanSet::addPlan(RelationOpPtr plan, PlanState& state) {
       }
 
       if (plan->distribution().orderKeys.empty() &&
-          !old->isStateBetter(state, -shuffleCostPerRow)) {
+          !old->isStateBetter(state, -shuffle)) {
         // New has no order and old would beat it even after adding shuffle.
         return nullptr;
       }
@@ -344,8 +364,8 @@ PlanP PlanSet::addPlan(RelationOpPtr plan, PlanState& state) {
 
   auto newPlan = std::make_unique<Plan>(std::move(plan), state);
   auto* result = newPlan.get();
-  auto newPlanCost =
-      result->cost.unitCost + result->cost.setupCost + shuffleCostPerRow;
+
+  const auto newPlanCost = result->cost.cost + shuffle;
   bestCostWithShuffle = std::min(bestCostWithShuffle, newPlanCost);
   if (replaceIndex >= 0) {
     plans[replaceIndex] = std::move(newPlan);
@@ -364,8 +384,7 @@ PlanP PlanSet::best(const Distribution& distribution, bool& needsShuffle) {
   const bool single = isSingleWorker();
 
   for (const auto& plan : plans) {
-    const float cost =
-        plan->cost.fanout * plan->cost.unitCost + plan->cost.setupCost;
+    const float cost = plan->cost.cost;
 
     auto update = [&](PlanP& current, float& currentCost) {
       if (!current || cost < currentCost) {
@@ -387,7 +406,8 @@ PlanP PlanSet::best(const Distribution& distribution, bool& needsShuffle) {
   }
 
   if (match) {
-    const float shuffle = shuffleCost(best->op->columns()) * best->cost.fanout;
+    const float shuffle =
+        shuffleCost(best->op->columns()) * best->cost.cardinality;
     if (matchCost <= bestCost + shuffle) {
       return match;
     }
@@ -501,12 +521,12 @@ std::string JoinCandidate::toString() const {
 }
 
 bool NextJoin::isWorse(const NextJoin& other) const {
-  float shuffle =
-      plan->distribution().isSamePartition(other.plan->distribution())
-      ? 0
-      : plan->cost().fanout * shuffleCost(plan->columns());
-  return cost.unitCost + cost.setupCost + shuffle >
-      other.cost.unitCost + other.cost.setupCost;
+  float shuffle = 0;
+  if (!plan->distribution().isSamePartition(other.plan->distribution())) {
+    shuffle = other.cost.cardinality * shuffleCost(other.plan->columns());
+  }
+
+  return cost.cost > other.cost.cost + shuffle;
 }
 
 size_t MemoKey::hash() const {

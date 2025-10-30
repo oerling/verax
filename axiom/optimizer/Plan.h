@@ -36,9 +36,9 @@ using HashBuildVector = std::vector<HashBuildCP>;
 struct Plan {
   Plan(RelationOpPtr op, const PlanState& state);
 
-  /// True if 'state' has a lower cost than 'this'. If 'perRowMargin' is given,
-  /// then 'other' must win by margin per row.
-  bool isStateBetter(const PlanState& state, float perRowMargin = 0) const;
+  /// True if 'state' has a lower cost than 'this'. If 'margin' is given,
+  /// then 'other' must win by margin.
+  bool isStateBetter(const PlanState& state, float margin = 0) const;
 
   /// Root of the plan tree.
   const RelationOpPtr op;
@@ -46,7 +46,7 @@ struct Plan {
   /// Total cost of 'op'. Setup costs and memory sizes are added up. The unit
   /// cost is the sum of the unit costs of the left-deep branch of 'op', where
   /// each unit cost is multiplied by the product of the fanouts of its inputs.
-  const Cost cost;
+  const PlanCost cost;
 
   /// The tables from original join graph that are included in this
   /// plan. If this is a derived table in the original plan, the
@@ -89,7 +89,7 @@ struct PlanSet {
   /// some other distribution, sets 'needsShuffle ' to true.
   PlanP best(const Distribution& distribution, bool& needsShuffle);
 
-  /// Retruns the best plan when we're ok with any distribution.
+  /// Returns the best plan when we're ok with any distribution.
   PlanP best() {
     bool ignore = false;
     return best(Distribution{}, ignore);
@@ -160,7 +160,7 @@ struct NextJoin {
   NextJoin(
       const JoinCandidate* candidate,
       RelationOpPtr plan,
-      const Cost& cost,
+      const PlanCost& cost,
       PlanObjectSet placed,
       PlanObjectSet columns,
       HashBuildVector builds)
@@ -173,7 +173,7 @@ struct NextJoin {
 
   const JoinCandidate* candidate;
   RelationOpPtr plan;
-  Cost cost;
+  PlanCost cost;
   PlanObjectSet placed;
   PlanObjectSet columns;
   HashBuildVector newBuilds;
@@ -216,7 +216,7 @@ struct PlanState {
   PlanObjectSet input;
 
   /// The total cost for the PlanObjects placed thus far.
-  Cost cost;
+  PlanCost cost;
 
   /// All the hash join builds in any branch of the partial plan constructed so
   /// far.
@@ -275,8 +275,7 @@ struct PlanState {
   /// True if the costs accumulated so far are so high that this should not be
   /// explored further.
   bool isOverBest() const {
-    return hasCutoff &&
-        cost.unitCost + cost.setupCost > plans.bestCostWithShuffle;
+    return hasCutoff && cost.cost > plans.bestCostWithShuffle;
   }
 
   void debugSetFirstTable(int32_t id);
@@ -315,7 +314,7 @@ struct PlanStateSaver {
   PlanState& state_;
   PlanObjectSet placed_;
   PlanObjectSet columns_;
-  const Cost cost_;
+  const PlanCost cost_;
   const uint32_t numBuilds_;
   const uint32_t numPlaced_;
 };

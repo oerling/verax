@@ -31,6 +31,8 @@ enum class ExprKind {
   kSubquery = 7,
 };
 
+AXIOM_DECLARE_ENUM_NAME(ExprKind);
+
 class Expr;
 using ExprPtr = std::shared_ptr<const Expr>;
 
@@ -54,6 +56,10 @@ class Expr {
 
   ExprKind kind() const {
     return kind_;
+  }
+
+  std::string_view kindName() const {
+    return ExprKindName::toName(kind_);
   }
 
   const velox::TypePtr& type() const {
@@ -109,14 +115,18 @@ class Expr {
     return kind_ == ExprKind::kSubquery;
   }
 
+  /// Caller must ensure this kind is correct.
   template <typename T>
-  const T* asUnchecked() const {
+  const T* as() const {
     static_assert(std::is_base_of_v<Expr, T>);
-    return dynamic_cast<const T*>(this);
+    VELOX_DCHECK_NOT_NULL(dynamic_cast<const T*>(this));
+    return static_cast<const T*>(this);
   }
 
   virtual void accept(const ExprVisitor& visitor, ExprVisitorContext& context)
       const = 0;
+
+  std::string toString() const;
 
  protected:
   const ExprKind kind_;

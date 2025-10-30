@@ -94,17 +94,20 @@ class PlanObject {
     return type_ != type;
   }
 
-  template <typename T>
-  T* as() {
-    VELOX_DCHECK_NOT_NULL(dynamic_cast<T*>(this));
-    return reinterpret_cast<T*>(this);
-  }
-
-  /// Returns 'this' as const T.
+  /// Caller must ensure this type is correct.
   template <typename T>
   const T* as() const {
+    static_assert(std::is_base_of_v<PlanObject, T>);
     VELOX_DCHECK_NOT_NULL(dynamic_cast<const T*>(this));
-    return reinterpret_cast<const T*>(this);
+    return static_cast<const T*>(this);
+  }
+
+  /// Caller must ensure this type is correct.
+  template <typename T>
+  T* as() {
+    static_assert(std::is_base_of_v<PlanObject, T>);
+    VELOX_DCHECK_NOT_NULL(dynamic_cast<T*>(this));
+    return static_cast<T*>(this);
   }
 
   /// Returns a view on children, e.g. arguments of a function call.

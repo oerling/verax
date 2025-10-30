@@ -55,6 +55,9 @@ struct OptimizerOptions {
   /// disabled, a default selectivity will be used.
   bool sampleFilters{true};
 
+  /// Enable reducing semi joins.
+  bool enableReducingExistences{true};
+
   /// Produce trace of plan candidates.
   uint32_t traceFlags{0};
 

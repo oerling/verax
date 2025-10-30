@@ -39,7 +39,7 @@ std::pair<std::vector<Step>, int32_t> makeRowFromMapSubfield(
     const lp::CallExpr& call) {
   VELOX_CHECK(steps.back().kind == StepKind::kField);
   auto& list = call.inputAt(2)
-                   ->asUnchecked<lp::ConstantExpr>()
+                   ->as<lp::ConstantExpr>()
                    ->value()
                    ->value<TypeKind::ARRAY>();
   auto field = steps.back().field;
@@ -60,13 +60,14 @@ std::pair<std::vector<Step>, int32_t> makeRowFromMapSubfield(
 
   auto newFields = steps;
   newFields.pop_back();
-  newFields.push_back(optimizer::Step{
-      .kind = optimizer::StepKind::kSubscript,
-      .id = call.inputAt(1)
-                ->asUnchecked<lp::ConstantExpr>()
-                ->value()
-                ->value<TypeKind::ARRAY>()[found]
-                .value<int32_t>()});
+  newFields.push_back(
+      optimizer::Step{
+          .kind = optimizer::StepKind::kSubscript,
+          .id = call.inputAt(1)
+                    ->as<lp::ConstantExpr>()
+                    ->value()
+                    ->value<TypeKind::ARRAY>()[found]
+                    .value<int32_t>()});
   return std::make_pair(newFields, 0);
 }
 
@@ -91,7 +92,7 @@ folly::F14FastMap<PathCP, lp::ExprPtr> makeRowFromMapExplodeGeneric(
     auto type = call->type()->childAt(0);
     auto subscriptType = call->inputAt(1)->type()->childAt(0);
     auto keys = call->inputAt(1)
-                    ->asUnchecked<lp::ConstantExpr>()
+                    ->as<lp::ConstantExpr>()
                     ->value()
                     ->value<TypeKind::ARRAY>();
     lp::ExprPtr getter = std::make_shared<lp::CallExpr>(
@@ -154,7 +155,7 @@ lp::ExprPtr makeRowFromMapHook(
   std::vector<TypePtr> types;
   VELOX_CHECK_EQ(TypeKind::MAP, args[0]->type()->kind());
   auto type = args[0]->type()->childAt(1);
-  auto* namesVariant = args[2]->asUnchecked<lp::ConstantExpr>()->value().get();
+  auto* namesVariant = args[2]->as<lp::ConstantExpr>()->value().get();
   auto namesArray = namesVariant->value<TypeKind::ARRAY>();
   for (auto i = 0; i < namesArray.size(); ++i) {
     nameStrings.push_back(namesArray[i].value<TypeKind::VARCHAR>());
@@ -172,10 +173,8 @@ lp::ExprPtr makeNamedRowHook(
   std::vector<TypePtr> types;
   for (auto i = 0; i < args.size(); i += 2) {
     VELOX_CHECK(args[i]->isConstant());
-    newNames.push_back(args[i]
-                           ->asUnchecked<lp::ConstantExpr>()
-                           ->value()
-                           ->value<TypeKind::VARCHAR>());
+    newNames.push_back(
+        args[i]->as<lp::ConstantExpr>()->value()->value<TypeKind::VARCHAR>());
     types.push_back(args[i + 1]->type());
     values.push_back(args[i + 1]);
   }

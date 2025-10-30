@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "axiom/optimizer/DerivedTable.h"
+#include "axiom/optimizer/DerivedTablePrinter.h"
 #include "axiom/optimizer/Optimization.h"
 #include "axiom/optimizer/Plan.h"
 #include "axiom/optimizer/PlanUtils.h"
@@ -1048,45 +1049,7 @@ PlanP DerivedTable::bestInitialPlan() const {
 }
 
 std::string DerivedTable::toString() const {
-  std::stringstream out;
-  out << "{dt " << cname << " from ";
-  for (auto& table : tables) {
-    out << table->toString() << " ";
-  }
-
-  if (!joins.empty()) {
-    out << " joins ";
-    for (auto& join : joins) {
-      out << join->toString();
-    }
-  }
-
-  if (!conjuncts.empty()) {
-    out << " where " << conjunctsToString(conjuncts);
-  }
-
-  if (hasAggregation()) {
-    out << " group by " << aggregation->groupingKeys().size() << " keys, "
-        << aggregation->aggregates().size() << " aggregates ";
-
-    if (!having.empty()) {
-      out << " having " << conjunctsToString(having);
-    }
-  }
-
-  if (hasOrderBy()) {
-    out << " order by ";
-  }
-
-  if (hasLimit()) {
-    if (offset > 0) {
-      out << " offset " << offset << " ";
-    }
-    out << " limit " << limit;
-  }
-
-  out << "}";
-  return out.str();
+  return DerivedTablePrinter::toText(*this);
 }
 
 void DerivedTable::addJoinedBy(JoinEdgeP join) {

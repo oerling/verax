@@ -169,7 +169,7 @@ class Optimization {
   ExprCP combineLeftDeep(Name func, const ExprVector& exprs);
 
   /// Produces trace output if event matches 'traceFlags_'.
-  void trace(uint32_t event, int32_t id, const Cost& cost, RelationOp& plan)
+  void trace(uint32_t event, int32_t id, const PlanCost& cost, RelationOp& plan)
       const;
 
   std::string memoString() const;

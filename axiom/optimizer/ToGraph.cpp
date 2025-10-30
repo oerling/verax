@@ -179,16 +179,16 @@ ExprCP ToGraph::tryFoldConstant(
         PlanType::kCallExpr, toName(callName), value, literals, FunctionSet());
     auto typedExpr = queryCtx()->optimization()->toTypedExpr(veraxExpr);
     auto exprSet = evaluator_.compile(typedExpr);
-    auto first = exprSet->exprs().front().get();
-    if (auto constantExpr =
-            dynamic_cast<const velox::exec::ConstantExpr*>(first)) {
-      auto typed = std::make_shared<lp::ConstantExpr>(
-          constantExpr->type(),
-          std::make_shared<velox::Variant>(
-              constantExpr->value()->variantAt(0)));
-
-      return makeConstant(*typed);
+    const auto& first = *exprSet->exprs().front();
+    if (first.specialFormKind() != velox::exec::SpecialFormKind::kConstant) {
+      return nullptr;
     }
+    const auto& constantExpr =
+        static_cast<const velox::exec::ConstantExpr&>(first);
+    auto typed = std::make_shared<lp::ConstantExpr>(
+        constantExpr.type(),
+        std::make_shared<velox::Variant>(constantExpr.value()->variantAt(0)));
+    return makeConstant(*typed);
   } catch (const std::exception&) {
     // Swallow exception.
   }
@@ -203,7 +203,7 @@ bool ToGraph::isSubfield(
   if (isSpecialForm(expr, lp::SpecialForm::kDereference)) {
     step.kind = StepKind::kField;
     auto maybeIndex =
-        maybeIntegerLiteral(expr->inputAt(1)->asUnchecked<lp::ConstantExpr>());
+        maybeIntegerLiteral(expr->inputAt(1)->as<lp::ConstantExpr>());
     Name name = nullptr;
     int64_t id = 0;
     auto& rowType = expr->inputAt(0)->type()->as<velox::TypeKind::ROW>();
@@ -211,7 +211,7 @@ bool ToGraph::isSubfield(
       id = maybeIndex.value();
       name = toName(rowType.nameOf(maybeIndex.value()));
     } else {
-      auto& field = expr->inputAt(1)->asUnchecked<lp::ConstantExpr>()->value();
+      auto& field = expr->inputAt(1)->as<lp::ConstantExpr>()->value();
       name = toName(field->value<velox::TypeKind::VARCHAR>());
       id = rowType.getChildIdx(name);
     }
@@ -222,7 +222,7 @@ bool ToGraph::isSubfield(
   }
 
   if (expr->isCall()) {
-    const auto* call = expr->asUnchecked<lp::CallExpr>();
+    const auto* call = expr->as<lp::CallExpr>();
     auto name = toName(call->name());
     if (name == subscript_ || name == elementAt_) {
       auto subscript = translateExpr(call->inputAt(1));
@@ -262,7 +262,7 @@ void ToGraph::getExprForField(
     ColumnCP& resultColumn,
     const lp::LogicalPlanNode*& context) {
   while (context) {
-    const auto& name = field->asUnchecked<lp::InputReferenceExpr>()->name();
+    const auto& name = field->as<lp::InputReferenceExpr>()->name();
 
     if (auto it = lambdaSignature_.find(name); it != lambdaSignature_.end()) {
       resultColumn = it->second;
@@ -273,11 +273,11 @@ void ToGraph::getExprForField(
 
     const auto ordinal = context->outputType()->getChildIdx(name);
     if (context->is(lp::NodeKind::kProject)) {
-      const auto* project = context->asUnchecked<lp::ProjectNode>();
+      const auto* project = context->as<lp::ProjectNode>();
       auto& def = project->expressions()[ordinal];
       context = context->inputAt(0).get();
       if (def->isInputReference()) {
-        const auto* innerField = def->asUnchecked<lp::InputReferenceExpr>();
+        const auto* innerField = def->as<lp::InputReferenceExpr>();
         field = innerField;
         continue;
       }
@@ -289,7 +289,7 @@ void ToGraph::getExprForField(
 
     const bool checkInContext = [&] {
       if (context->is(lp::NodeKind::kUnnest)) {
-        const auto* unnest = context->asUnchecked<lp::UnnestNode>();
+        const auto* unnest = context->as<lp::UnnestNode>();
         return ordinal >= unnest->onlyInput()->outputType()->size();
       }
       return sources.empty();
@@ -357,7 +357,7 @@ std::optional<ExprCP> ToGraph::translateSubfield(const lp::ExprPtr& inputExpr) {
         }
       } else {
         ensureFunctionSubfields(expr);
-        auto call = expr->asUnchecked<lp::CallExpr>();
+        auto call = expr->as<lp::CallExpr>();
         auto it = functionSubfields_.find(call);
         if (it != functionSubfields_.end()) {
           skyline = &it->second;
@@ -549,7 +549,7 @@ BitSet ToGraph::functionSubfields(
 
 void ToGraph::ensureFunctionSubfields(const lp::ExprPtr& expr) {
   if (expr->isCall()) {
-    const auto* call = expr->asUnchecked<lp::CallExpr>();
+    const auto* call = expr->as<lp::CallExpr>();
     if (functionMetadata(velox::exec::sanitizeName(call->name()))) {
       if (!translatedSubfieldFuncs_.contains(call)) {
         translateExpr(expr);
@@ -676,11 +676,11 @@ FunctionSet functionBits(Name name) {
 
 ExprCP ToGraph::translateExpr(const lp::ExprPtr& expr) {
   if (expr->isInputReference()) {
-    return translateColumn(expr->asUnchecked<lp::InputReferenceExpr>()->name());
+    return translateColumn(expr->as<lp::InputReferenceExpr>()->name());
   }
 
   if (expr->isConstant()) {
-    return makeConstant(*expr->asUnchecked<lp::ConstantExpr>());
+    return makeConstant(*expr->as<lp::ConstantExpr>());
   }
 
   if (auto path = translateSubfield(expr)) {
@@ -688,14 +688,18 @@ ExprCP ToGraph::translateExpr(const lp::ExprPtr& expr) {
   }
 
   if (expr->isLambda()) {
-    return translateLambda(expr->asUnchecked<lp::LambdaExpr>());
+    return translateLambda(expr->as<lp::LambdaExpr>());
+  }
+
+  auto it = subqueries_.find(expr);
+  if (it != subqueries_.end()) {
+    return it->second;
   }
 
   ToGraphContext ctx(expr.get());
   velox::ExceptionContextSetter exceptionContext(makeExceptionContext(&ctx));
 
-  const auto* call =
-      expr->isCall() ? expr->asUnchecked<lp::CallExpr>() : nullptr;
+  const auto* call = expr->isCall() ? expr->as<lp::CallExpr>() : nullptr;
   std::string callName;
   if (call) {
     callName = velox::exec::sanitizeName(call->name());
@@ -708,9 +712,8 @@ ExprCP ToGraph::translateExpr(const lp::ExprPtr& expr) {
     }
   }
 
-  const auto* specialForm = expr->isSpecialForm()
-      ? expr->asUnchecked<lp::SpecialFormExpr>()
-      : nullptr;
+  const auto* specialForm =
+      expr->isSpecialForm() ? expr->as<lp::SpecialFormExpr>() : nullptr;
 
   if (call || specialForm) {
     FunctionSet funcs;
@@ -768,15 +771,26 @@ ExprCP ToGraph::translateLambda(const lp::LambdaExpr* lambda) {
 }
 
 namespace {
+
+constexpr uint64_t kAllAllowedInDt = ~uint64_t{0};
+
 // Returns a mask that allows 'op' in the same derived table.
-uint64_t allow(PlanType op) {
-  return 1UL << static_cast<uint32_t>(op);
+uint64_t allow(lp::NodeKind op) {
+  return uint64_t{1} << static_cast<uint64_t>(op);
 }
 
 // True if 'op' is in 'mask.
-bool contains(uint64_t mask, PlanType op) {
-  return 0 != (mask & (1UL << static_cast<uint32_t>(op)));
+bool contains(uint64_t mask, lp::NodeKind op) {
+  return mask & allow(op);
 }
+
+// Removes 'op' from the set of operators allowed in the current derived
+// table. makeQueryGraph() starts a new derived table if it finds an operator
+// that does not belong to the mask.
+uint64_t makeDtIf(uint64_t mask, lp::NodeKind op) {
+  return mask & ~allow(op);
+}
+
 } // namespace
 
 std::optional<ExprCP> ToGraph::translateSubfieldFunction(
@@ -1086,8 +1100,7 @@ AggregationPlanCP ToGraph::translateAggregation(const lp::AggregateNode& agg) {
       newRenames[name] = it->second;
     } else {
       auto accumulatorType = toType(
-          velox::exec::resolveAggregateFunction(aggregate->name(), argTypes)
-              .second);
+          velox::exec::resolveIntermediateType(aggregate->name(), argTypes));
       Value finalValue(toType(aggregate->type()), 1);
 
       AggregateCP aggregateExpr = make<Aggregate>(
@@ -1126,14 +1139,12 @@ AggregationPlanCP ToGraph::translateAggregation(const lp::AggregateNode& agg) {
       std::move(intermediateColumns));
 }
 
-PlanObjectP ToGraph::addOrderBy(const lp::SortNode& order) {
+void ToGraph::addOrderBy(const lp::SortNode& order) {
   auto [deduppedOrderKeys, deduppedOrderTypes] =
       dedupOrdering(order.ordering());
 
   currentDt_->orderKeys = std::move(deduppedOrderKeys);
   currentDt_->orderTypes = std::move(deduppedOrderTypes);
-
-  return currentDt_;
 }
 
 namespace {
@@ -1194,8 +1205,12 @@ void ToGraph::translateJoin(const lp::JoinNode& join) {
 
   // TODO Allow mixing Unnest with Join in a single DT.
   // https://github.com/facebookexperimental/verax/issues/286
+<<<<<<< HEAD
   const auto kAllowScan = allow(PlanType::kTableNode) | allow(PlanType::kValuesTableNode);
   const auto allowedInDt = allow(PlanType::kJoinNode) | allow(PlanType::kFilterNode) | kAllowScan;
+=======
+  const auto allowedInDt = allow(lp::NodeKind::kJoin);
+>>>>>>> main
   makeQueryGraph(*joinLeft, allowedInDt);
 
   // For an inner join a join tree on the right can be flattened, for all other
@@ -1263,18 +1278,16 @@ DerivedTableP ToGraph::newDt() {
   return dt;
 }
 
-PlanObjectP ToGraph::wrapInDt(const lp::LogicalPlanNode& node) {
+DerivedTableP ToGraph::wrapInDt(const lp::LogicalPlanNode& node) {
   DerivedTableP previousDt = currentDt_;
 
   currentDt_ = newDt();
   makeQueryGraph(node, kAllAllowedInDt);
 
-  finalizeDt(node, previousDt);
-
-  return currentDt_;
+  return finalizeDt(node, previousDt);
 }
 
-void ToGraph::finalizeDt(
+DerivedTableP ToGraph::finalizeDt(
     const lp::LogicalPlanNode& node,
     DerivedTableP outerDt) {
   DerivedTableP dt = currentDt_;
@@ -1284,9 +1297,11 @@ void ToGraph::finalizeDt(
   currentDt_->addTable(dt);
 
   dt->makeInitialPlan();
+
+  return dt;
 }
 
-PlanObjectP ToGraph::makeBaseTable(const lp::TableScanNode& tableScan) {
+void ToGraph::makeBaseTable(const lp::TableScanNode& tableScan) {
   const auto* schemaTable =
       schema_.findTable(tableScan.connectorId(), tableScan.tableName());
   VELOX_CHECK_NOT_NULL(
@@ -1361,11 +1376,9 @@ PlanObjectP ToGraph::makeBaseTable(const lp::TableScanNode& tableScan) {
 
   optimization->setLeafSelectivity(*baseTable, scanType);
   currentDt_->addTable(baseTable);
-
-  return baseTable;
 }
 
-PlanObjectP ToGraph::makeValuesTable(const lp::ValuesNode& values) {
+void ToGraph::makeValuesTable(const lp::ValuesNode& values) {
   auto* valuesTable = make<ValuesTable>(values);
   valuesTable->cname = newCName("vt");
   planLeaves_[&values] = valuesTable;
@@ -1387,8 +1400,6 @@ PlanObjectP ToGraph::makeValuesTable(const lp::ValuesNode& values) {
   }
 
   currentDt_->addTable(valuesTable);
-
-  return valuesTable;
 }
 
 namespace {
@@ -1437,15 +1448,15 @@ void ToGraph::makeSubfieldColumns(
   allColumnSubfields_[column] = std::move(projections);
 }
 
-PlanObjectP ToGraph::addProjection(const lp::ProjectNode* project) {
-  exprSource_ = project->onlyInput().get();
-  const auto& names = project->names();
-  const auto& exprs = project->expressions();
-  auto channels = usedChannels(*project);
+void ToGraph::addProjection(const lp::ProjectNode& project) {
+  exprSource_ = project.onlyInput().get();
+  const auto& names = project.names();
+  const auto& exprs = project.expressions();
+  auto channels = usedChannels(project);
   trace(OptimizerOptions::kPreprocess, [&]() {
     for (auto i = 0; i < exprs.size(); ++i) {
       if (std::ranges::find(channels, i) == channels.end()) {
-        std::cout << "P=" << project->id()
+        std::cout << "P=" << project.id()
                   << " dropped projection name=" << names[i] << " = "
                   << lp::ExprPrinter::toText(*exprs[i]) << std::endl;
       }
@@ -1454,8 +1465,7 @@ PlanObjectP ToGraph::addProjection(const lp::ProjectNode* project) {
 
   for (auto i : channels) {
     if (exprs[i]->isInputReference()) {
-      const auto& name =
-          exprs[i]->asUnchecked<lp::InputReferenceExpr>()->name();
+      const auto& name = exprs[i]->as<lp::InputReferenceExpr>()->name();
       // A variable projected to itself adds no renames. Inputs contain this
       // all the time.
       if (name == names[i]) {
@@ -1466,15 +1476,81 @@ PlanObjectP ToGraph::addProjection(const lp::ProjectNode* project) {
     auto expr = translateExpr(exprs.at(i));
     renames_[names[i]] = expr;
   }
-
-  return currentDt_;
 }
 
-PlanObjectP ToGraph::addFilter(const lp::FilterNode* filter) {
-  exprSource_ = filter->onlyInput().get();
+namespace {
+void extractSubqueries(
+    const lp::ExprPtr& expr,
+    std::vector<lp::SubqueryExprPtr>& subqueries,
+    std::vector<lp::ExprPtr>& inPredicateSubqueries) {
+  if (expr->isSubquery()) {
+    subqueries.push_back(
+        std::static_pointer_cast<const lp::SubqueryExpr>(expr));
+    return;
+  }
+
+  if (expr->isSpecialForm()) {
+    const auto* specialForm = expr->as<lp::SpecialFormExpr>();
+    if (specialForm->form() == lp::SpecialForm::kIn &&
+        specialForm->inputAt(1)->isSubquery()) {
+      inPredicateSubqueries.push_back(expr);
+      return;
+    }
+  }
+
+  for (const auto& input : expr->inputs()) {
+    extractSubqueries(input, subqueries, inPredicateSubqueries);
+  }
+}
+} // namespace
+
+void ToGraph::processSubqueries(const logical_plan::FilterNode& filter) {
+  // Assuming subqueries are not correlated, extract each into its own DT.
+  std::vector<lp::SubqueryExprPtr> subqueries;
+  std::vector<lp::ExprPtr> inPredicateSubqueries;
+  extractSubqueries(filter.predicate(), subqueries, inPredicateSubqueries);
+
+  for (const auto& subquery : subqueries) {
+    auto subqueryDt = wrapInDt(*subquery->subquery());
+    VELOX_CHECK_EQ(1, subqueryDt->columns.size());
+    subqueries_.emplace(subquery, subqueryDt->columns.front());
+  }
+
+  for (const auto& expr : inPredicateSubqueries) {
+    auto subqueryDt =
+        wrapInDt(*expr->inputAt(1)->as<lp::SubqueryExpr>()->subquery());
+    VELOX_CHECK_EQ(1, subqueryDt->columns.size());
+
+    // Add a join edge and replace 'expr' with 'mark' column in the join output.
+    auto* mark = toName("mark");
+    auto* markColumn =
+        make<Column>(mark, currentDt_, Value{toType(velox::BOOLEAN()), 2});
+    renames_[mark] = markColumn;
+
+    auto leftKey = translateExpr(expr->inputAt(0));
+    auto leftTable = leftKey->singleTable();
+    VELOX_CHECK_NOT_NULL(
+        leftTable,
+        "<expr> IN <subquery> with multi-table <expr> is not supported yet");
+
+    auto* edge = make<JoinEdge>(
+        leftTable, subqueryDt, JoinEdge::Spec{.markColumn = markColumn});
+
+    currentDt_->joins.push_back(edge);
+    edge->addEquality(leftKey, subqueryDt->columns.front());
+
+    subqueries_.emplace(expr, markColumn);
+  }
+}
+
+void ToGraph::addFilter(const lp::FilterNode& filter) {
+  exprSource_ = filter.onlyInput().get();
+
+  // TODO Add support for correlated subqueries.
+  processSubqueries(filter);
 
   ExprVector flat;
-  translateConjuncts(filter->predicate(), flat);
+  translateConjuncts(filter.predicate(), flat);
 
   if (currentDt_->hasAggregation()) {
     currentDt_->having.insert(
@@ -1483,34 +1559,25 @@ PlanObjectP ToGraph::addFilter(const lp::FilterNode* filter) {
     currentDt_->conjuncts.insert(
         currentDt_->conjuncts.end(), flat.begin(), flat.end());
   }
-
-  return currentDt_;
 }
 
-PlanObjectP ToGraph::addAggregation(const lp::AggregateNode& aggNode) {
-  currentDt_->aggregation = translateAggregation(aggNode);
-  return currentDt_;
-}
-
-PlanObjectP ToGraph::addLimit(const lp::LimitNode& limitNode) {
+void ToGraph::addLimit(const lp::LimitNode& limit) {
   if (currentDt_->hasLimit()) {
-    currentDt_->offset += limitNode.offset();
+    currentDt_->offset += limit.offset();
 
-    if (currentDt_->limit <= limitNode.offset()) {
+    if (currentDt_->limit <= limit.offset()) {
       currentDt_->limit = 0;
     } else {
       currentDt_->limit =
-          std::min(limitNode.count(), currentDt_->limit - limitNode.offset());
+          std::min(limit.count(), currentDt_->limit - limit.offset());
     }
   } else {
-    currentDt_->limit = limitNode.count();
-    currentDt_->offset = limitNode.offset();
+    currentDt_->limit = limit.count();
+    currentDt_->offset = limit.offset();
   }
-
-  return currentDt_;
 }
 
-PlanObjectP ToGraph::addWrite(const lp::TableWriteNode& tableWrite) {
+void ToGraph::addWrite(const lp::TableWriteNode& tableWrite) {
   const auto writeKind =
       static_cast<connector::WriteKind>(tableWrite.writeKind());
   if (writeKind != connector::WriteKind::kInsert &&
@@ -1543,8 +1610,10 @@ PlanObjectP ToGraph::addWrite(const lp::TableWriteNode& tableWrite) {
     } else {
       const auto* tableColumn = connectorTable->findColumn(columnName);
       VELOX_DCHECK_NOT_NULL(tableColumn);
-      columnExprs.push_back(make<Literal>(
-          Value{toType(tableColumn->type()), 1}, &tableColumn->defaultValue()));
+      columnExprs.push_back(
+          make<Literal>(
+              Value{toType(tableColumn->type()), 1},
+              &tableColumn->defaultValue()));
     }
     VELOX_DCHECK(
         *tableSchema.childAt(i) == *columnExprs.back()->value().type,
@@ -1568,15 +1637,13 @@ PlanObjectP ToGraph::addWrite(const lp::TableWriteNode& tableWrite) {
 
   currentDt_->write =
       make<WritePlan>(*connectorTable, writeKind, std::move(columnExprs));
-
-  return currentDt_;
 }
 
 namespace {
 
 bool hasNondeterministic(const lp::ExprPtr& expr) {
   if (expr->isCall()) {
-    const auto* call = expr->asUnchecked<lp::CallExpr>();
+    const auto* call = expr->as<lp::CallExpr>();
     if (functionBits(toName(call->name()))
             .contains(FunctionSet::kNonDeterministic)) {
       return true;
@@ -1587,9 +1654,7 @@ bool hasNondeterministic(const lp::ExprPtr& expr) {
 
 } // namespace
 
-DerivedTableP ToGraph::translateSetJoin(
-    const lp::SetNode& set,
-    DerivedTableP setDt) {
+void ToGraph::translateSetJoin(const lp::SetNode& set, DerivedTableP setDt) {
   auto previousDt = currentDt_;
   currentDt_ = setDt;
   for (auto& input : set.inputs()) {
@@ -1634,7 +1699,6 @@ DerivedTableP ToGraph::translateSetJoin(
   setDt->columns = columns;
   setDt->makeInitialPlan();
   currentDt_ = previousDt;
-  return setDt;
 }
 
 void ToGraph::makeUnionDistributionAndStats(
@@ -1684,7 +1748,7 @@ DerivedTableP ToGraph::translateUnion(
     auto isUnionLike =
         [](const lp::LogicalPlanNode& node) -> const lp::SetNode* {
       if (node.kind() == lp::NodeKind::kSet) {
-        const auto* set = node.asUnchecked<lp::SetNode>();
+        const auto* set = node.as<lp::SetNode>();
         if (set->operation() == lp::SetOperation::kUnion ||
             set->operation() == lp::SetOperation::kUnionAll) {
           return set;
@@ -1760,34 +1824,26 @@ DerivedTableP ToGraph::makeQueryGraph(const lp::LogicalPlanNode& logicalPlan) {
   return currentDt_;
 }
 
-namespace {
-// Removes 'op' from the set of operators allowed in the current derived
-// table. makeQueryGraph() starts a new derived table if it finds an operator
-// that does not belong to the mask.
-uint64_t makeDtIf(uint64_t mask, PlanType op) {
-  return mask & ~(1UL << static_cast<uint32_t>(op));
-}
-} // namespace
-
-PlanObjectP ToGraph::makeQueryGraph(
+void ToGraph::makeQueryGraph(
     const lp::LogicalPlanNode& node,
     uint64_t allowedInDt) {
   ToGraphContext ctx{&node};
   velox::ExceptionContextSetter exceptionContext{makeExceptionContext(&ctx)};
   switch (node.kind()) {
-    case lp::NodeKind::kValues:
-      return makeValuesTable(*node.asUnchecked<lp::ValuesNode>());
-
-    case lp::NodeKind::kTableScan:
-      return makeBaseTable(*node.asUnchecked<lp::TableScanNode>());
-
+    case lp::NodeKind::kValues: {
+      makeValuesTable(*node.as<lp::ValuesNode>());
+      return;
+    }
+    case lp::NodeKind::kTableScan: {
+      makeBaseTable(*node.as<lp::TableScanNode>());
+      return;
+    }
     case lp::NodeKind::kFilter: {
       // Multiple filters are allowed before a limit. If DT has a groupBy, then
       // filter is added to 'having', otherwise, to 'conjuncts'.
-      const auto* filter = node.asUnchecked<lp::FilterNode>();
+      const auto& filter = *node.as<lp::FilterNode>();
 
-      if (!isNondeterministicWrap_ &&
-          hasNondeterministic(filter->predicate())) {
+      if (!isNondeterministicWrap_ && hasNondeterministic(filter.predicate())) {
         // Force wrap the filter and its input inside a dt so the filter
         // does not get mixed with parent nodes.
         makeQueryGraph(*node.onlyInput(), allowedInDt);
@@ -1800,7 +1856,7 @@ PlanObjectP ToGraph::makeQueryGraph(
         finalizeDt(node);
 
         isNondeterministicWrap_ = true;
-        return currentDt_;
+        return;
       }
 
       isNondeterministicWrap_ = false;
@@ -1815,17 +1871,19 @@ PlanObjectP ToGraph::makeQueryGraph(
       if (currentDt_->hasLimit()) {
         finalizeDt(*node.onlyInput());
       }
-      return addFilter(filter);
+      addFilter(filter);
+      return;
     }
-
-    case lp::NodeKind::kProject:
+    case lp::NodeKind::kProject: {
       // A project is always allowed in a DT. Multiple projects are combined.
       makeQueryGraph(*node.onlyInput(), allowedInDt);
-      return addProjection(node.asUnchecked<lp::ProjectNode>());
-
-    case lp::NodeKind::kAggregate:
-      if (!contains(allowedInDt, PlanType::kAggregationNode)) {
-        return wrapInDt(node);
+      addProjection(*node.as<lp::ProjectNode>());
+      return;
+    }
+    case lp::NodeKind::kAggregate: {
+      if (!contains(allowedInDt, lp::NodeKind::kAggregate)) {
+        wrapInDt(node);
+        return;
       }
 
       // A single groupBy is allowed before a limit. If arrives after orderBy,
@@ -1840,19 +1898,26 @@ PlanObjectP ToGraph::makeQueryGraph(
         currentDt_->orderTypes.clear();
       }
 
-      addAggregation(*node.asUnchecked<lp::AggregateNode>());
+      currentDt_->aggregation =
+          translateAggregation(*node.as<lp::AggregateNode>());
 
-      return currentDt_;
-
-    case lp::NodeKind::kJoin:
-      if (!contains(allowedInDt, PlanType::kJoinNode)) {
-        return wrapInDt(node);
+      return;
+    }
+    case lp::NodeKind::kJoin: {
+      if (!contains(allowedInDt, lp::NodeKind::kJoin)) {
+        wrapInDt(node);
+        return;
       }
 
-      translateJoin(*node.asUnchecked<lp::JoinNode>());
-      return currentDt_;
+      translateJoin(*node.as<lp::JoinNode>());
+      return;
+    }
+    case lp::NodeKind::kSort: {
+      if (!contains(allowedInDt, lp::NodeKind::kSort)) {
+        wrapInDt(node);
+        return;
+      }
 
-    case lp::NodeKind::kSort:
       // Multiple orderBys are allowed before a limit. Last one wins. Previous
       // are dropped. If arrives after limit, then starts a new DT.
 
@@ -1862,24 +1927,31 @@ PlanObjectP ToGraph::makeQueryGraph(
         finalizeDt(*node.onlyInput());
       }
 
-      return addOrderBy(*node.asUnchecked<lp::SortNode>());
-
+      addOrderBy(*node.as<lp::SortNode>());
+      return;
+    }
     case lp::NodeKind::kLimit: {
+<<<<<<< HEAD
 
       if (!contains(allowedInDt, PlanType::kLimitNode)) {
         return wrapInDt(node);
+=======
+      if (!contains(allowedInDt, lp::NodeKind::kLimit)) {
+        wrapInDt(node);
+        return;
+>>>>>>> main
       }
 
       // Multiple limits are allowed. If already present, then it is combined
       // with the new limit.
       makeQueryGraph(*node.onlyInput(), allowedInDt);
-      return addLimit(*node.asUnchecked<lp::LimitNode>());
+      addLimit(*node.as<lp::LimitNode>());
+      return;
     }
-
     case lp::NodeKind::kSet: {
       auto* setDt = newDt();
 
-      auto* set = node.asUnchecked<lp::SetNode>();
+      auto* set = node.as<lp::SetNode>();
       if (set->operation() == lp::SetOperation::kUnion ||
           set->operation() == lp::SetOperation::kUnionAll) {
         bool isLeftLeaf = true;
@@ -1888,12 +1960,12 @@ PlanObjectP ToGraph::makeQueryGraph(
         translateSetJoin(*set, setDt);
       }
       currentDt_->addTable(setDt);
-      return currentDt_;
+      return;
     }
-
     case lp::NodeKind::kUnnest: {
-      if (!contains(allowedInDt, PlanType::kUnnestTableNode)) {
-        return wrapInDt(node);
+      if (!contains(allowedInDt, lp::NodeKind::kUnnest)) {
+        wrapInDt(node);
+        return;
       }
 
       // Multiple unnest is allowed in a DT.
@@ -1906,14 +1978,14 @@ PlanObjectP ToGraph::makeQueryGraph(
       if (isNewDt) {
         finalizeDt(input);
       }
-      translateUnnest(*node.asUnchecked<lp::UnnestNode>(), isNewDt);
-      return currentDt_;
+      translateUnnest(*node.as<lp::UnnestNode>(), isNewDt);
+      return;
     }
-
-    case lp::NodeKind::kTableWrite:
+    case lp::NodeKind::kTableWrite: {
       wrapInDt(*node.onlyInput());
-      return addWrite(*node.asUnchecked<lp::TableWriteNode>());
-
+      addWrite(*node.as<lp::TableWriteNode>());
+      return;
+    }
     default:
       VELOX_NYI(
           "Unsupported PlanNode {}", lp::NodeKindName::toName(node.kind()));

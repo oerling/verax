@@ -209,9 +209,8 @@ struct DerivedTable : public PlanObject {
   
   void addJoinedBy(JoinEdgeP join);
 
-  /// Memoizes plans for 'this' and fills in 'distribution_'. Needed
-  /// before adding 'this' as a join side because join sides must have
-  /// a cardinality guess.
+  /// Memoizes plans for 'this' and fills in 'cardinality'. Needed before adding
+  /// 'this' as a join side because join sides must have a cardinality guess.
   void makeInitialPlan();
 
   PlanP bestInitialPlan() const;

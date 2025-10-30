@@ -552,6 +552,14 @@ class JoinEdge {
     return rightOptional_;
   }
 
+  bool rightExists() const {
+    return rightExists_;
+  }
+
+  bool rightNotExists() const {
+    return rightNotExists_;
+  }
+
   bool directed() const {
     return directed_;
   }
@@ -561,11 +569,11 @@ class JoinEdge {
   /// True if inner join.
   bool isInner() const {
     return !leftOptional_ && !rightOptional_ && !rightExists_ &&
-        !rightNotExists_;
+        !rightNotExists_ && !markColumn_;
   }
 
   bool isSemi() const {
-    return rightExists_;
+    return rightExists_ || (markColumn_ != nullptr);
   }
 
   bool isAnti() const {

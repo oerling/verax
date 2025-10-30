@@ -33,6 +33,9 @@
 namespace facebook::axiom::optimizer {
 namespace {
 
+#define AXIOM_ASSERT_PLAN(plan, matcher) \
+  ASSERT_TRUE(matcher->match(plan)) << plan->toString(true, true);
+
 using namespace facebook::velox;
 namespace lp = facebook::axiom::logical_plan;
 
@@ -205,7 +208,7 @@ TEST_F(PlanTest, agg) {
                        .singleAggregation()
                        .build();
 
-    ASSERT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
   {
     auto plan = toSingleNodePlan(logicalPlan, 2);
@@ -218,7 +221,7 @@ TEST_F(PlanTest, agg) {
                        .finalAggregation()
                        .build();
 
-    ASSERT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
 }
 
@@ -247,7 +250,7 @@ TEST_F(PlanTest, rejectedFilters) {
                        .project()
                        .build();
 
-    ASSERT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
 
   // SELECT a + 2 FROM t WHERE b > 10.
@@ -262,7 +265,7 @@ TEST_F(PlanTest, rejectedFilters) {
                        .project()
                        .build();
 
-    ASSERT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
 
   optimizerOptions_.pushdownSubfields = true;
@@ -286,7 +289,7 @@ TEST_F(PlanTest, rejectedFilters) {
                        .project() // project c.x + 1, c.y + 2, c.z + 3
                        .build();
 
-    ASSERT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
 
   // SELECT 1 FROM t WHERE c.x > 10.
@@ -308,7 +311,7 @@ TEST_F(PlanTest, rejectedFilters) {
                        .project({"1"})
                        .build();
 
-    ASSERT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
 
   // SELECT c.y + 1 FROM t WHERE c.x > 10.
@@ -331,7 +334,7 @@ TEST_F(PlanTest, rejectedFilters) {
                        .project() // project c.y + 1
                        .build();
 
-    ASSERT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
 }
 
@@ -383,7 +386,7 @@ TEST_F(PlanTest, specialFormConstantFold) {
         : core::PlanMatcherBuilder().tableScan().project().build();
 
     auto plan = toSingleNodePlan(logicalPlan);
-    ASSERT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
 
   std::vector<TestCase> projectTestCases = {
@@ -425,7 +428,7 @@ TEST_F(PlanTest, specialFormConstantFold) {
                        .build();
 
     auto plan = toSingleNodePlan(logicalPlan);
-    ASSERT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
 }
 
@@ -446,7 +449,7 @@ TEST_F(PlanTest, inList) {
     auto matcher = scanMatcher().project().build();
 
     auto plan = toSingleNodePlan(logicalPlan);
-    ASSERT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
   {
     auto logicalPlan = scan().filter("4 in (1, 2, 3)").map({"a + 2"}).build();
@@ -454,7 +457,7 @@ TEST_F(PlanTest, inList) {
     auto matcher = scanMatcher().filter("false").project().build();
 
     auto plan = toSingleNodePlan(logicalPlan);
-    ASSERT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
   {
     auto logicalPlan =
@@ -464,7 +467,7 @@ TEST_F(PlanTest, inList) {
         scanMatcher().filter("a in (1, 2, 3) and b > 1.2").project().build();
 
     auto plan = toSingleNodePlan(logicalPlan);
-    ASSERT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
 }
 
@@ -495,7 +498,7 @@ TEST_F(PlanTest, multipleConnectors) {
           .hashJoin(core::PlanMatcherBuilder().tableScan("table2").build())
           .build();
 
-  ASSERT_TRUE(matcher->match(plan));
+  AXIOM_ASSERT_PLAN(plan, matcher);
 }
 
 TEST_F(PlanTest, filterToJoinEdge) {
@@ -517,16 +520,16 @@ TEST_F(PlanTest, filterToJoinEdge) {
   {
     auto plan = toSingleNodePlan(logicalPlan);
     auto matcher = core::PlanMatcherBuilder()
-                       .tableScan("region")
+                       .tableScan("nation")
                        .project()
                        .hashJoin(
                            core::PlanMatcherBuilder()
-                               .tableScan("nation")
+                               .tableScan("region")
                                .project()
                                .build())
                        .build();
 
-    ASSERT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
 
   auto planNodeIdGenerator = std::make_shared<core::PlanNodeIdGenerator>();
@@ -573,7 +576,7 @@ TEST_F(PlanTest, filterToJoinEdge) {
                        .project()
                        .build();
 
-    ASSERT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
 
   checkSame(logicalPlan, referencePlan);
@@ -598,7 +601,7 @@ TEST_F(PlanTest, filterImport) {
                        .filter("a0 > 200.0")
                        .build();
 
-    ASSERT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
 
   auto referencePlan =
@@ -708,7 +711,7 @@ TEST_F(PlanTest, filterBreakup) {
             .singleAggregation()
             .build();
 
-    ASSERT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
 
   auto referenceBuilder = std::make_unique<exec::test::TpchQueryBuilder>(
@@ -760,7 +763,7 @@ TEST_F(PlanTest, unionAll) {
             .project()
             .build();
 
-    ASSERT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
 
   auto referencePlan = exec::test::PlanBuilder(pool_.get())
@@ -846,7 +849,7 @@ TEST_F(PlanTest, unionJoin) {
             .singleAggregation({}, {"sum(1)"})
             .build();
 
-    ASSERT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
 
   auto idGenerator = std::make_shared<core::PlanNodeIdGenerator>();
@@ -908,28 +911,27 @@ TEST_F(PlanTest, intersect) {
 
   {
     auto plan = toSingleNodePlan(logicalPlan);
-    auto matcher = core::PlanMatcherBuilder()
-                       // TODO Fix this plan to push down (n_regionkey + 1) % 3
-                       // = 1 to all branches of 'intersect'.
-                       .hiveScan("nation", gte("n_nationkey", 13))
-                       .hashJoin(
-                           core::PlanMatcherBuilder()
-                               .hiveScan("nation", gte("n_nationkey", 12))
-                               .hashJoin(
-                                   core::PlanMatcherBuilder()
-                                       .hiveScan(
-                                           "nation",
-                                           lte("n_nationkey", 20),
-                                           "(n_regionkey + 1) % 3 = 1")
-                                       .build(),
-                                   core::JoinType::kRightSemiFilter)
-                               .build(),
-                           core::JoinType::kRightSemiFilter)
-                       .singleAggregation()
-                       .project()
-                       .build();
+    auto matcher =
+        core::PlanMatcherBuilder()
+            // TODO Fix this plan to push down (n_regionkey + 1) % 3
+            // = 1 to all branches of 'intersect'.
+            .hiveScan(
+                "nation", lte("n_nationkey", 20), "(n_regionkey + 1) % 3 = 1")
+            .hashJoin(
+                core::PlanMatcherBuilder()
+                    .hiveScan("nation", gte("n_nationkey", 12))
+                    .build(),
+                core::JoinType::kLeftSemiFilter)
+            .hashJoin(
+                core::PlanMatcherBuilder()
+                    .hiveScan("nation", gte("n_nationkey", 13))
+                    .build(),
+                core::JoinType::kLeftSemiFilter)
+            .singleAggregation()
+            .project()
+            .build();
 
-    ASSERT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
 
   auto referencePlan = exec::test::PlanBuilder(pool_.get())
@@ -994,7 +996,7 @@ TEST_F(PlanTest, except) {
             .project()
             .build();
 
-    ASSERT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
 
   auto referencePlan = exec::test::PlanBuilder(pool_.get())
@@ -1032,7 +1034,7 @@ TEST_F(PlanTest, valuesComplex) {
   });
 
   auto matcher = core::PlanMatcherBuilder().values(expectedType).build();
-  ASSERT_TRUE(matcher->match(plan));
+  AXIOM_ASSERT_PLAN(plan, matcher);
 }
 
 TEST_F(PlanTest, values) {
@@ -1282,7 +1284,7 @@ TEST_F(PlanTest, limitBeforeProject) {
     auto matcher =
         core::PlanMatcherBuilder{}.tableScan().limit().project().build();
 
-    EXPECT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
   {
     auto logicalPlan = lp::PlanBuilder{}
@@ -1296,7 +1298,7 @@ TEST_F(PlanTest, limitBeforeProject) {
     auto matcher =
         core::PlanMatcherBuilder{}.tableScan().project().limit().build();
 
-    EXPECT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
 }
 
@@ -1320,52 +1322,56 @@ TEST_F(PlanTest, limitAfterOrderBy) {
                        .project({"c"})
                        .build();
 
-    EXPECT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
   }
 }
 
 TEST_F(PlanTest, parallelCse) {
   testConnector_->addTable("t", ROW({"a", "b", "c"}, INTEGER()));
 
-  auto logicalPlan =
-      lp::PlanBuilder(/* allowCoersions */ true)
-          .tableScan(kTestConnectorId, "t", {"a", "b", "c"})
-          .map({"a + b + c as x"})
-          .map({
-              "contains(array[1], cast(if(cast(x as real) < 0, ceil(cast(x as real)), floor(cast(x as real))) as int)) as a",
-          })
-          .build();
+  {
+    auto logicalPlan =
+        lp::PlanBuilder(/* allowCoersions */ true)
+            .tableScan(kTestConnectorId, "t", {"a", "b", "c"})
+            .map({"a + b + c as x"})
+            .map({
+                "contains(array[1], cast(if(cast(x as real) < 0, ceil(cast(x as real)), floor(cast(x as real))) as int)) as a",
+            })
+            .build();
 
-  optimizerOptions_.parallelProjectWidth = 2;
-  auto plan = toSingleNodePlan(logicalPlan);
+    optimizerOptions_.parallelProjectWidth = 2;
+    auto plan = toSingleNodePlan(logicalPlan);
 
-  auto matcher = core::PlanMatcherBuilder()
-                     .tableScan()
-                     .parallelProject()
-                     .project()
-                     .build();
+    auto matcher = core::PlanMatcherBuilder()
+                       .tableScan()
+                       .parallelProject()
+                       .project()
+                       .build();
 
-  EXPECT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
+  }
 
-  logicalPlan =
-      lp::PlanBuilder(/* allowCoersions */ true)
-          .tableScan(kTestConnectorId, "t", {"a", "b", "c"})
-          .with({"a + b as ab"})
-          .with({"ab + c as x"})
-          .map(
-              {"contains(array[1], cast(if(cast(x as real) < 0, ceil(cast(x as real)), floor(cast(x as real))) as int)) as a",
-               "ab"})
-          .build();
-  plan = toSingleNodePlan(logicalPlan);
+  {
+    auto logicalPlan =
+        lp::PlanBuilder(/* allowCoersions */ true)
+            .tableScan(kTestConnectorId, "t", {"a", "b", "c"})
+            .with({"a + b as ab"})
+            .with({"ab + c as x"})
+            .map(
+                {"contains(array[1], cast(if(cast(x as real) < 0, ceil(cast(x as real)), floor(cast(x as real))) as int)) as a",
+                 "ab"})
+            .build();
+    auto plan = toSingleNodePlan(logicalPlan);
 
-  matcher = core::PlanMatcherBuilder()
-                .tableScan()
-                .parallelProject({"a + b", "c"})
-                .parallelProject()
-                .project()
-                .build();
+    auto matcher = core::PlanMatcherBuilder()
+                       .tableScan()
+                       .parallelProject({"a + b", "c"})
+                       .parallelProject()
+                       .project()
+                       .build();
 
-  EXPECT_TRUE(matcher->match(plan));
+    AXIOM_ASSERT_PLAN(plan, matcher);
+  }
 }
 
 TEST_F(PlanTest, lastProjection) {
@@ -1386,7 +1392,7 @@ TEST_F(PlanTest, lastProjection) {
                      .project({"a"})
                      .build();
 
-  ASSERT_TRUE(matcher->match(plan));
+  AXIOM_ASSERT_PLAN(plan, matcher);
 }
 
 TEST_F(PlanTest, orderByDuplicateKeys) {
@@ -1406,7 +1412,7 @@ TEST_F(PlanTest, orderByDuplicateKeys) {
                      .project({"x", "x"})
                      .build();
 
-  ASSERT_TRUE(matcher->match(plan));
+  AXIOM_ASSERT_PLAN(plan, matcher);
 }
 
 TEST_F(PlanTest, lambdaArgs) {
@@ -1422,7 +1428,7 @@ TEST_F(PlanTest, lambdaArgs) {
   auto plan = toSingleNodePlan(logicalPlan);
 
   auto matcher = core::PlanMatcherBuilder{}.tableScan("t").project().build();
-  ASSERT_TRUE(matcher->match(plan));
+  AXIOM_ASSERT_PLAN(plan, matcher);
 }
 
 TEST_F(PlanTest, joinWithFilterOverLimit) {
@@ -1532,6 +1538,8 @@ TEST_F(PlanTest, outerJoinWithInnerJoin) {
     AXIOM_ASSERT_PLAN(plan, matcher);
   }
 }
+
+#undef AXIOM_ASSERT_PLAN
 
 } // namespace
 } // namespace facebook::axiom::optimizer

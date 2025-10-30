@@ -16,6 +16,7 @@
 
 #include "axiom/logical_plan/LogicalPlanNode.h"
 #include "axiom/logical_plan/PlanNodeVisitor.h"
+#include "axiom/logical_plan/PlanPrinter.h"
 
 namespace facebook::axiom::logical_plan {
 
@@ -39,6 +40,10 @@ const auto& nodeKindNames() {
 } // namespace
 
 AXIOM_DEFINE_ENUM_NAME(NodeKind, nodeKindNames)
+
+std::string LogicalPlanNode::toString() const {
+  return PlanPrinter::toText(*this);
+}
 
 namespace {
 

@@ -60,7 +60,7 @@ class TpchPlanTest : public virtual test::HiveQueriesTestBase {
 
   void checkTpch(int32_t query, const lp::LogicalPlanNodePtr& logicalPlan) {
     auto referencePlan = referenceBuilder_->getQueryPlan(query).plan;
-    checkResults(logicalPlan, referencePlan);
+    checkSame(logicalPlan, referencePlan);
   }
 
   static std::string readSqlFromFile(const std::string& filePath) {
@@ -109,9 +109,9 @@ class TpchPlanTest : public virtual test::HiveQueriesTestBase {
   }
 
   void checkTpchSql(int32_t query) {
-    auto logicalPlan = parseTpchSql(query);
+    auto sql = readTpchSql(query);
     auto referencePlan = referenceBuilder_->getQueryPlan(query).plan;
-    checkResults(logicalPlan, referencePlan);
+    checkResults(sql, referencePlan);
   }
 
   std::unique_ptr<exec::test::TpchQueryBuilder> referenceBuilder_;
@@ -193,9 +193,12 @@ TEST_F(TpchPlanTest, q03) {
   checkTpchSql(3);
 }
 
-TEST_F(TpchPlanTest, DISABLED_q04) {
+TEST_F(TpchPlanTest, q04) {
   // Incorrect with distributed plan at larger scales.
   // TODO Implement.
+
+  // TODO Add support for subqueries.
+  parseTpchSql(4);
 }
 
 TEST_F(TpchPlanTest, q05) {
@@ -517,12 +520,12 @@ TEST_F(TpchPlanTest, q14) {
   checkTpchSql(14);
 }
 
-TEST_F(TpchPlanTest, DISABLED_q15) {
-  // TODO Implement.
+TEST_F(TpchPlanTest, q15) {
+  checkTpchSql(15);
 }
 
-TEST_F(TpchPlanTest, DISABLED_q16) {
-  // TODO Implement.
+TEST_F(TpchPlanTest, q16) {
+  checkTpchSql(16);
 }
 
 TEST_F(TpchPlanTest, q17) {
@@ -530,8 +533,8 @@ TEST_F(TpchPlanTest, q17) {
   parseTpchSql(17);
 }
 
-TEST_F(TpchPlanTest, DISABLED_q18) {
-  // TODO Implement.
+TEST_F(TpchPlanTest, q18) {
+  checkTpchSql(18);
 }
 
 TEST_F(TpchPlanTest, q19) {
@@ -570,16 +573,19 @@ TEST_F(TpchPlanTest, q19) {
   checkTpchSql(19);
 }
 
-TEST_F(TpchPlanTest, DISABLED_q20) {
-  // TODO Implement.
+TEST_F(TpchPlanTest, q20) {
+  // TODO Add support for subqueries.
+  parseTpchSql(20);
 }
 
-TEST_F(TpchPlanTest, DISABLED_q21) {
-  // TODO Implement.
+TEST_F(TpchPlanTest, q21) {
+  // TODO Add support for subqueries.
+  parseTpchSql(21);
 }
 
-TEST_F(TpchPlanTest, DISABLED_q22) {
-  // TODO Implement.
+TEST_F(TpchPlanTest, q22) {
+  // TODO Add support for subqueries.
+  parseTpchSql(22);
 }
 
 } // namespace

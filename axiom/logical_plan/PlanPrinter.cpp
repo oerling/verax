@@ -811,8 +811,7 @@ class SummarizeToTextVisitor : public PlanNodeVisitor {
       }
 
       if (expr->isSpecialForm() &&
-          expr->asUnchecked<SpecialFormExpr>()->form() ==
-              SpecialForm::kDereference) {
+          expr->as<SpecialFormExpr>()->form() == SpecialForm::kDereference) {
         dereferences.push_back(i);
       } else {
         projections.push_back(i);

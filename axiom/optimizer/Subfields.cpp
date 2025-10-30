@@ -168,13 +168,13 @@ void ToGraph::markFieldAccessed(
 
   const auto kind = source.planNode->kind();
   if (kind == lp::NodeKind::kProject) {
-    const auto* project = source.planNode->asUnchecked<lp::ProjectNode>();
+    const auto* project = source.planNode->as<lp::ProjectNode>();
     markFieldAccessed(*project, ordinal, steps, isControl);
     return;
   }
 
   if (kind == lp::NodeKind::kUnnest) {
-    const auto* unnest = source.planNode->asUnchecked<lp::UnnestNode>();
+    const auto* unnest = source.planNode->as<lp::UnnestNode>();
     markFieldAccessed(*unnest, ordinal, steps, isControl);
     return;
   }
@@ -185,13 +185,13 @@ void ToGraph::markFieldAccessed(
   }
 
   if (kind == lp::NodeKind::kAggregate) {
-    const auto* agg = source.planNode->asUnchecked<lp::AggregateNode>();
+    const auto* agg = source.planNode->as<lp::AggregateNode>();
     markFieldAccessed(*agg, ordinal, steps, isControl);
     return;
   }
 
   if (kind == lp::NodeKind::kSet) {
-    const auto* set = source.planNode->asUnchecked<lp::SetNode>();
+    const auto* set = source.planNode->as<lp::SetNode>();
     markFieldAccessed(*set, ordinal, steps, isControl);
     return;
   }
@@ -266,7 +266,7 @@ void ToGraph::markSubfields(
     bool isControl,
     const MarkFieldsAccessedContext& context) {
   if (expr->isInputReference()) {
-    const auto& name = expr->asUnchecked<lp::InputReferenceExpr>()->name();
+    const auto& name = expr->as<lp::InputReferenceExpr>()->name();
     for (auto i = 0; i < context.sources.size(); ++i) {
       if (auto maybeIdx = context.rowTypes[i]->getChildIdxIfExists(name)) {
         markFieldAccessed(
@@ -283,7 +283,7 @@ void ToGraph::markSubfields(
 
   if (isSpecialForm(expr, lp::SpecialForm::kDereference)) {
     VELOX_CHECK(expr->inputAt(1)->isConstant());
-    const auto* field = expr->inputAt(1)->asUnchecked<lp::ConstantExpr>();
+    const auto* field = expr->inputAt(1)->as<lp::ConstantExpr>();
     const auto& input = expr->inputAt(0);
 
     // Always fill both index and name for a struct getter.
@@ -305,7 +305,7 @@ void ToGraph::markSubfields(
   }
 
   if (expr->isCall()) {
-    auto name = toName(expr->asUnchecked<lp::CallExpr>()->name());
+    auto name = toName(expr->as<lp::CallExpr>()->name());
     if (name == cardinality_) {
       steps.push_back({.kind = StepKind::kCardinality});
       markSubfields(expr->inputAt(0), steps, isControl, context);
@@ -350,7 +350,7 @@ void ToGraph::markSubfields(
     }
 
     // The function has non-default metadata. Record subfields.
-    const auto* call = expr->asUnchecked<lp::CallExpr>();
+    const auto* call = expr->as<lp::CallExpr>();
     const auto* path = stepsToPath(steps);
     auto* fields = isControl ? &controlSubfields_ : &payloadSubfields_;
     auto& paths = fields->argFields[call].resultPaths[ResultAccess::kSelf];
@@ -401,7 +401,7 @@ void ToGraph::markSubfields(
       }
 
       if (metadata->lambdaInfo(i)) {
-        const auto* lambda = expr->inputAt(i)->asUnchecked<lp::LambdaExpr>();
+        const auto* lambda = expr->inputAt(i)->as<lp::LambdaExpr>();
         const auto& argType = lambda->signature();
 
         std::vector<const velox::RowType*> newRowTypes;
@@ -445,6 +445,12 @@ void ToGraph::markSubfields(
     return;
   }
 
+  if (expr->isSubquery()) {
+    // TODO We may not necessarily need all outputs of the subquery.
+    markAllSubfields(*expr->as<lp::SubqueryExpr>()->subquery());
+    return;
+  }
+
   VELOX_UNREACHABLE("Unhandled expr: {}", lp::ExprPrinter::toText(*expr));
 }
 
@@ -463,31 +469,31 @@ void ToGraph::markColumnSubfields(
 void ToGraph::markControl(const lp::LogicalPlanNode& node) {
   const auto kind = node.kind();
   if (kind == lp::NodeKind::kJoin) {
-    const auto* join = node.asUnchecked<lp::JoinNode>();
+    const auto* join = node.as<lp::JoinNode>();
     if (const auto& condition = join->condition()) {
       std::vector<Step> steps;
       markSubfields(condition, steps, true, fromNodes(join->inputs()).toCtx());
     }
 
   } else if (kind == lp::NodeKind::kUnnest) {
-    const auto& unnest = node.asUnchecked<lp::UnnestNode>();
+    const auto& unnest = node.as<lp::UnnestNode>();
     markColumnSubfields(node.onlyInput(), unnest->unnestExpressions());
 
   } else if (kind == lp::NodeKind::kFilter) {
-    const auto& filter = node.asUnchecked<lp::FilterNode>();
+    const auto& filter = node.as<lp::FilterNode>();
     markColumnSubfields(node.onlyInput(), std::array{filter->predicate()});
 
   } else if (kind == lp::NodeKind::kTableWrite) {
-    const auto& write = *node.asUnchecked<lp::TableWriteNode>();
+    const auto& write = *node.as<lp::TableWriteNode>();
     // All columns are needed for write, but they are all not control columns.
     markColumnSubfields(node.onlyInput(), write.columnExpressions(), false);
 
   } else if (kind == lp::NodeKind::kAggregate) {
-    const auto& agg = *node.asUnchecked<lp::AggregateNode>();
+    const auto& agg = *node.as<lp::AggregateNode>();
     markColumnSubfields(node.onlyInput(), agg.groupingKeys());
 
   } else if (kind == lp::NodeKind::kSort) {
-    const auto& order = *node.asUnchecked<lp::SortNode>();
+    const auto& order = *node.as<lp::SortNode>();
     const auto ctx = fromNode(node.onlyInput());
     std::vector<Step> steps;
     for (const auto& key : order.ordering()) {
@@ -496,7 +502,7 @@ void ToGraph::markControl(const lp::LogicalPlanNode& node) {
     }
 
   } else if (kind == lp::NodeKind::kSet) {
-    const auto& set = *node.asUnchecked<lp::SetNode>();
+    const auto& set = *node.as<lp::SetNode>();
     // If this is with a distinct every column is a control column.
     if (set.operation() != lp::SetOperation::kUnionAll) {
       std::vector<Step> steps;

@@ -682,7 +682,7 @@ TEST_P(SubfieldTest, blackbox) {
     if (name == "map_row_from_map") {
       VELOX_CHECK(args.at(2)->isConstant());
       auto names = args.at(2)
-                       ->template asUnchecked<lp::ConstantExpr>()
+                       ->template as<lp::ConstantExpr>()
                        ->value()
                        ->template array<std::string>();
 
@@ -695,7 +695,7 @@ TEST_P(SubfieldTest, blackbox) {
       for (auto i = 0; i < args.size(); i += 2) {
         VELOX_CHECK(args.at(i)->isConstant());
         names.push_back(args.at(i)
-                            ->template asUnchecked<lp::ConstantExpr>()
+                            ->template as<lp::ConstantExpr>()
                             ->value()
                             ->template value<std::string>());
       }

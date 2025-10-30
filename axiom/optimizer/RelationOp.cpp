@@ -20,6 +20,7 @@
 #include "axiom/optimizer/Plan.h"
 #include "axiom/optimizer/PlanUtils.h"
 #include "axiom/optimizer/QueryGraph.h"
+#include "axiom/optimizer/RelationOpPrinter.h"
 #include "axiom/optimizer/RelationOpVisitor.h"
 #include "velox/common/base/SuccinctPrinter.h"
 #include "velox/expression/ScopedVarSetter.h"
@@ -202,9 +203,7 @@ std::string Cost::toString(bool /*detail*/, bool isUnit) const {
   float multiplier = isUnit ? 1 : inputCardinality;
   out << succinctNumber(fanout * multiplier) << " rows "
       << succinctNumber(unitCost * multiplier) << "CU";
-  if (setupCost > 0) {
-    out << ", setup " << succinctNumber(setupCost) << "CU";
-  }
+
   if (totalBytes > 0) {
     out << " build= "
         << velox::succinctBytes(static_cast<uint64_t>(totalBytes));
@@ -216,12 +215,19 @@ std::string Cost::toString(bool /*detail*/, bool isUnit) const {
   return out.str();
 }
 
+std::string RelationOp::toString() const {
+  return RelationOpPrinter::toText(*this);
+}
+
+std::string RelationOp::toOneline() const {
+  return RelationOpPrinter::toOneline(*this);
+}
+
 void RelationOp::printCost(bool detail, std::stringstream& out) const {
   auto ctx = queryCtx();
   if (ctx && ctx->contextPlan()) {
-    auto plan = ctx->contextPlan();
-    auto totalCost = plan->cost.unitCost + plan->cost.setupCost;
-    auto pct = 100 * cost_.inputCardinality * cost_.unitCost / totalCost;
+    auto planCost = ctx->contextPlan()->cost.cost;
+    auto pct = 100 * cost_.totalCost() / planCost;
     out << " " << std::fixed << std::setprecision(2) << pct << "% ";
   }
   if (detail) {
@@ -466,9 +472,6 @@ std::string Join::toString(bool recursive, bool detail) const {
   if (detail) {
     out << "columns: " << itemsToString(columns().data(), columns().size())
         << std::endl;
-  }
-  if (detail && buildCost.unitCost > 0) {
-    out << "{ build=" << buildCost.toString(detail, true) << "}";
   }
   if (recursive) {
     out << " (" << right->toString(true, detail) << ")";

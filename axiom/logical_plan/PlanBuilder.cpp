@@ -249,7 +249,7 @@ void PlanBuilder::resolveProjections(
 
     if (expr->isInputReference()) {
       // Identity projection
-      const auto& id = expr->asUnchecked<InputReferenceExpr>()->name();
+      const auto& id = expr->as<InputReferenceExpr>()->name();
       if (!alias.has_value() || id == alias.value()) {
         outputNames.push_back(id);
 
@@ -649,8 +649,7 @@ ExprPtr tryResolveSpecialForm(
     VELOX_USER_CHECK(fieldExpr->isConstant());
     VELOX_USER_CHECK_EQ(velox::TypeKind::BIGINT, fieldExpr->type()->kind());
 
-    const auto index =
-        fieldExpr->asUnchecked<ConstantExpr>()->value()->value<int64_t>();
+    const auto index = fieldExpr->as<ConstantExpr>()->value()->value<int64_t>();
 
     VELOX_USER_CHECK_GE(index, 1);
     VELOX_USER_CHECK_LE(index, rowType.size());
@@ -875,7 +874,7 @@ ExprPtr ExprResolver::tryResolveCallWithLambdas(
 velox::core::TypedExprPtr ExprResolver::makeConstantTypedExpr(
     const ExprPtr& expr) const {
   auto vector = variantToVector(
-      expr->type(), *expr->asUnchecked<ConstantExpr>()->value(), pool_.get());
+      expr->type(), *expr->as<ConstantExpr>()->value(), pool_.get());
   return std::make_shared<velox::core::ConstantTypedExpr>(vector);
 }
 
@@ -926,8 +925,7 @@ ExprPtr ExprResolver::tryFoldSpecialForm(
     arrayElements.reserve(inputs.size() - 1);
     for (size_t i = 1; i < inputs.size(); i++) {
       VELOX_USER_CHECK(inputs.at(i)->isConstant());
-      arrayElements.push_back(
-          *inputs.at(i)->asUnchecked<ConstantExpr>()->value());
+      arrayElements.push_back(*inputs.at(i)->as<ConstantExpr>()->value());
     }
 
     auto arrayConstant = std::make_shared<ConstantExpr>(
@@ -1092,8 +1090,7 @@ AggregateExprPtr ExprResolver::resolveAggregateTypes(
     inputTypes.push_back(input->type());
   }
 
-  if (auto type =
-          velox::exec::resolveAggregateFunction(name, inputTypes).first) {
+  if (auto type = velox::exec::resolveResultType(name, inputTypes)) {
     return std::make_shared<AggregateExpr>(
         type, name, inputs, filter, ordering, distinct);
   }
@@ -1458,7 +1455,7 @@ std::string PlanBuilder::findOrAssignOutputNameAt(size_t index) const {
   return id;
 }
 
-LogicalPlanNodePtr PlanBuilder::build() {
+LogicalPlanNodePtr PlanBuilder::build(bool useIds) {
   VELOX_USER_CHECK_NOT_NULL(node_);
   VELOX_USER_CHECK_NOT_NULL(outputMapping_);
 
@@ -1478,20 +1475,24 @@ LogicalPlanNodePtr PlanBuilder::build() {
 
   for (auto i = 0; i < rowType->size(); i++) {
     const auto& id = rowType->nameOf(i);
+    const auto& type = rowType->childAt(i);
 
-    auto it = names.find(id);
-    if (it != names.end()) {
-      outputNames.push_back(it->second);
+    if (useIds) {
+      exprs.push_back(std::make_shared<InputReferenceExpr>(type, id));
     } else {
-      outputNames.push_back(id);
-    }
+      auto it = names.find(id);
+      if (it != names.end()) {
+        outputNames.push_back(it->second);
+      } else {
+        outputNames.push_back(id);
+      }
 
-    if (id != outputNames.back()) {
-      needRename = true;
-    }
+      if (id != outputNames.back()) {
+        needRename = true;
+      }
 
-    exprs.push_back(
-        std::make_shared<InputReferenceExpr>(rowType->childAt(i), id));
+      exprs.push_back(std::make_shared<InputReferenceExpr>(type, id));
+    }
   }
 
   if (needRename) {

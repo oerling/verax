@@ -27,17 +27,30 @@ namespace facebook::axiom::optimizer {
 class RelationOpVisitorContext;
 class RelationOpVisitor;
 
-/// Represents the cost and cardinality of a RelationOp or Plan. A Cost has a
-/// per-row cost, a per-row fanout and a one-time setup cost. For example, a
-/// hash join probe has a fanout of 0.3 if 3 of 10 input rows are expected to
-/// hit, a constant small per-row cost that is fixed and a setup cost that is
-/// the one time cost of the build side subplan. The inputCardinality is a
-/// precalculated product of the left deep inputs for the hash probe. For a leaf
-/// table scan, input cardinality is 1 and the fanout is the estimated
-/// cardinality after filters, the unitCost is the cost of the scan and all
-/// filters. For an index lookup, the unit cost is a function of the index size
-/// and the input spacing and input cardinality. A lookup that hits densely is
-/// cheaper than one that hits sparsely. An index lookup has no setup cost.
+/// Represents the cost of a plan.
+struct PlanCost {
+  /// Total cost of the plan.
+  float cost{0};
+
+  /// Number of output rows.
+  float cardinality{1};
+
+  std::string toString() const {
+    return fmt::format("cost: {}, cardinality: {}", cost, cardinality);
+  }
+};
+
+/// Represents the cost of a RelationOp. A Cost has a per-row cost and fanout.
+/// For example, a hash join probe has a fanout of 0.3 if 3 of 10 input rows are
+/// expected to hit and a constant small per-row cost that is fixed. (The one
+/// time cost of the build side subplan (a.k.a setup cost) is being accounted
+/// for separately in the PlanCost.) The inputCardinality is a precalculated
+/// product of the left deep inputs for the hash probe. For a leaf table scan,
+/// input cardinality is 1 and the fanout is the estimated cardinality after
+/// filters, the unitCost is the cost of the scan and all filters. For an index
+/// lookup, the unit cost is a function of the index size and the input spacing
+/// and input cardinality. A lookup that hits densely is cheaper than one that
+/// hits sparsely. An index lookup has no setup cost.
 struct Cost {
   /// Cardinality of the output of the left deep input tree. 1 for a leaf
   /// scan.
@@ -51,22 +64,21 @@ struct Cost {
   /// this is the number of rows.
   float fanout{1};
 
-  /// One time setup cost. Cost of build subplan for the first use of a hash
-  /// build side. 0 for the second use of a hash build side. 0 for table scan
-  /// or index access.
-  float setupCost{0};
-
-  /// Estimate of total data volume  for a hash join build or group / order
+  /// Estimate of total data volume for a hash join build or group / order
   /// by / distinct / repartition. The memory footprint may not be this if the
   /// operation is streaming or spills.
   float totalBytes{0};
 
-  /// Shuffle data volume
+  /// Shuffle data volume.
   float transferBytes{0};
 
-  /// Maximum memory occupancy. If the operation is blocking, e.g. group by, the
-  /// amount of spill is 'totalBytes' - 'peakResidentBytes'.
-  float peakResidentBytes{0};
+  float totalCost() const {
+    return unitCost * inputCardinality;
+  }
+
+  float resultCardinality() const {
+    return fanout * inputCardinality;
+  }
 
   /// If 'isUnit' shows the cost/cardinality for one row, else for
   /// 'inputCardinality' rows.
@@ -179,14 +191,18 @@ class RelationOp {
     return relType_ == relType;
   }
 
+  /// Caller must ensure this relType is correct.
   template <typename T>
   const T* as() const {
+    static_assert(std::is_base_of_v<RelationOp, T>);
     VELOX_DCHECK_NOT_NULL(dynamic_cast<const T*>(this));
     return static_cast<const T*>(this);
   }
 
+  /// Caller must ensure this relType is correct.
   template <typename T>
   T* as() {
+    static_assert(std::is_base_of_v<RelationOp, T>);
     VELOX_DCHECK_NOT_NULL(dynamic_cast<T*>(this));
     return static_cast<T*>(this);
   }
@@ -201,7 +217,7 @@ class RelationOp {
 
   /// Returns the number of output rows.
   float resultCardinality() const {
-    return cost_.inputCardinality * cost_.fanout;
+    return cost_.resultCardinality();
   }
 
   /// @return 1 for a leaf node, otherwise returns 'resultCardinality()' of the
@@ -237,6 +253,10 @@ class RelationOp {
   ///       - Scan(region as t3)
   ///       - Scan(nation as t2)
   virtual std::string toString(bool recursive, bool detail) const = 0;
+
+  std::string toString() const;
+
+  std::string toOneline() const;
 
  protected:
   // adds a line of cost information to 'out'
@@ -447,9 +467,6 @@ struct Join : public RelationOp {
   const ExprVector leftKeys;
   const ExprVector rightKeys;
   const ExprVector filter;
-
-  /// Total cost of build side plan. For documentation.
-  Cost buildCost;
 
   const QGString& historyKey() const override;
 

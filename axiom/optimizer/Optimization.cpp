@@ -107,12 +107,12 @@ std::string Optimization::memoString() const {
 void Optimization::trace(
     uint32_t event,
     int32_t id,
-    const Cost& cost,
+    const PlanCost& cost,
     RelationOp& plan) const {
   if (event & options_.traceFlags) {
     std::cout << (event == OptimizerOptions::kRetained ? "Retained: "
                                                        : "Abandoned: ")
-              << id << ": " << cost.toString(true, true) << ": " << " "
+              << id << ": " << cost.toString() << ": " << " "
               << plan.toString(true, false) << std::endl;
   }
 }
@@ -207,7 +207,8 @@ void reducingJoinsRecursive(
 // For an inner join, see if can bundle reducing joins on the build.
 std::optional<JoinCandidate> reducingJoins(
     const PlanState& state,
-    const JoinCandidate& candidate) {
+    const JoinCandidate& candidate,
+    bool enableReducingExistences) {
   std::vector<PlanObjectCP> tables;
   std::vector<PlanObjectSet> existences;
   float fanout = candidate.fanout;
@@ -241,7 +242,7 @@ std::optional<JoinCandidate> reducingJoins(
     }
   }
 
-  if (!state.dt->noImportOfExists) {
+  if (enableReducingExistences && !state.dt->noImportOfExists) {
     PlanObjectSet exists;
     float reduction = 1;
     VELOX_DCHECK(!candidate.tables.empty());
@@ -372,7 +373,8 @@ std::vector<JoinCandidate> Optimization::nextJoins(PlanState& state) {
   std::vector<JoinCandidate> bushes;
   if (!options_.syntacticJoinOrder) {
     for (auto& candidate : candidates) {
-      if (auto bush = reducingJoins(state, candidate)) {
+      if (auto bush = reducingJoins(
+              state, candidate, options_.enableReducingExistences)) {
         bushes.push_back(std::move(bush.value()));
       }
     }
@@ -621,8 +623,8 @@ PlanObjectSet availableColumns(BaseTableCP baseTable, ColumnGroupCP index) {
   return result;
 }
 
-bool isBroadcastableSize(PlanP build, PlanState& /*state*/) {
-  return build->cost.fanout < 100'000;
+bool isBroadcastableSize(PlanP build) {
+  return build->cost.cardinality < 100'000;
 }
 
 // The 'other' side gets shuffled to align with 'input'. If 'input' is not
@@ -1124,7 +1126,7 @@ void Optimization::joinByHash(
       }
     } else if (
         candidate.join->isBroadcastableType() &&
-        isBroadcastableSize(buildPlan, state)) {
+        isBroadcastableSize(buildPlan)) {
       auto* broadcast = make<Repartition>(
           buildInput, Distribution::broadcast(), buildInput->columns());
       buildState.addCost(*broadcast);
@@ -1197,10 +1199,8 @@ void Optimization::joinByHash(
       std::move(columns));
 
   state.addCost(*join);
-  state.cost.setupCost += buildState.cost.unitCost + buildState.cost.setupCost;
-  state.cost.totalBytes += buildState.cost.totalBytes;
-  state.cost.transferBytes += buildState.cost.transferBytes;
-  join->buildCost = buildState.cost;
+  state.cost.cost += buildState.cost.cost;
+
   state.addNextJoin(&candidate, join, {buildOp}, toTry);
 }
 
@@ -1304,11 +1304,11 @@ void Optimization::joinByHashRight(
     columns.push_back(mark);
   }
 
-  const auto buildCost = state.cost.unitCost;
+  const auto buildCost = state.cost;
 
   state.columns = columnSet;
   state.cost = probeState.cost;
-  state.cost.setupCost += buildCost;
+  state.cost.cost += buildCost.cost;
 
   PrecomputeProjection precomputeProbe(probeInput, state.dt);
   auto probeKeys = precomputeProbe.toColumns(probe.keys);
@@ -1485,6 +1485,7 @@ void Optimization::placeDerivedTable(DerivedTableCP from, PlanState& state) {
 
   bool ignore = false;
   auto plan = makePlan(key, Distribution{}, PlanObjectSet{}, 1, state, ignore);
+  state.cost = plan->cost;
 
   // Make plans based on the dt alone as first.
   makeJoins(plan->op, state);
@@ -1659,12 +1660,9 @@ PlanP unionPlan(
   for (auto i = 1; i < states.size(); ++i) {
     const auto& otherCost = states[i].cost;
     fullyImported.intersect(inputPlans[i]->fullyImported);
-    // We don't sum up inputCardinality because it is not additive.
-    firstState.cost.setupCost += otherCost.setupCost;
-    firstState.cost.unitCost += otherCost.unitCost;
-    firstState.cost.fanout += otherCost.fanout;
-    firstState.cost.totalBytes += otherCost.totalBytes;
-    firstState.cost.transferBytes += otherCost.transferBytes;
+
+    firstState.cost.cost += otherCost.cost;
+    firstState.cost.cardinality += otherCost.cardinality;
   }
   if (distinct) {
     firstState.addCost(*distinct);
@@ -1914,18 +1912,17 @@ PlanP Optimization::makeDtPlan(
   auto it = memo_.find(key);
   PlanSet* plans{};
   if (it == memo_.end()) {
-    DerivedTable dt;
-    dt.cname = newCName("tmp_dt");
-    dt.import(
-        *state.dt,
-        key.firstTable,
-        key.tables,
-        key.existences,
-        existsFanout,
+    // Allocate temp DT in the arena. The DT may get flattened and then
+    // PrecomputeProjection may create columns that reference that DT. Hence,
+    // the DT's lifetime must extend to the lifetime of the optimization.
+    auto dt = make<DerivedTable>();
+    dt->cname = newCName("tmp_dt");
+    dt->import(
+        *state.dt, key.firstTable, key.tables, key.existences, existsFanout,
         key.extraConjuncts,
         key.columns);
 
-    PlanState inner(*this, &dt);
+    PlanState inner(*this, dt);
     if (key.firstTable->is(PlanType::kDerivedTableNode)) {
       inner.setTargetExprsForDt(key.columns);
     } else {

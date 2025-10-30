@@ -138,7 +138,7 @@ class PrestoParserTest : public testing::Test {
     ASSERT_TRUE(expr->isConstant());
     ASSERT_EQ(expr->type()->toString(), type->toString());
 
-    auto v = expr->asUnchecked<lp::ConstantExpr>()->value();
+    auto v = expr->as<lp::ConstantExpr>()->value();
     ASSERT_FALSE(v->isNull());
     ASSERT_EQ(v->value<T>(), value);
   }
@@ -246,7 +246,7 @@ TEST_F(PrestoParserTest, intervalDayTime) {
     ASSERT_TRUE(expr->isConstant());
     ASSERT_EQ(expr->type()->toString(), INTERVAL_DAY_TIME()->toString());
 
-    auto value = expr->asUnchecked<lp::ConstantExpr>()->value();
+    auto value = expr->as<lp::ConstantExpr>()->value();
     ASSERT_FALSE(value->isNull());
     ASSERT_EQ(value->value<int64_t>(), expected);
   };
@@ -334,7 +334,7 @@ TEST_F(PrestoParserTest, intervalYearMonth) {
     ASSERT_TRUE(expr->isConstant());
     ASSERT_EQ(expr->type()->toString(), INTERVAL_YEAR_MONTH()->toString());
 
-    auto value = expr->asUnchecked<lp::ConstantExpr>()->value();
+    auto value = expr->as<lp::ConstantExpr>()->value();
     ASSERT_FALSE(value->isNull());
     ASSERT_EQ(value->value<int32_t>(), expected);
   };
@@ -426,6 +426,20 @@ TEST_F(PrestoParserTest, groupingKeyExpr) {
         lp::test::LogicalPlanMatcherBuilder().tableScan().aggregate().project();
     testSql(
         "SELECT count(1) FROM nation GROUP BY substr(n_name, 1, 2)", matcher);
+  }
+}
+
+TEST_F(PrestoParserTest, having) {
+  {
+    auto matcher = lp::test::LogicalPlanMatcherBuilder()
+                       .tableScan()
+                       .aggregate()
+                       .filter()
+                       .project();
+
+    testSql(
+        "SELECT n_name FROM nation GROUP BY 1 HAVING sum(length(n_comment)) > 10",
+        matcher);
   }
 }
 
