@@ -501,7 +501,7 @@ TEST_F(WriteTest, createTableAsSelectBucketedSql) {
     runCtas(
         "CREATE TABLE test WITH (bucket_count = 8, bucketed_by = ARRAY['key']) AS "
         "SELECT rand() as key, l_orderkey, l_partkey, l_linenumber FROM lineitem",
-        60175,
+        600'572,
         verifyPartitionedWrite);
 
     verifyPartitionedLayout(getLayout("test"), "key", 8);
@@ -510,7 +510,7 @@ TEST_F(WriteTest, createTableAsSelectBucketedSql) {
     runCtas(
         "CREATE TABLE test3 WITH (bucket_count = 16, bucketed_by = ARRAY['key']) AS "
         "SELECT key, l_orderkey, l_linenumber + 1 as x FROM test",
-        60175,
+        600'572,
         verifyCollocatedWrite);
 
     verifyPartitionedLayout(getLayout("test3"), "key", 16);
@@ -519,7 +519,7 @@ TEST_F(WriteTest, createTableAsSelectBucketedSql) {
     runCtas(
         "CREATE TABLE test2 WITH (bucket_count = 8, bucketed_by = ARRAY['key']) AS "
         "SELECT key, l_orderkey, l_linenumber + 1 as x FROM test",
-        60175,
+        600'572,
         verifyCollocatedWrite);
 
     verifyPartitionedLayout(getLayout("test2"), "key", 8);
@@ -528,7 +528,7 @@ TEST_F(WriteTest, createTableAsSelectBucketedSql) {
     runCtas(
         "CREATE TABLE test3 WITH (bucket_count = 16, bucketed_by = ARRAY['key']) AS "
         "SELECT key, l_orderkey, l_linenumber + 1 as x FROM test",
-        60175,
+        600'572,
         verifyCollocatedWrite);
 
     verifyPartitionedLayout(getLayout("test3"), "key", 16);
@@ -537,7 +537,7 @@ TEST_F(WriteTest, createTableAsSelectBucketedSql) {
     runCtas(
         "CREATE TABLE test4 WITH (bucket_count = 2, bucketed_by = ARRAY['key']) AS "
         "SELECT key, l_orderkey, l_linenumber + 1 as x FROM test",
-        60175,
+        600'572,
         verifyPartitionedWrite);
 
     verifyPartitionedLayout(getLayout("test4"), "key", 2);
@@ -552,7 +552,7 @@ TEST_F(WriteTest, createTableAsSelectBucketedSql) {
     runCtas(
         "CREATE TABLE test WITH (bucket_count = 128, bucketed_by = ARRAY['key']) AS "
         "SELECT rand() as key, l_orderkey, l_partkey, l_linenumber FROM lineitem",
-        60175,
+        600'572,
         [](const auto& plan) {
           const auto& fragments = plan.fragments();
           ASSERT_EQ(1, fragments.size());
@@ -579,7 +579,7 @@ TEST_F(WriteTest, createTableAsSelectBucketedSql) {
     runCtas(
         "CREATE TABLE test WITH (bucket_count = 64, bucketed_by = ARRAY['key']) AS "
         "SELECT rand() as key, l_orderkey, l_partkey, l_linenumber FROM lineitem",
-        60175,
+        600'572,
         [](const auto& plan) {
           const auto& fragments = plan.fragments();
           ASSERT_EQ(1, fragments.size());

@@ -1487,13 +1487,20 @@ void ToGraph::addProjection(const lp::ProjectNode& project) {
 }
 
 namespace {
-void extractSubqueries(
-    const lp::ExprPtr& expr,
-    std::vector<lp::SubqueryExprPtr>& subqueries,
-    std::vector<lp::ExprPtr>& inPredicateSubqueries,
-    std::vector<lp::ExprPtr>& existsSubqueries) {
+
+struct Subqueries {
+  std::vector<lp::SubqueryExprPtr> scalars;
+  std::vector<lp::ExprPtr> inPredicates;
+  std::vector<lp::ExprPtr> exists;
+
+  bool empty() const {
+    return scalars.empty() && inPredicates.empty() && exists.empty();
+  }
+};
+
+void extractSubqueries(const lp::ExprPtr& expr, Subqueries& subqueries) {
   if (expr->isSubquery()) {
-    subqueries.push_back(
+    subqueries.scalars.push_back(
         std::static_pointer_cast<const lp::SubqueryExpr>(expr));
     return;
   }
@@ -1502,19 +1509,18 @@ void extractSubqueries(
     const auto* specialForm = expr->as<lp::SpecialFormExpr>();
     if (specialForm->form() == lp::SpecialForm::kIn &&
         specialForm->inputAt(1)->isSubquery()) {
-      inPredicateSubqueries.push_back(expr);
+      subqueries.inPredicates.push_back(expr);
       return;
     }
 
     if (specialForm->form() == lp::SpecialForm::kExists) {
-      existsSubqueries.push_back(expr);
+      subqueries.exists.push_back(expr);
       return;
     }
   }
 
   for (const auto& input : expr->inputs()) {
-    extractSubqueries(
-        input, subqueries, inPredicateSubqueries, existsSubqueries);
+    extractSubqueries(input, subqueries);
   }
 }
 } // namespace
@@ -1564,14 +1570,21 @@ ColumnCP ToGraph::addMarkColumn() {
   return markColumn;
 }
 
-void ToGraph::processSubqueries(const logical_plan::FilterNode& filter) {
-  std::vector<lp::SubqueryExprPtr> subqueries;
-  std::vector<lp::ExprPtr> inPredicateSubqueries;
-  std::vector<lp::ExprPtr> existsSubqueries;
-  extractSubqueries(
-      filter.predicate(), subqueries, inPredicateSubqueries, existsSubqueries);
+void ToGraph::finalizeLeftDtForJoin(const logical_plan::LogicalPlanNode& node) {
+  if (currentDt_->hasAggregation() || currentDt_->hasLimit()) {
+    finalizeDt(node);
+  }
+}
 
-  for (const auto& subquery : subqueries) {
+void ToGraph::processSubqueries(const logical_plan::FilterNode& filter) {
+  Subqueries subqueries;
+  extractSubqueries(filter.predicate(), subqueries);
+
+  if (!subqueries.empty()) {
+    finalizeLeftDtForJoin(*filter.onlyInput());
+  }
+
+  for (const auto& subquery : subqueries.scalars) {
     auto subqueryDt = translateSubquery(*subquery->subquery());
 
     if (correlatedConjuncts_.empty()) {
@@ -1621,7 +1634,7 @@ void ToGraph::processSubqueries(const logical_plan::FilterNode& filter) {
     }
   }
 
-  for (const auto& expr : inPredicateSubqueries) {
+  for (const auto& expr : subqueries.inPredicates) {
     auto subqueryDt = translateSubquery(
         *expr->inputAt(1)->as<lp::SubqueryExpr>()->subquery());
     VELOX_CHECK_EQ(1, subqueryDt->columns.size());
@@ -1645,7 +1658,7 @@ void ToGraph::processSubqueries(const logical_plan::FilterNode& filter) {
     subqueries_.emplace(expr, markColumn);
   }
 
-  for (const auto& expr : existsSubqueries) {
+  for (const auto& expr : subqueries.exists) {
     auto subqueryDt = translateSubquery(
         *expr->inputAt(0)->as<lp::SubqueryExpr>()->subquery());
     VELOX_CHECK(!correlatedConjuncts_.empty());

@@ -51,8 +51,7 @@ class ToTextVisitor : public RelationOpVisitor {
     if (!table.filter.empty()) {
       appendLine(
           fmt::format(
-              "multi-column filters: {}",
-              conjunctsToString(table.columnFilters)));
+              "multi-column filters: {}", conjunctsToString(table.filter)));
     }
   }
 

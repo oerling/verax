@@ -28,7 +28,7 @@ DEFINE_string(
     "",
     "Path to TPC-H data directory. If empty, the test creates a temp directory and deletes it on exit");
 DEFINE_bool(create_dataset, true, "Creates the TPC-H tables");
-DEFINE_double(tpch_scale, 0.01, "Scale factor");
+DEFINE_double(tpch_scale, 0.1, "Scale factor");
 
 using namespace facebook::velox;
 using namespace facebook::velox::exec;

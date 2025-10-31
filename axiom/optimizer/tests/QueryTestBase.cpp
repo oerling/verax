@@ -129,16 +129,16 @@ std::shared_ptr<core::QueryCtx>& QueryTestBase::getQueryCtx() {
 optimizer::PlanAndStats QueryTestBase::planVelox(
     const logical_plan::LogicalPlanNodePtr& plan,
     const runner::MultiFragmentPlan::Options& options,
-    std::string* planString) {
+    const std::optional<std::string>& planFilePathPrefix) {
   connector::SchemaResolver schemaResolver;
-  return planVelox(plan, schemaResolver, options, planString);
+  return planVelox(plan, schemaResolver, options, planFilePathPrefix);
 }
 
 optimizer::PlanAndStats QueryTestBase::planVelox(
     const logical_plan::LogicalPlanNodePtr& plan,
     const connector::SchemaResolver& schemaResolver,
     const runner::MultiFragmentPlan::Options& options,
-    std::string* planString) {
+    const std::optional<std::string>& planFilePathPrefix) {
   auto& queryCtx = getQueryCtx();
 
   auto allocator = std::make_unique<HashStringAllocator>(optimizerPool_.get());
@@ -152,6 +152,21 @@ optimizer::PlanAndStats QueryTestBase::planVelox(
 
   auto session = std::make_shared<Session>(queryCtx->queryId());
 
+  std::unique_ptr<std::ofstream> planPath;
+  if (planFilePathPrefix.has_value()) {
+    planPath = std::make_unique<std::ofstream>(
+        fmt::format("{}.plans", planFilePathPrefix.value()));
+
+    *planPath << "numWorkers: " << options.numWorkers << "\n";
+    *planPath << "numDrivers: " << options.numDrivers << "\n\n";
+  }
+
+  SCOPE_EXIT {
+    if (planPath != nullptr) {
+      planPath->close();
+    }
+  };
+
   optimizer::Optimization opt(
       session,
       *plan,
@@ -161,17 +176,30 @@ optimizer::PlanAndStats QueryTestBase::planVelox(
       evaluator,
       optimizerOptions_,
       options);
-  auto best = opt.bestPlan();
-  if (planString) {
-    *planString = best->op->toString(true, false);
+  if (planPath != nullptr) {
+    *planPath << "Query Graph:\n\n" << opt.rootDt()->toString() << "\n\n";
   }
-  return opt.toVeloxPlan(best->op);
+
+  auto best = opt.bestPlan();
+  if (planPath != nullptr) {
+    *planPath << "Optimized plan (oneline):\n\n"
+              << best->op->toOneline() << "\n\n";
+    *planPath << "Optimized plan:\n\n" << best->op->toString() << "\n\n";
+  }
+
+  auto planAndStats = opt.toVeloxPlan(best->op);
+  if (planPath != nullptr) {
+    *planPath << "Executable Velox plan:\n\n" << planAndStats.plan->toString();
+    *planPath << "___END___\n";
+  }
+
+  return planAndStats;
 }
 
 TestResult QueryTestBase::runVelox(
     const logical_plan::LogicalPlanNodePtr& plan,
     const runner::MultiFragmentPlan::Options& options) {
-  auto veloxPlan = planVelox(plan, options, nullptr);
+  auto veloxPlan = planVelox(plan, options);
   return runFragmentedPlan(veloxPlan);
 }
 
@@ -179,7 +207,7 @@ TestResult QueryTestBase::runVelox(
     const logical_plan::LogicalPlanNodePtr& plan,
     const connector::SchemaResolver& schemaResolver,
     const runner::MultiFragmentPlan::Options& options) {
-  auto veloxPlan = planVelox(plan, schemaResolver, options, nullptr);
+  auto veloxPlan = planVelox(plan, schemaResolver, options);
   return runFragmentedPlan(veloxPlan);
 }
 

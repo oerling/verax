@@ -1286,6 +1286,7 @@ void Optimization::joinByHashRight(
   state.downstreamColumns().forEach<Column>([&](auto column) {
     if (column == probe.markColumn) {
       mark = column;
+      columnSet.add(column);
       return;
     }
 

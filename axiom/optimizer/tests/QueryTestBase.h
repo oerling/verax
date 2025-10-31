@@ -46,6 +46,8 @@ class QueryTestBase : public runner::test::LocalRunnerTestBase {
 
   void TearDown() override;
 
+  /// @param planFilePathPrefix If specified, writes the query graph, optimized
+  /// and executable plans to files with specified path prefix.
   optimizer::PlanAndStats planVelox(
       const logical_plan::LogicalPlanNodePtr& plan,
       const runner::MultiFragmentPlan::Options& options =
@@ -53,7 +55,7 @@ class QueryTestBase : public runner::test::LocalRunnerTestBase {
               .numWorkers = 4,
               .numDrivers = 4,
           },
-      std::string* planString = nullptr);
+      const std::optional<std::string>& planFilePathPrefix = std::nullopt);
 
   optimizer::PlanAndStats planVelox(
       const logical_plan::LogicalPlanNodePtr& plan,
@@ -63,7 +65,7 @@ class QueryTestBase : public runner::test::LocalRunnerTestBase {
               .numWorkers = 4,
               .numDrivers = 4,
           },
-      std::string* planString = nullptr);
+      const std::optional<std::string>& planFilePathPrefix = std::nullopt);
 
   TestResult runVelox(
       const logical_plan::LogicalPlanNodePtr& plan,

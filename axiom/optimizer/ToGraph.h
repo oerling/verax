@@ -416,6 +416,10 @@ class ToGraph {
       const logical_plan::LogicalPlanNode& node,
       DerivedTableP outerDt = nullptr);
 
+  // Finalizes 'currentDt_' if it contains aggregation, limit or anything else
+  // that must be wrapped in a DT before being used as a left side of a join.
+  void finalizeLeftDtForJoin(const logical_plan::LogicalPlanNode& node);
+
   // Adds a column 'name' from current DerivedTable to the 'dt'.
   void addDtColumn(DerivedTableP dt, std::string_view name);
 
