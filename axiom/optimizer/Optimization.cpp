@@ -1479,7 +1479,7 @@ void Optimization::placeDerivedTable(DerivedTableCP from, PlanState& state) {
   state.columns.unionSet(dtColumns);
 
   MemoKey key;
-  key.columns = std::move(dtColumns);
+  key.columns = dtColumns;
   key.firstTable = from;
   key.tables.add(from);
 
@@ -1507,7 +1507,7 @@ void Optimization::placeDerivedTable(DerivedTableCP from, PlanState& state) {
 
   if (reduction < 0.9) {
     key.tables = reducingSet;
-    key.columns = state.downstreamColumns();
+    key.columns = dtColumns;
     plan = makePlan(key, Distribution{}, PlanObjectSet{}, 1, state, ignore);
     // Not all reducing joins are necessarily retained in the plan. Only mark
     // the ones fully imported as placed.
