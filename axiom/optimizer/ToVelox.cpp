@@ -1242,7 +1242,7 @@ velox::core::PlanNodePtr ToVelox::makeAggregation(
     }
   }
 
-  return std::make_shared<velox::core::AggregationNode>(
+  auto result = std::make_shared<velox::core::AggregationNode>(
       nextId(),
       op.step,
       keys,
@@ -1251,6 +1251,8 @@ velox::core::PlanNodePtr ToVelox::makeAggregation(
       aggregates,
       false,
       input);
+    makePredictionAndHistory(result->id(), &op);
+  return result;
 }
 
 velox::core::PlanNodePtr ToVelox::makeRepartition(

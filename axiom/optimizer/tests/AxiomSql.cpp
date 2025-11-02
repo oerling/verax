@@ -21,6 +21,7 @@
 #include <sys/resource.h>
 #include <sys/time.h>
 #include <iostream>
+#include <map>
 #include "axiom/connectors/SchemaResolver.h"
 #include "axiom/connectors/hive/LocalHiveConnectorMetadata.h"
 #include "axiom/connectors/tpch/TpchConnectorMetadata.h"
@@ -67,6 +68,8 @@ DEFINE_int32(num_workers, 4, "Number of in-process workers");
 DEFINE_int32(num_drivers, 4, "Number of drivers per worker");
 
 DEFINE_int64(split_target_bytes, 16 << 20, "Approx bytes covered by one split");
+
+DEFINE_bool(include_custom_stats, false, "Print per operator runtime stats");
 
 DEFINE_string(
     query,
@@ -504,6 +507,51 @@ class VeloxRunner {
         out << std::endl;
       }
     });
+
+    // Print runtime stats grouped by operator if requested
+    if (FLAGS_include_custom_stats) {
+      std::cout << "\n" << std::string(80, '=') << "\n";
+      std::cout << "Runtime Stats by Operator:\n";
+      std::cout << std::string(80, '=') << "\n";
+
+      // Collect all runtime stats grouped by node ID
+      std::map<core::PlanNodeId, std::unordered_map<std::string, RuntimeMetric>>
+          allNodeStats;
+
+      for (const auto& taskStat : taskStats) {
+        auto planStats = velox::exec::toPlanStats(taskStat);
+
+        for (auto& [nodeId, stats] : planStats) {
+          if (!stats.customStats.empty()) {
+            // Merge custom stats for this node
+            for (const auto& [statName, statValue] : stats.customStats) {
+              auto& nodeStatMap = allNodeStats[nodeId];
+              auto it = nodeStatMap.find(statName);
+              if (it == nodeStatMap.end()) {
+                nodeStatMap[statName] = statValue;
+              } else {
+                it->second.merge(statValue);
+              }
+            }
+          }
+        }
+      }
+
+      // Print collected stats
+      for (const auto& [nodeId, customStats] : allNodeStats) {
+        std::cout << "\nNode " << nodeId << ":\n";
+        for (const auto& [statName, statValue] : customStats) {
+          std::cout << "  " << statName << ": " << statValue.toString()
+                    << "\n";
+        }
+      }
+
+      if (allNodeStats.empty()) {
+        std::cout << "\nNo custom runtime stats available.\n";
+      }
+
+      std::cout << std::string(80, '=') << "\n";
+    }
   }
 
   std::shared_ptr<runner::LocalRunner> makeRunner(

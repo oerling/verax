@@ -143,6 +143,45 @@ target_link_libraries(
   velox_parse_utils
 )
 
+target_link_libraries(
+  axiom_sql
+  axiom_runner_local_runner
+  axiom_runner_multifragment_plan
+  axiom_optimizer
+  axiom_hive_connector_metadata
+  axiom_tpch_connector_metadata
+  axiom_sql_presto_parser
+  velox_exec_test_lib
+  velox_dwio_common
+  velox_dwio_parquet_reader
+  velox_dwio_native_parquet_reader
+  velox_parse_parser
+  velox_parse_expression
+  velox_parse_utils
+)
+
+
+add_executable(axiom_sql_benchmark AxiomSqlBenchmark.cpp linenoise/linenoise.c)
+
+target_link_libraries(
+  axiom_sql_benchmark
+  axiom_runner_local_runner
+  axiom_runner_multifragment_plan
+  axiom_optimizer
+  axiom_hive_connector_metadata
+  axiom_tpch_connector_metadata
+  axiom_sql_presto_parser
+  velox_query_benchmark
+  velox_exec_test_lib
+  velox_dwio_common
+  velox_dwio_parquet_reader
+  velox_dwio_native_parquet_reader
+  velox_parse_parser
+  velox_parse_expression
+  velox_parse_utils
+)
+
+
 add_subdirectory(utils)
 
 add_executable(axiom_model_test ModelTest.cpp)

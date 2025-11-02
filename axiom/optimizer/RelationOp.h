@@ -529,7 +529,8 @@ struct Aggregation : public RelationOp {
       ExprVector groupingKeys,
       AggregateVector aggregates,
       velox::core::AggregationNode::Step step,
-      ColumnVector columns);
+      ColumnVector columns,
+      const Aggregation* partial = nullptr);
 
   const ExprVector groupingKeys;
   const AggregateVector aggregates;

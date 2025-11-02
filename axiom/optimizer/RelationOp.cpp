@@ -600,12 +600,18 @@ Aggregation::Aggregation(
     ExprVector groupingKeysVector,
     AggregateVector aggregatesVector,
     velox::core::AggregationNode::Step step,
-    ColumnVector columns)
+    ColumnVector columns,
+    const Aggregation* partial)
     : RelationOp{RelType::kAggregation, std::move(input), std::move(columns)},
       groupingKeys{std::move(groupingKeysVector)},
       aggregates{std::move(aggregatesVector)},
       step{step} {
   cost_.inputCardinality = inputCardinality();
+
+  // inputBeforePartial is the input cardinality before the partial aggregation
+  int64_t inputBeforePartial = partial != nullptr
+      ? partial->cost_.inputCardinality
+      : cost_.inputCardinality;
 
   float cardinality = 1;
   for (auto key : groupingKeys) {
@@ -620,7 +626,7 @@ Aggregation::Aggregation(
   // being unique after n values is 1 - (1/d)^n.
   auto nOut = cardinality -
       cardinality *
-          std::pow(1.0F - (1.0F / cardinality), input_->resultCardinality());
+          std::pow(1.0F - (1.0F / cardinality), inputBeforePartial);
 
   auto numKeys = groupingKeys.size();
   float rowBytes =
@@ -634,9 +640,9 @@ Aggregation::Aggregation(
       : nOut;
   auto aggCost = aggregates.size() * 2 + 2 * Costs::hashProbeCost(maxInTable);
   float partialInput =
-      partialFlushInterval(cost_.inputCardinality, nOut, partialCapacity);
+      partialFlushInterval(inputBeforePartial, nOut, partialCapacity);
   float partialFanout = partialCapacity / partialInput;
-  if (cost_.inputCardinality > nOut * 5 && partialFanout > 0.8) {
+  if (inputBeforePartial > nOut * 5 && partialFanout > 0.8) {
     // Partial agg does not reduce.
     partialFanout = 1;
   }
@@ -653,7 +659,7 @@ Aggregation::Aggregation(
     cost_.totalBytes = nOut * rowBytes;
     auto in = cost_.inputCardinality / partialFanout;
     cost_.unitCost = Costs::kHashColumnCost * numKeys +
-        Costs::hashProbeCost(nOut) + aggCost * (in / cost_.inputCardinality);
+        Costs::hashProbeCost(nOut) + aggCost;
   }
 }
 
