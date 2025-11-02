@@ -40,6 +40,7 @@
 #include "velox/dwio/dwrf/RegisterDwrfWriter.h"
 #include "velox/dwio/parquet/RegisterParquetReader.h"
 #include "velox/dwio/parquet/RegisterParquetWriter.h"
+#include "velox/exec/PlanNodeStats.h"
 #include "velox/exec/tests/utils/LocalExchangeSource.h"
 #include "velox/expression/Expr.h"
 #include "velox/functions/prestosql/aggregates/RegisterAggregateFunctions.h"
@@ -54,6 +55,11 @@ DEFINE_string(
 DEFINE_string(data_format, "parquet", "Data format: parquet or dwrf.");
 
 DEFINE_uint32(optimizer_trace, 0, "Optimizer trace level");
+
+DEFINE_bool(
+    enable_reducing_existences,
+    true,
+    "Enable adding reducing semijoins into hash builds,a aggregations etc.");
 
 DEFINE_int32(max_rows, 100, "Max number of printed result rows");
 
@@ -420,6 +426,10 @@ class VeloxRunner {
 
     auto session = std::make_shared<Session>(queryCtx->queryId());
 
+    axiom::optimizer::OptimizerOptions optimizerOptions;
+    optimizerOptions.traceFlags = FLAGS_optimizer_trace;
+    optimizerOptions.enableReducingExistences = FLAGS_enable_reducing_existences;
+    
     optimizer::Optimization optimization(
         session,
         *logicalPlan,
@@ -427,7 +437,7 @@ class VeloxRunner {
         *history_,
         queryCtx,
         evaluator,
-        {.traceFlags = FLAGS_optimizer_trace},
+        optimizerOptions,
         opts);
 
     if (checkDerivedTable && !checkDerivedTable(*optimization.rootDt())) {
@@ -445,6 +455,34 @@ class VeloxRunner {
   static void printPlanWithStats(
       runner::LocalRunner& runner,
       const optimizer::NodePredictionMap& estimates) {
+
+    // Calculate predicted CPU total
+    float predictedCpu = 0;
+    for (auto& pair : estimates) {
+      predictedCpu += pair.second.cpu;
+    }
+
+    // Get actual CPU timings from TaskStats
+    folly::F14FastMap<std::string, int64_t> nodeCpuNanos;
+    int64_t cpuNanos = 0;
+
+    // Get TaskStats from runner and convert to PlanNodeStats
+    auto taskStats = runner.stats();
+    for (const auto& taskStat : taskStats) {
+      auto planStats = velox::exec::toPlanStats(taskStat);
+
+      // For each plan node, sum up CPU from addInput, getOutput, and finish
+      for (const auto& [nodeId, stats] : planStats) {
+        int64_t nodeCpu = stats.addInputTiming.cpuNanos +
+                          stats.getOutputTiming.cpuNanos +
+                          stats.finishTiming.cpuNanos;
+
+        // Accumulate (PlanNodeIds may not be unique across tasks)
+        nodeCpuNanos[nodeId] += nodeCpu;
+        cpuNanos += nodeCpu;
+      }
+    }
+
     std::cout << runner.printPlanWithStats([&](const core::PlanNodeId& nodeId,
                                                std::string_view indentation,
                                                std::ostream& out) {
@@ -452,7 +490,18 @@ class VeloxRunner {
       if (it != estimates.end()) {
         out << indentation << "Estimate: " << it->second.cardinality
             << " rows, " << succinctBytes(it->second.peakMemory)
-            << " peak memory" << std::endl;
+            << " peak memory, predicted cpu=" << std::fixed
+            << std::setprecision(2)
+            << (it->second.cpu * 100.0f / predictedCpu) << "%";
+
+        // Add actual CPU percentage
+        auto cpuIt = nodeCpuNanos.find(nodeId);
+        if (cpuIt != nodeCpuNanos.end() && cpuNanos > 0) {
+          out << ", actual cpu=" << std::fixed << std::setprecision(2)
+              << (static_cast<float>(cpuIt->second) * 100.0f / cpuNanos) << "%";
+        }
+
+        out << std::endl;
       }
     });
   }

@@ -540,6 +540,7 @@ void DerivedTable::importJoinsIntoFirstDt(const DerivedTable* firstDt) {
 
   auto* newFirst = make<DerivedTable>(*firstDt->as<DerivedTable>());
   newFirst->cname = firstDt->as<DerivedTable>()->cname;
+  int32_t previousNumJoins = newFirst->joins.size();
   for (auto& join : joins) {
     auto other = join->otherSide(firstDt);
     if (!other) {
@@ -579,6 +580,7 @@ void DerivedTable::importJoinsIntoFirstDt(const DerivedTable* firstDt) {
       }
     } else {
       auto* chainDt = make<DerivedTable>();
+      chainDt->cname = toName(fmt::format("rdt{}", chainDt->id()));
       PlanObjectSet chainSet;
       chainSet.add(other);
       if (fullyImported) {
@@ -605,6 +607,9 @@ void DerivedTable::importJoinsIntoFirstDt(const DerivedTable* firstDt) {
     }
   }
 
+  for (auto i = previousNumJoins; i < newFirst->joins.size(); ++i) {
+    newFirst->joins[i]->guessFanout();
+  }
   VELOX_CHECK_EQ(tables.size(), 1);
   for (auto i = 0; i < initialTables.size(); ++i) {
     if (!newFirst->fullyImported.contains(initialTables[i])) {

@@ -559,6 +559,42 @@ Unnest::Unnest(
   cost_.inputCardinality = inputCardinality();
 }
 
+namespace {
+float partialFlushInterval(
+    float totalInput,
+    float numDistinct,
+    float maxDistinct) {
+  // Handle edge cases
+  if (maxDistinct >= numDistinct) {
+    return totalInput;
+  }
+  if (maxDistinct <= 0) {
+    return 0.0f;
+  }
+
+  // The expected number of samples to see k out of n distinct values
+  // follows from the coupon collector problem:
+  // E[k] = n * (1/n + 1/(n-1) + ... + 1/(n-k+1))
+
+  float n = numDistinct;
+  float k = maxDistinct;
+
+  // Approximate the partial harmonic sum using logarithms (constant time):
+  // H(n,k) = Σ(i=0 to k-1) 1/(n-i) ≈ ln(n) - ln(n-k) = ln(n/(n-k))
+  // This uses the integral approximation: ∫_{n-k}^n 1/x dx
+  float harmonicSum = std::log(n / (n - k));
+
+  // Expected number of samples in a uniform distribution
+  float expectedSamples = n * harmonicSum;
+
+  // Scale by the ratio of total input to distinct values
+  // to account for non-uniform distribution
+  float scalingFactor = totalInput / numDistinct;
+
+  return expectedSamples * scalingFactor;
+}
+} // namespace
+
 Aggregation::Aggregation(
     RelationOpPtr input,
     ExprVector groupingKeysVector,
@@ -586,12 +622,39 @@ Aggregation::Aggregation(
       cardinality *
           std::pow(1.0F - (1.0F / cardinality), input_->resultCardinality());
 
-  cost_.fanout = nOut / cost_.inputCardinality;
-  const auto numGrouppingKeys = static_cast<float>(groupingKeys.size());
-  cost_.unitCost = numGrouppingKeys * Costs::hashProbeCost(nOut);
-
-  float rowBytes = byteSize(groupingKeys) + byteSize(aggregates);
-  cost_.totalBytes = nOut * rowBytes;
+  auto numKeys = groupingKeys.size();
+  float rowBytes =
+      byteSize(groupingKeys) + byteSize(aggregates) + Costs::kHashRowBytes;
+  float partialCapacity = (16 << 20) / rowBytes;
+  if (partialCapacity > nOut) {
+    partialCapacity = nOut;
+  }
+  auto maxInTable = step == velox::core::AggregationNode::Step::kPartial
+      ? partialCapacity
+      : nOut;
+  auto aggCost = aggregates.size() * 2 + 2 * Costs::hashProbeCost(maxInTable);
+  float partialInput =
+      partialFlushInterval(cost_.inputCardinality, nOut, partialCapacity);
+  float partialFanout = partialCapacity / partialInput;
+  if (cost_.inputCardinality > nOut * 5 && partialFanout > 0.8) {
+    // Partial agg does not reduce.
+    partialFanout = 1;
+  }
+  if (step == velox::core::AggregationNode::Step::kPartial) {
+    cost_.fanout = partialFanout;
+    if (partialFanout == 1) {
+      cost_.unitCost = 0.1 * rowBytes;
+    } else {
+      cost_.unitCost = Costs::kHashColumnCost * numKeys +
+          Costs::hashProbeCost(partialCapacity) + aggCost;
+      cost_.totalBytes = partialCapacity * rowBytes;
+    }
+  } else {
+    cost_.totalBytes = nOut * rowBytes;
+    auto in = cost_.inputCardinality / partialFanout;
+    cost_.unitCost = Costs::kHashColumnCost * numKeys +
+        Costs::hashProbeCost(nOut) + aggCost * (in / cost_.inputCardinality);
+  }
 }
 
 std::string Unnest::toString(bool recursive, bool detail) const {
