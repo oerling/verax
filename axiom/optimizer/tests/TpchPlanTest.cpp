@@ -127,10 +127,12 @@ TEST_F(TpchPlanTest, stats) {
 
     auto planAndStats = planVelox(logicalPlan);
     auto stats = planAndStats.prediction;
-    ASSERT_EQ(stats.size(), 1);
 
-    ASSERT_EQ(stats.begin()->first, logicalPlan->id());
-    ASSERT_EQ(stats.begin()->second.cardinality, cardinality);
+    // We expect a prediction for the table scan and 
+    ASSERT_EQ(stats.size(), 2);
+
+    // Node ids start at 0, the scan is always first.
+    ASSERT_EQ(stats.at("0").cardinality, cardinality);
   };
 
   verifyStats("region", 5);
@@ -589,17 +591,6 @@ TEST_F(TpchPlanTest, DISABLED_makePlans) {
 }
 
 TEST_F(TpchPlanTest, supplierAggregationJoin) {
-  auto sql =
-      "select s_name, s_acctbal, volume "
-      "from (select l_suppkey, sum(l_quantity) as volume from lineitem group by l_suppkey), supplier "
-      "where s_suppkey = l_suppkey and s_acctbal < 100";
-
-  // Create reference query using Velox PlanBuilder:
-  // - Scan lineitem (l_suppkey, l_quantity), aggregate on l_suppkey with sum of
-  // l_quantity
-  // - Hash join with supplier (s_suppkey, s_name, s_acctbal) filtered by
-  // s_acctbal < 100
-  // - Join on l_suppkey = s_suppkey
   using namespace facebook::velox;
 
   auto lineitemType = ROW({{"l_suppkey", BIGINT()}, {"l_quantity", DOUBLE()}});
@@ -607,40 +598,105 @@ TEST_F(TpchPlanTest, supplierAggregationJoin) {
   auto supplierType = ROW(
       {{"s_suppkey", BIGINT()},
        {"s_name", VARCHAR()},
-       {"s_acctbal", DOUBLE()}});
+       {"s_acctbal", DOUBLE()},
+       {"s_nationkey", BIGINT()}});
+
+  auto nationType = ROW(
+      {{"n_nationkey", BIGINT()},
+       {"n_name", VARCHAR()}});
 
   // Create shared plan node ID generator
   auto planNodeIdGenerator = std::make_shared<core::PlanNodeIdGenerator>();
 
-  // Build reference plan: lineitem scan -> aggregation -> hash join with
-  // filtered supplier -> project
-  auto referencePlan =
-      exec::test::PlanBuilder(planNodeIdGenerator, pool())
-          .localPartition(
-              {},
-              {exec::test::PlanBuilder(planNodeIdGenerator, pool())
-                   .tableScan("lineitem", lineitemType)
-                   .singleAggregation({"l_suppkey"}, {"sum(l_quantity)"})
-                   .planNode()})
-          .hashJoin(
-              {"l_suppkey"},
-              {"s_suppkey"},
-              exec::test::PlanBuilder(planNodeIdGenerator, pool())
-                  .tableScan("supplier", supplierType)
-                  .filter("s_acctbal < 100.0")
-                  .planNode(),
-              "",
-              {"s_name", "s_acctbal", "a0"})
-          .project({"s_name", "s_acctbal", "a0 as volume"})
-          .planNode();
+  // Test 1: Simple supplier join
+  {
+    auto sql =
+        "select s_name, s_acctbal, volume "
+        "from (select l_suppkey, sum(l_quantity) as volume from lineitem group by l_suppkey), supplier "
+        "where s_suppkey = l_suppkey and s_acctbal < 100";
+    SCOPED_TRACE(sql);
 
-  auto sqlPlan = checkResults(sql, referencePlan);
+    // Build reference plan: lineitem scan -> aggregation -> hash join with
+    // filtered supplier -> project
+    auto referencePlan =
+        exec::test::PlanBuilder(planNodeIdGenerator, pool())
+            .localPartition(
+                {},
+                {exec::test::PlanBuilder(planNodeIdGenerator, pool())
+                     .tableScan("lineitem", lineitemType)
+                     .singleAggregation({"l_suppkey"}, {"sum(l_quantity)"})
+                     .planNode()})
+            .hashJoin(
+                {"l_suppkey"},
+                {"s_suppkey"},
+                exec::test::PlanBuilder(planNodeIdGenerator, pool())
+                    .tableScan("supplier", supplierType)
+                    .filter("s_acctbal < 100.0")
+                    .planNode(),
+                "",
+                {"s_name", "s_acctbal", "a0"})
+            .project({"s_name", "s_acctbal", "a0 as volume"})
+            .planNode();
 
-  // Verify the optimized plan contains aggregation above filter semijoin
-  ASSERT_EQ(1, sqlPlan.plan->fragments().size());
-  auto sqlPlanNode = sqlPlan.plan->fragments().at(0).fragment.planNode;
+    auto sqlPlan = checkResults(sql, referencePlan);
 
-  checkPlanText(sqlPlanNode, {"Aggregation", "LEFT SEMI \\(FILTER\\)"});
+    // Verify the optimized plan contains aggregation above filter semijoin
+    ASSERT_EQ(1, sqlPlan.plan->fragments().size());
+    auto sqlPlanNode = sqlPlan.plan->fragments().at(0).fragment.planNode;
+
+    checkPlanText(sqlPlanNode, {"Aggregation", "LEFT SEMI \\(FILTER\\)"});
+  }
+
+  // Test 2: Supplier join with nation filter
+  {
+    auto sql =
+        "select s_name, s_acctbal, volume "
+        "from (select l_suppkey, sum(l_quantity) as volume from lineitem group by l_suppkey), supplier, nation "
+        "where s_suppkey = l_suppkey and s_acctbal - 100 < 0 and s_nationkey = n_nationkey and n_name = 'FRANCE'";
+    SCOPED_TRACE(sql);
+
+    // Build reference plan: lineitem scan -> aggregation -> hash join with
+    // supplier joined to nation and filtered -> project
+    auto referencePlan =
+        exec::test::PlanBuilder(planNodeIdGenerator, pool())
+            .localPartition(
+                {},
+                {exec::test::PlanBuilder(planNodeIdGenerator, pool())
+                     .tableScan("lineitem", lineitemType)
+                     .singleAggregation({"l_suppkey"}, {"sum(l_quantity)"})
+                     .planNode()})
+            .hashJoin(
+                {"l_suppkey"},
+                {"s_suppkey"},
+                exec::test::PlanBuilder(planNodeIdGenerator, pool())
+                    .tableScan("supplier", supplierType)
+                    .hashJoin(
+                        {"s_nationkey"},
+                        {"n_nationkey"},
+                        exec::test::PlanBuilder(planNodeIdGenerator, pool())
+                            .tableScan("nation", nationType)
+                            .filter("n_name = 'FRANCE'")
+                            .planNode(),
+                        "",
+                        {"s_suppkey", "s_name", "s_acctbal"})
+                    .filter("s_acctbal - 100.0 < 0.0")
+                    .planNode(),
+                "",
+                {"s_name", "s_acctbal", "a0"})
+            .project({"s_name", "s_acctbal", "a0 as volume"})
+            .planNode();
+
+    auto sqlPlan = checkResults(sql, referencePlan);
+
+    // Verify the optimized plan contains aggregation above filter semijoin
+    // with nation joined to supplier
+    ASSERT_EQ(1, sqlPlan.plan->fragments().size());
+    auto sqlPlanNode = sqlPlan.plan->fragments().at(0).fragment.planNode;
+
+    checkPlanText(
+        sqlPlanNode,
+        {"Aggregation", "LEFT SEMI \\(FILTER\\)", "supplier", "nation"});
+  }
 }
 
 } // namespace

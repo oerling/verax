@@ -696,7 +696,7 @@ Aggregation::Aggregation(
     cost_.totalBytes = nOut * rowBytes;
     auto in = cost_.inputCardinality / partialFanout;
     cost_.unitCost =
-      Costs::kHashColumnCost * numKeys + Costs::hashProbeCost(nOut) + aggCost;
+        Costs::kHashColumnCost * numKeys + Costs::hashProbeCost(nOut) + aggCost;
     cost_.fanout = nOut / (inputBeforePartial * partialFanout);
   }
 }
@@ -807,16 +807,31 @@ void HashBuild::accept(
   visitor.visit(*this, context);
 }
 
+std::optional<float> filterCardinality(ExprCP expr) {
+  // Covers the special case of a mark semijoin cardinality passed in
+  // trueFraction of mark column.
+  if (expr->value().trueFraction != Value::kUnknown) {
+    return expr->value().trueFraction;
+  }
+  return std::nullopt;
+}
+
 Filter::Filter(RelationOpPtr input, ExprVector exprs)
     : RelationOp{RelType::kFilter, std::move(input)}, exprs_{std::move(exprs)} {
   cost_.inputCardinality = inputCardinality();
   const auto numExprs = static_cast<float>(exprs_.size());
   cost_.unitCost = Costs::kMinimumFilterCost * numExprs;
 
-  // We assume each filter selects 4/5. Small effect makes it so
-  // join and scan selectivities that are better known have more
-  // influence on plan cardinality. To be filled in from history.
-  cost_.fanout = std::pow(0.8F, numExprs);
+  cost_.fanout = 1;
+  for (auto& conjunct : exprs) {
+    auto maybeCardinality = filterCardinality(conjunct);
+    // We assume each unknown filter selects 4/5. Small effect makes it so
+    // join and scan selectivities that are better known have more
+    // influence on plan cardinality. To be filled in from history.
+
+    cost_.fanout *=
+        maybeCardinality.has_value() ? maybeCardinality.value() : 0.8;
+  }
 }
 
 const QGString& Filter::historyKey() const {

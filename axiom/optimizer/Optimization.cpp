@@ -1268,7 +1268,7 @@ void Optimization::joinByHashRight(
   buildColumns.unionObjects(buildInput->columns());
 
   const auto leftJoinType = probe.leftJoinType();
-  const auto fanout = fanoutJoinTypeLimit(leftJoinType, candidate.fanout);
+  auto fanout = fanoutJoinTypeLimit(leftJoinType, candidate.fanout);
 
   // Change the join type to the right join variant.
   const auto rightJoinType = reverseJoinType(leftJoinType);
@@ -1283,8 +1283,15 @@ void Optimization::joinByHashRight(
   ColumnVector columns;
   PlanObjectSet columnSet;
   ColumnCP mark = nullptr;
+  float markTrueFraction = 1;
 
   state.downstreamColumns().forEach<Column>([&](auto column) {
+    if (rightJoinType == velox::core::JoinType::kRightSemiFilter) {
+      fanout = 1.0 / fanout;
+    } else if (rightJoinType == velox::core::JoinType::kRightSemiProject) {
+      markTrueFraction = 1/ fanout;
+      fanout =  state.cost.cardinality < 1 ? 1 : state.cost.cardinality / probePlan->cost.cardinality;
+    }
     if (column == probe.markColumn) {
       mark = column;
       columnSet.add(column);
@@ -1302,7 +1309,7 @@ void Optimization::joinByHashRight(
 
   if (mark) {
     const_cast<Value*>(&mark->value())->trueFraction =
-        std::min<float>(1, candidate.fanout);
+        std::min<float>(1, markTrueFraction);
     columns.push_back(mark);
   }
 
