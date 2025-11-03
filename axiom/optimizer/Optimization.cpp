@@ -328,23 +328,24 @@ void forJoinedTables(const PlanState& state, Func func) {
 }
 
 bool addExtraEdges(PlanState& state, JoinCandidate& candidate) {
-  // See if there are more join edges from the first of 'candidate' to already
-  // placed tables. Fill in the non-redundant equalities into the join edge.
-  // Make a new edge if the edge would be altered.
+  // See if there are more join edges from any of 'candidate' inner joined
+  // tables to already placed tables. Fill in the non-redundant equalities into
+  // the join edge. Make a new edge if the edge would be altered.
   auto* originalJoin = candidate.join;
-  auto* table = candidate.tables[0];
-  for (auto* otherJoin : joinedBy(table)) {
-    if (otherJoin == originalJoin || !otherJoin->isInner()) {
-      continue;
+  for (auto* table : candidate.tables) {
+    for (auto* otherJoin : joinedBy(table)) {
+      if (otherJoin == originalJoin || !otherJoin->isInner()) {
+        continue;
+      }
+      auto [otherTable, fanout] = otherJoin->otherTable(table);
+      if (!state.dt->hasTable(otherTable)) {
+        continue;
+      }
+      if (candidate.isDominantEdge(state, otherJoin)) {
+        break;
+      }
+      candidate.addEdge(state, otherJoin, table);
     }
-    auto [otherTable, fanout] = otherJoin->otherTable(table);
-    if (!state.dt->hasTable(otherTable)) {
-      continue;
-    }
-    if (candidate.isDominantEdge(state, otherJoin)) {
-      return false;
-    }
-    candidate.addEdge(state, otherJoin);
   }
   return true;
 }
@@ -1073,7 +1074,13 @@ void Optimization::joinByHash(
     buildTables.add(buildTable);
   }
 
+  // The build side dt does not need to produce columns that it uses
+  // internally, only the columns that are downstream if we consider
+  // the build to be placed. So, provisionally mark build side tables
+  // as placed for the downstreamColumns().
+  state.placed.unionSet(buildTables);
   buildColumns.intersect(state.downstreamColumns());
+  state.placed.except(buildTables);
   buildColumns.unionColumns(build.keys);
   buildColumns.unionSet(buildFilterColumns);
   state.columns.unionSet(buildColumns);
@@ -1289,8 +1296,10 @@ void Optimization::joinByHashRight(
     if (rightJoinType == velox::core::JoinType::kRightSemiFilter) {
       fanout = 1.0 / fanout;
     } else if (rightJoinType == velox::core::JoinType::kRightSemiProject) {
-      markTrueFraction = 1/ fanout;
-      fanout =  state.cost.cardinality < 1 ? 1 : state.cost.cardinality / probePlan->cost.cardinality;
+      markTrueFraction = 1 / fanout;
+      fanout = state.cost.cardinality < 1
+          ? 1
+          : state.cost.cardinality / probePlan->cost.cardinality;
     }
     if (column == probe.markColumn) {
       mark = column;
@@ -1817,6 +1826,13 @@ void Optimization::makeJoins(RelationOpPtr plan, PlanState& state) {
   std::vector<NextJoin> nextJoins;
   nextJoins.reserve(candidates.size());
   for (auto& candidate : candidates) {
+    if (candidate.tables.size() > 1) {
+      // When there are multiple tables on the build side, we need to consider
+      // all edges that go from already placed tables to the bushy build side.
+      // So far, we have only filled in the edges for the first in
+      // 'candidate.tables'.
+      addExtraEdges(state, candidate);
+    }
     addJoin(candidate, plan, state, nextJoins);
   }
 

@@ -111,10 +111,10 @@ struct JoinCandidate {
   /// Second is the other side.
   std::pair<JoinSide, JoinSide> joinSides() const;
 
-  /// Adds 'edge' to the set of joins between the new table and already placed
+  /// Adds 'edge' to the set of joins between 'joined' and already placed
   /// tables. a.k = b.k and c.k = b.k2 and c.k3 = a.k2. When placing c after a
   /// and b the edges to both a and b must be combined.
-  void addEdge(PlanState& state, JoinEdgeP edge);
+  void addEdge(PlanState& state, JoinEdgeP edge, PlanObjectCP joined);
 
   /// True if 'edge' has all the equalities to placed columns that 'join' of
   /// 'this' has and has more equalities.

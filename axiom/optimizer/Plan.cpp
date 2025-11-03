@@ -449,8 +449,7 @@ bool hasEqual(ExprCP key, const ExprVector& keys) {
 }
 } // namespace
 
-void JoinCandidate::addEdge(PlanState& state, JoinEdgeP edge) {
-  auto* joined = tables[0];
+  void JoinCandidate::addEdge(PlanState& state, JoinEdgeP edge, PlanObjectCP joined) {
   auto newTableSide = edge->sideOf(joined);
   auto newPlacedSide = edge->sideOf(joined, true);
   VELOX_CHECK_NOT_NULL(newPlacedSide.table);
