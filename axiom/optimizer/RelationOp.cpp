@@ -593,6 +593,24 @@ float partialFlushInterval(
 
   return expectedSamples * scalingFactor;
 }
+
+// Predicts the number of distinct values expected after sampling numRows items
+// from a population with numDistinct distinct values.
+// numRows: the count of samples that are initially seen
+// numDistinct: the count of distinct values in the full population
+// numSamples: the total count of samples in the population (unused in basic
+// formula) Returns: predicted number of distinct values seen after numRows
+// inputs
+float expectedNumDistincts(float numRows, float numDistinct) {
+  if (numDistinct <= 0 || numRows <= 0) {
+    return 0.0f;
+  }
+
+  // Using the coupon collector formula:
+  // Expected distinct values = d * (1 - (1 - 1/d)^n)
+  // where d is total distinct values and n is number of samples
+  return numDistinct * (1.0f - std::pow(1.0f - (1.0f / numDistinct), numRows));
+}
 } // namespace
 
 Aggregation::Aggregation(
@@ -618,6 +636,18 @@ Aggregation::Aggregation(
     cardinality *= key->value().cardinality;
   }
 
+  auto* optimization = queryCtx()->optimization();
+  auto& veloxQueryCtx = optimization->veloxQueryCtx();
+  const float maxPartialAggregationMemory =
+      veloxQueryCtx->queryConfig().maxPartialAggregationMemoryUsage();
+  const float abandonPartialAggregationMinRows =
+      veloxQueryCtx->queryConfig().abandonPartialAggregationMinRows();
+  const float abandonPartialAggregationMinPct =
+      veloxQueryCtx->queryConfig().abandonPartialAggregationMinPct();
+
+  const auto& runnerOptions = optimization->runnerOptions();
+  int32_t width = runnerOptions.numWorkers * runnerOptions.numDrivers;
+
   // The estimated output is input minus the times an input is a
   // duplicate of a key already in the input. The cardinality of the
   // result is (d - d * 1 - (1 / d))^n. where d is the number of
@@ -625,13 +655,12 @@ Aggregation::Aggregation(
   // input. This approaches d as n goes to infinity. The chance of one in d
   // being unique after n values is 1 - (1/d)^n.
   auto nOut = cardinality -
-      cardinality *
-          std::pow(1.0F - (1.0F / cardinality), inputBeforePartial);
+      cardinality * std::pow(1.0F - (1.0F / cardinality), inputBeforePartial);
 
   auto numKeys = groupingKeys.size();
   float rowBytes =
       byteSize(groupingKeys) + byteSize(aggregates) + Costs::kHashRowBytes;
-  float partialCapacity = (16 << 20) / rowBytes;
+  float partialCapacity = maxPartialAggregationMemory / rowBytes;
   if (partialCapacity > nOut) {
     partialCapacity = nOut;
   }
@@ -639,10 +668,18 @@ Aggregation::Aggregation(
       ? partialCapacity
       : nOut;
   auto aggCost = aggregates.size() * 2 + 2 * Costs::hashProbeCost(maxInTable);
+
+  float initialDistincts =
+      expectedNumDistincts(abandonPartialAggregationMinRows, nOut);
   float partialInput =
       partialFlushInterval(inputBeforePartial, nOut, partialCapacity);
   float partialFanout = partialCapacity / partialInput;
-  if (inputBeforePartial > nOut * 5 && partialFanout > 0.8) {
+
+  if ((inputBeforePartial > abandonPartialAggregationMinRows * width &&
+       initialDistincts > abandonPartialAggregationMinRows *
+               (abandonPartialAggregationMinPct / 100)) ||
+      inputBeforePartial > nOut * 5 &&
+          partialFanout > (abandonPartialAggregationMinPct / 100)) {
     // Partial agg does not reduce.
     partialFanout = 1;
   }
@@ -658,8 +695,9 @@ Aggregation::Aggregation(
   } else {
     cost_.totalBytes = nOut * rowBytes;
     auto in = cost_.inputCardinality / partialFanout;
-    cost_.unitCost = Costs::kHashColumnCost * numKeys +
-        Costs::hashProbeCost(nOut) + aggCost;
+    cost_.unitCost =
+      Costs::kHashColumnCost * numKeys + Costs::hashProbeCost(nOut) + aggCost;
+    cost_.fanout = nOut / (inputBeforePartial * partialFanout);
   }
 }
 

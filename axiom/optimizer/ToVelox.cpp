@@ -1297,6 +1297,7 @@ velox::core::PlanNodePtr ToVelox::makeRepartition(
             exchangeSerdeKind_,
             sourcePlan);
   }
+    makePredictionAndHistory(source.fragment.planNode->id(), &repartition);
 
   if (exchange == nullptr) {
     exchange = std::make_shared<velox::core::ExchangeNode>(

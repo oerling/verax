@@ -588,6 +588,79 @@ TEST_F(TpchPlanTest, DISABLED_makePlans) {
   }
 }
 
+TEST_F(TpchPlanTest, supplierAggregationJoin) {
+  auto sql =
+      "select s_name, s_acctbal, volume "
+      "from (select l_suppkey, sum(l_quantity) as volume from lineitem group by l_suppkey), supplier "
+      "where s_suppkey = l_suppkey and s_acctbal < 100";
+
+  // Parse SQL to logical plan
+  ::axiom::sql::presto::PrestoParser prestoParser(
+      exec::test::kHiveConnectorId, pool());
+  auto statement = prestoParser.parse(sql);
+  ASSERT_TRUE(statement->isSelect());
+  auto logicalPlan =
+      statement->as<::axiom::sql::presto::SelectStatement>()->plan();
+  ASSERT_NE(logicalPlan, nullptr);
+
+  // Plan SQL to Velox and check for semijoin pattern
+  auto sqlPlan = planVelox(logicalPlan, {.numWorkers = 1, .numDrivers = 1});
+  ASSERT_EQ(1, sqlPlan.plan->fragments().size());
+  auto sqlPlanNode = sqlPlan.plan->fragments().at(0).fragment.planNode;
+
+  // Check that the plan contains aggregation above filter semijoin
+  checkPlanText(
+      sqlPlanNode,
+      {
+          "Aggregation",
+          "LEFT SEMI \\(FILTER\\)"
+      });
+
+  // Create reference query using Velox PlanBuilder:
+  // - Scan lineitem (l_suppkey, l_quantity), aggregate on l_suppkey with sum of l_quantity
+  // - Hash join with supplier (s_suppkey, s_name, s_acctbal) filtered by s_acctbal < 100
+  // - Join on l_suppkey = s_suppkey
+  using namespace facebook::velox;
+
+  auto lineitemType = ROW({
+      {"l_suppkey", BIGINT()},
+      {"l_quantity", DOUBLE()}
+  });
+
+  auto supplierType = ROW({
+      {"s_suppkey", BIGINT()},
+      {"s_name", VARCHAR()},
+      {"s_acctbal", DOUBLE()}
+  });
+
+  // Build left side: lineitem scan -> aggregation
+  auto leftPlan = exec::test::PlanBuilder(pool())
+      .tableScan(lineitemType)
+      .singleAggregation({"l_suppkey"}, {"sum(l_quantity)"})
+      .planNode();
+
+  // Build right side: supplier scan -> filter
+  auto rightPlan = exec::test::PlanBuilder(pool())
+      .tableScan(supplierType)
+      .filter("s_acctbal < 100.0")
+      .planNode();
+
+  // Build full plan: hash join -> project
+  auto referencePlan = exec::test::PlanBuilder(pool())
+      .localPartition({}, {leftPlan})
+      .hashJoin(
+          {"l_suppkey"},
+          {"s_suppkey"},
+          rightPlan,
+          "",
+          {"s_name", "s_acctbal", "a0"})
+      .project({"s_name", "s_acctbal", "a0 as volume"})
+      .planNode();
+
+  // Check that SQL and reference plan produce same results
+  checkSame(logicalPlan, referencePlan);
+}
+
 } // namespace
 } // namespace facebook::axiom::optimizer
 

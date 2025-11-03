@@ -15,6 +15,8 @@
  */
 
 #include "axiom/optimizer/tests/QueryTestBase.h"
+#include <re2/re2.h>
+#include <sstream>
 #include "axiom/connectors/SchemaResolver.h"
 #include "axiom/optimizer/Optimization.h"
 #include "axiom/optimizer/Plan.h"
@@ -278,6 +280,79 @@ velox::core::PlanNodePtr QueryTestBase::toSingleNodePlan(
 
   EXPECT_EQ(1, plan->fragments().size());
   return plan->fragments().at(0).fragment.planNode;
+}
+
+void QueryTestBase::checkPlanText(
+    const velox::core::PlanNodePtr& plan,
+    const std::vector<std::string>& expected,
+    bool negative) {
+  // Convert plan to string with details
+  auto planString = plan->toString(true, true);
+
+  // Split into lines
+  std::vector<std::string> lines;
+  std::istringstream stream(planString);
+  std::string line;
+  while (std::getline(stream, line)) {
+    lines.push_back(line);
+  }
+
+  // Search for patterns in order
+  size_t currentLine = 0;
+  size_t matchedPattern = 0;
+  int lastMatchLine = -1;
+
+  for (size_t i = 0; i < expected.size(); ++i) {
+    RE2 pattern(expected[i]);
+    if (!pattern.ok()) {
+      FAIL() << "Invalid regex pattern at index " << i << ": " << expected[i]
+             << " - " << pattern.error();
+      return;
+    }
+
+    bool found = false;
+    for (size_t lineIdx = currentLine; lineIdx < lines.size(); ++lineIdx) {
+      if (RE2::PartialMatch(lines[lineIdx], pattern)) {
+        found = true;
+        lastMatchLine = lineIdx;
+        currentLine = lineIdx + 1;
+        matchedPattern = i + 1;
+        break;
+      }
+    }
+
+    if (!found) {
+      // Pattern not found
+      if (!negative) {
+        // Expected to find all patterns - fail
+        std::string errorMsg = fmt::format(
+            "Pattern {} not found: '{}'\n",
+            i,
+            expected[i]);
+        if (lastMatchLine >= 0) {
+          errorMsg += fmt::format(
+              "Previous pattern ({}) matched at line {}\n",
+              i - 1,
+              lastMatchLine);
+        }
+        errorMsg += fmt::format("\nFull plan:\n{}", planString);
+        FAIL() << errorMsg;
+      } else {
+        // Expected NOT to find all patterns - success (at least one missing)
+        return;
+      }
+    }
+  }
+
+  // All patterns were found in order
+  if (negative) {
+    // Expected NOT to find all patterns - fail
+    FAIL() << fmt::format(
+        "All {} patterns were found in order (expected them NOT to be found):\n{}",
+        expected.size(),
+        planString);
+  }
+  // else: success (all patterns found and negative=false)
 }
 
 } // namespace facebook::axiom::optimizer::test
