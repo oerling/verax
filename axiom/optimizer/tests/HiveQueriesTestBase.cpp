@@ -57,7 +57,7 @@ RowTypePtr HiveQueriesTestBase::getSchema(std::string_view tableName) {
       ->type();
 }
 
-void HiveQueriesTestBase::checkResults(
+  axiom::optimizer::PlanAndStats HiveQueriesTestBase::checkResults(
     std::string_view sql,
     const core::PlanNodePtr& referencePlan) {
   SCOPED_TRACE(sql);
@@ -65,11 +65,13 @@ void HiveQueriesTestBase::checkResults(
 
   auto statement = prestoParser_->parse(sql);
 
-  ASSERT_TRUE(statement->isSelect());
+  VELOX_CHECK(statement->isSelect());
   auto logicalPlan =
       statement->as<::axiom::sql::presto::SelectStatement>()->plan();
 
-  checkSame(logicalPlan, referencePlan);
+  auto plan = planVelox(logicalPlan, {.numWorkers = 1, .numDrivers = 1});
+  checkSame(plan, referencePlan);
+  return plan;
 }
 
 void HiveQueriesTestBase::checkResults(

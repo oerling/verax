@@ -36,7 +36,7 @@ class HiveQueriesTestBase : public test::QueryTestBase {
   /// Returns a schema of a TPC-H table.
   velox::RowTypePtr getSchema(std::string_view tableName);
 
-  void checkResults(
+  axiom::optimizer::PlanAndStats checkResults(
       std::string_view sql,
       const velox::core::PlanNodePtr& referencePlan);
 
