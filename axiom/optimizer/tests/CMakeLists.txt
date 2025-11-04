@@ -124,7 +124,7 @@ target_link_libraries(
   GTest::gtest_main
 )
 
-add_executable(axiom_sql AxiomSql.cpp linenoise/linenoise.c)
+add_executable(axiom_sql AxiomSql.cpp Console.cpp SqlQueryRunner.cpp linenoise/linenoise.c)
 
 target_link_libraries(
   axiom_sql

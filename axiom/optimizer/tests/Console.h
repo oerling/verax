@@ -13,21 +13,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#pragma once
 
-#include <folly/init/Init.h>
-#include <gflags/gflags.h>
-#include "axiom/optimizer/tests/Console.h"
 #include "axiom/optimizer/tests/SqlQueryRunner.h"
 
-int main(int argc, char** argv) {
-  folly::Init init(&argc, &argv, false);
+DECLARE_string(data_path);
+DECLARE_string(data_format);
 
-  axiom::sql::SqlQueryRunner runner;
-  runner.initialize(FLAGS_data_path, FLAGS_data_format);
+namespace axiom::sql {
 
-  axiom::sql::Console console{runner};
-  console.initialize();
-  console.run();
+class Console {
+ public:
+  explicit Console(SqlQueryRunner& runner) : runner_{runner} {}
 
-  return 0;
-}
+  void initialize();
+
+  void run();
+
+ private:
+  void runNoThrow(std::string_view sql);
+
+  void readCommands(const std::string& prompt);
+
+  SqlQueryRunner& runner_;
+};
+
+} // namespace axiom::sql

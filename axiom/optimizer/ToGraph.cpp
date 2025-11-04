@@ -179,7 +179,7 @@ ExprCP ToGraph::tryFoldConstant(
     auto typedExpr = queryCtx()->optimization()->toTypedExpr(call);
     auto exprSet = evaluator_.compile(typedExpr);
     const auto& first = *exprSet->exprs().front();
-    if (first.specialFormKind() != velox::exec::SpecialFormKind::kConstant) {
+    if (!first.isConstant()) {
       return nullptr;
     }
     const auto& constantExpr =
@@ -1723,28 +1723,25 @@ void ToGraph::addFilter(const lp::FilterNode& filter) {
     };
 
     translateConjuncts(filter.predicate(), flat);
-
+  }
+  {
     PlanObjectSet tables = currentDt_->tableSet;
     tables.add(currentDt_);
-    for (auto it = flat.begin(); it != flat.end();) {
-      const auto* conjunct = *it;
+    std::erase_if(flat, [&](const auto* conjunct) {
       if (conjunct->allTables().isSubset(tables)) {
-        ++it;
-      } else {
-        correlatedConjuncts_.push_back(conjunct);
-        it = flat.erase(it);
+        return false;
       }
-    }
+      correlatedConjuncts_.push_back(conjunct);
+      return true;
+    });
   }
 
-  if (!flat.empty()) {
-    if (currentDt_->hasAggregation()) {
-      currentDt_->having.insert(
-          currentDt_->having.end(), flat.begin(), flat.end());
-    } else {
-      currentDt_->conjuncts.insert(
-          currentDt_->conjuncts.end(), flat.begin(), flat.end());
-    }
+  if (currentDt_->hasAggregation()) {
+    currentDt_->having.insert(
+        currentDt_->having.end(), flat.begin(), flat.end());
+  } else {
+    currentDt_->conjuncts.insert(
+        currentDt_->conjuncts.end(), flat.begin(), flat.end());
   }
 }
 
