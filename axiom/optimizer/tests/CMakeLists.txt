@@ -44,7 +44,7 @@ target_link_libraries(
   gtest_main
 )
 
-add_library(axiom_optimizer_tests_plan_matcher PlanMatcher.cpp)
+add_library(axiom_optimizer_tests_plan_matcher PlanMatcher.cpp PlanMatcherGenerator.cpp)
 
 target_link_libraries(
   axiom_optimizer_tests_plan_matcher
@@ -94,6 +94,7 @@ add_executable(
   HiveQueriesTest.cpp
   PrecomputeProjectionTest.cpp
   PlanTest.cpp
+  PlanMatcherGeneratorTest.cpp
   RelationOpPrinterTest.cpp
   UnnestTest.cpp
   ParquetTpchTest.cpp
