@@ -287,6 +287,7 @@ std::string SqlQueryRunner::runExplain(
     case presto::ExplainStatement::Type::kExecutable:
       return optimize(statement.plan(), newQuery(options), options).toString();
   }
+  VELOX_UNREACHABLE();
 }
 
 namespace {
@@ -437,7 +438,7 @@ optimizer::PlanAndStats SqlQueryRunner::optimize(
 
   auto session = std::make_shared<Session>(queryCtx->queryId());
 
-  axiom::optimizer::OptimizerOptions optimizerOptions;
+  optimizer::OptimizerOptions optimizerOptions;
   optimizerOptions.traceFlags = options.optimizerTraceFlags;
   optimizerOptions.enableReducingExistences = options.enableReducingExistences;
 

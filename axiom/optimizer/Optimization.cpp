@@ -1825,7 +1825,7 @@ void Optimization::makeJoins(RelationOpPtr plan, PlanState& state) {
     }
 
     addPostprocess(dt, plan, state);
-    auto kept = state.plans.addPlan(plan, state);
+    auto kept = state.plans.addPlan(plan, state, isSingleWorker_);
     trace(
         kept ? OptimizerOptions::kRetained : OptimizerOptions::kExceededBest,
         dt->id(),

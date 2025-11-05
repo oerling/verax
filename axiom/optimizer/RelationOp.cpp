@@ -470,8 +470,9 @@ std::string Join::toString(bool recursive, bool detail) const {
       << joinTypeLabel(joinType);
   printCost(detail, out);
   if (detail) {
-    out << "left: " << itemsToString(leftKeys.data(), leftKeys.size()) << " = right: "
-	<< itemsToString(rightKeys.data(), rightKeys.size()) << std::endl;
+    out << "left: " << itemsToString(leftKeys.data(), leftKeys.size())
+        << " = right: " << itemsToString(rightKeys.data(), rightKeys.size())
+        << std::endl;
     out << "columns: " << itemsToString(columns().data(), columns().size())
         << std::endl;
   }
@@ -562,36 +563,34 @@ Unnest::Unnest(
 }
 
 namespace {
-float partialFlushInterval(
-    float totalInput,
-    float numDistinct,
-    float maxDistinct) {
+double partialFlushInterval(
+    double totalInput,
+    double numDistinct,
+    double maxDistinct) {
   // Handle edge cases
   if (maxDistinct >= numDistinct) {
     return totalInput;
   }
-  if (maxDistinct <= 0) {
-    return 0.0f;
-  }
+  VELOX_CHECK_GT(maxDistinct, 0);
 
   // The expected number of samples to see k out of n distinct values
   // follows from the coupon collector problem:
   // E[k] = n * (1/n + 1/(n-1) + ... + 1/(n-k+1))
 
-  float n = numDistinct;
-  float k = maxDistinct;
+  double n = numDistinct;
+  double k = maxDistinct;
 
   // Approximate the partial harmonic sum using logarithms (constant time):
   // H(n,k) = Σ(i=0 to k-1) 1/(n-i) ≈ ln(n) - ln(n-k) = ln(n/(n-k))
   // This uses the integral approximation: ∫_{n-k}^n 1/x dx
-  float harmonicSum = std::log(n / (n - k));
+  double harmonicSum = std::log(n / (n - k));
 
   // Expected number of samples in a uniform distribution
-  float expectedSamples = n * harmonicSum;
+  double expectedSamples = n * harmonicSum;
 
   // Scale by the ratio of total input to distinct values
   // to account for non-uniform distribution
-  float scalingFactor = totalInput / numDistinct;
+  double scalingFactor = totalInput / numDistinct;
 
   return expectedSamples * scalingFactor;
 }
@@ -603,7 +602,7 @@ float partialFlushInterval(
 // numSamples: the total count of samples in the population (unused in basic
 // formula) Returns: predicted number of distinct values seen after numRows
 // inputs
-float expectedNumDistincts(float numRows, float numDistinct) {
+double expectedNumDistincts(double numRows, double numDistinct) {
   if (numDistinct <= 0 || numRows <= 0) {
     return 0.0f;
   }
@@ -611,7 +610,7 @@ float expectedNumDistincts(float numRows, float numDistinct) {
   // Using the coupon collector formula:
   // Expected distinct values = d * (1 - (1 - 1/d)^n)
   // where d is total distinct values and n is number of samples
-  return numDistinct * (1.0f - std::pow(1.0f - (1.0f / numDistinct), numRows));
+  return numDistinct * (1.0 - std::pow(1.0 - (1.0 / numDistinct), numRows));
 }
 } // namespace
 
@@ -633,9 +632,9 @@ Aggregation::Aggregation(
       ? partial->cost_.inputCardinality
       : cost_.inputCardinality;
 
-  float cardinality = 1;
+  double maxCardinality = 1;
   for (auto key : groupingKeys) {
-    cardinality *= key->value().cardinality;
+    maxCardinality *= key->value().cardinality;
   }
 
   auto* optimization = queryCtx()->optimization();
@@ -656,8 +655,7 @@ Aggregation::Aggregation(
   // potentially distinct keys and n is the number of elements in the
   // input. This approaches d as n goes to infinity. The chance of one in d
   // being unique after n values is 1 - (1/d)^n.
-  auto nOut = cardinality -
-      cardinality * std::pow(1.0F - (1.0F / cardinality), inputBeforePartial);
+  auto nOut = expectedNumDistincts(maxCardinality, inputBeforePartial);
 
   auto numKeys = groupingKeys.size();
   float rowBytes =
@@ -671,11 +669,11 @@ Aggregation::Aggregation(
       : nOut;
   auto aggCost = aggregates.size() * 2 + 2 * Costs::hashProbeCost(maxInTable);
 
-  float initialDistincts =
+  auto initialDistincts =
       expectedNumDistincts(abandonPartialAggregationMinRows, nOut);
-  float partialInput =
+  auto partialInput =
       partialFlushInterval(inputBeforePartial, nOut, partialCapacity);
-  float partialFanout = partialCapacity / partialInput;
+  auto partialFanout = partialCapacity / partialInput;
 
   if ((inputBeforePartial > abandonPartialAggregationMinRows * width &&
        initialDistincts > abandonPartialAggregationMinRows *
@@ -945,7 +943,20 @@ OrderBy::OrderBy(
       limit{limit},
       offset{offset} {
   cost_.inputCardinality = inputCardinality();
-  cost_.fanout = 1;
+  if (limit == -1) {
+    cost_.fanout = 1;
+  } else {
+    const auto cardinality = static_cast<float>(limit);
+    if (cost_.inputCardinality <= cardinality) {
+      // Input cardinality does not exceed the limit. The limit is no-op.
+      // Doesn't change cardinality.
+      cost_.fanout = 1;
+    } else {
+      // Input cardinality exceeds the limit. Calculate fanout to ensure that
+      // fanout * limit = input-cardinality.
+      cost_.fanout = cardinality / cost_.inputCardinality;
+    }
+  }
 
   // TODO Fill in cost_.unitCost and others.
 }

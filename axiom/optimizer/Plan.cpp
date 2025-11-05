@@ -134,6 +134,9 @@ std::string Plan::toString(bool detail) const {
 void PlanState::addCost(RelationOp& op) {
   cost.cost += op.cost().totalCost();
   cost.cardinality = op.cost().resultCardinality();
+  if (std::isnan(cost.cost) || std::isnan(cost.cardinality)) {
+    printf("bing\n");
+  }
 }
 
 bool PlanState::mayConsiderNext(PlanObjectCP table) const {
@@ -311,9 +314,9 @@ std::string PlanState::printPlan(RelationOpPtr op, bool detail) const {
   return plan->toString(detail);
 }
 
-PlanP PlanSet::addPlan(RelationOpPtr plan, PlanState& state) {
+  PlanP PlanSet::addPlan(RelationOpPtr plan, PlanState& state, bool isSingleWorker) {
   int32_t replaceIndex = -1;
-  const float shuffle = shuffleCost(plan->columns()) * state.cost.cardinality;
+  const float shuffle = isSingleWorker ? 0 : shuffleCost(plan->columns()) * state.cost.cardinality;
 
   if (!plans.empty()) {
     // Compare with existing. If there is one with same distribution and new is

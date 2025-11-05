@@ -96,9 +96,14 @@ struct PlanSet {
   }
 
   /// Compares 'plan' to already seen plans and retains it if it is
-  /// interesting, e.g. better than the best so far or has an interesting
-  /// order. Returns the plan if retained, nullptr if not.
-  PlanP addPlan(RelationOpPtr plan, PlanState& state);
+  /// interesting, e.g. better than the best so far or has an
+  /// interesting order or distribution. Returns the plan if retained,
+  /// nullptr if not. If 'isSingleWorker' is true, does not consider
+  /// the cost of shuffling the result when comparing plan costs,
+  /// i.e. if a plan + shuffle is cheaper than than an existing plan
+  /// with a different distribution, then the new cheaper plan always
+  /// wins.
+  PlanP addPlan(RelationOpPtr plan, PlanState& state, bool isSingleWorker);
 };
 
 /// Represents the next table/derived table to join. May consist of several

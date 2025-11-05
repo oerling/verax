@@ -125,6 +125,11 @@ struct Costs {
   /// Minimal cost of calling a filter function, e.g. comparing two numeric
   /// exprss.
   static constexpr float kMinimumFilterCost = 2;
+
+  // Multiplier to apply to shuffle byte volume to get CPU cost. A
+  // complete cost model will need to consider the count of
+  // destinations, number of partition keys etc.
+  static constexpr float kByteShuffleCost = 0.3;
 };
 
 /// Returns shuffle cost for a single row. Depends on the number of types of
