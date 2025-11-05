@@ -1995,7 +1995,7 @@ PlanP Optimization::makeDtPlan(
   return plans->best(distribution, needsShuffle);
 }
 
-             ExprCP Optimization::combineLeftDeep(Name func, const ExprVector& exprs) {
+ExprCP Optimization::combineLeftDeep(Name func, const ExprVector& exprs) {
   ExprVector copy = exprs;
   std::ranges::sort(copy, [&](ExprCP left, ExprCP right) {
     return left->id() < right->id();

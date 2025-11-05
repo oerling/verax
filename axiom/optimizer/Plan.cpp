@@ -314,9 +314,14 @@ std::string PlanState::printPlan(RelationOpPtr op, bool detail) const {
   return plan->toString(detail);
 }
 
-  PlanP PlanSet::addPlan(RelationOpPtr plan, PlanState& state, bool isSingleWorker) {
+PlanP PlanSet::addPlan(
+    RelationOpPtr plan,
+    PlanState& state,
+    bool isSingleWorker) {
   int32_t replaceIndex = -1;
-  const float shuffle = isSingleWorker ? 0 : shuffleCost(plan->columns()) * state.cost.cardinality;
+  const float shuffle = isSingleWorker
+      ? 0
+      : shuffleCost(plan->columns()) * state.cost.cardinality;
 
   if (!plans.empty()) {
     // Compare with existing. If there is one with same distribution and new is
@@ -452,7 +457,10 @@ bool hasEqual(ExprCP key, const ExprVector& keys) {
 }
 } // namespace
 
-  void JoinCandidate::addEdge(PlanState& state, JoinEdgeP edge, PlanObjectCP joined) {
+void JoinCandidate::addEdge(
+    PlanState& state,
+    JoinEdgeP edge,
+    PlanObjectCP joined) {
   auto newTableSide = edge->sideOf(joined);
   auto newPlacedSide = edge->sideOf(joined, true);
   VELOX_CHECK_NOT_NULL(newPlacedSide.table);

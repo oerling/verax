@@ -509,7 +509,7 @@ bool DerivedTable::isWrapOnly() const {
       !hasLimit() && !hasOrderBy() && conjuncts.empty() && !hasAggregation() &&
       exprs.empty();
 }
-  
+
 ExprCP DerivedTable::exportExpr(ExprCP expr) {
   return replaceInputs(expr, exprs, columns);
 }

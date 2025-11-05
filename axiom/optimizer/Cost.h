@@ -105,11 +105,12 @@ struct Costs {
                                : kLargeHashCost;
   }
 
-  static float  hashBuildCost(float cardinality) {
-    // To build, a row is written once and read at least once. A write is ~2 redreads.
+  static float hashBuildCost(float cardinality) {
+    // To build, a row is written once and read at least once. A write is ~2
+    // redreads.
     return 3 * hashProbeCost(cardinality);
   }
-  
+
   static constexpr float kKeyCompareCost =
       6; // ~30 instructions to find, decode and an compare
   static constexpr float kArrayProbeCost = 2; // ~10 instructions.
@@ -124,12 +125,14 @@ struct Costs {
   /// Cost of getting a column from a hash table
   static constexpr float kHashExtractColumnCost = 0.3;
 
-  /// Cost of sum/min/max. A little more than getting a value from the a hash table.
+  /// Cost of sum/min/max. A little more than getting a value from the a hash
+  /// table.
   static constexpr float kSimpleAggregateCost = kHashExtractColumnCost * 1.5;
 
-  /// Bytes of overhead for a hash table row: ~12 bytes for the table and ~12 bytes for the row.
+  /// Bytes of overhead for a hash table row: ~12 bytes for the table and ~12
+  /// bytes for the row.
   static constexpr float kHashRowBytes = 24;
-  
+
   /// Minimal cost of calling a filter function, e.g. comparing two numeric
   /// exprss.
   static constexpr float kMinimumFilterCost = 2;
