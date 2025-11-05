@@ -25,6 +25,7 @@
 #include "velox/expression/ExprToSubfieldFilter.h"
 #include "velox/expression/ScopedVarSetter.h"
 #include "velox/vector/VariantToVector.h"
+#include <iostream>
 
 namespace facebook::axiom::optimizer {
 
@@ -229,6 +230,11 @@ PlanAndStats ToVelox::toVeloxPlan(
     const runner::MultiFragmentPlan::Options& options) {
   options_ = options;
 
+  auto* opt = queryCtx()->optimization();
+  if ((opt->options().traceFlags & OptimizerOptions::kRetained) != 0) {
+    std::cout << "Velox Plan: " << plan->toString(true, false) << std::endl;
+  }
+  
   prediction_.clear();
   nodeHistory_.clear();
 

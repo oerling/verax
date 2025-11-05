@@ -632,10 +632,7 @@ Aggregation::Aggregation(
       ? partial->cost_.inputCardinality
       : cost_.inputCardinality;
 
-  double maxCardinality = 1;
-  for (auto key : groupingKeys) {
-    maxCardinality *= key->value().cardinality;
-  }
+  auto numKeys = groupingKeys.size();
 
   auto* optimization = queryCtx()->optimization();
   auto& veloxQueryCtx = optimization->veloxQueryCtx();
@@ -649,15 +646,48 @@ Aggregation::Aggregation(
   const auto& runnerOptions = optimization->runnerOptions();
   int32_t width = runnerOptions.numWorkers * runnerOptions.numDrivers;
 
+  if (numKeys > 0) {
+    setCostWithGroups(
+        inputBeforePartial,
+        width,
+        maxPartialAggregationMemory,
+        abandonPartialAggregationMinRows,
+        abandonPartialAggregationMinPct);
+  } else {
+    // Global aggregation (no grouping keys)
+    // Avoid division by zero
+    float safeInputCardinality = std::max(1.0f, static_cast<float>(cost_.inputCardinality));
+
+      cost_.unitCost = aggregates.size() * Costs::kSimpleAggregateCost;
+      cost_.fanout = 1.0f / safeInputCardinality;
+
+  }
+}
+
+void Aggregation::setCostWithGroups(
+    int64_t inputBeforePartial,
+    int32_t width,
+    float maxPartialAggregationMemory,
+    float abandonPartialAggregationMinRows,
+    float abandonPartialAggregationMinPct) {
+  // Avoid division by zero
+  float safeInputBeforePartial = std::max(1.0f, static_cast<float>(inputBeforePartial));
+
+  auto numKeys = groupingKeys.size();
+
+  double maxCardinality = 1;
+  for (auto key : groupingKeys) {
+    maxCardinality *= key->value().cardinality;
+  }
+
   // The estimated output is input minus the times an input is a
   // duplicate of a key already in the input. The cardinality of the
   // result is (d - d * 1 - (1 / d))^n. where d is the number of
   // potentially distinct keys and n is the number of elements in the
   // input. This approaches d as n goes to infinity. The chance of one in d
   // being unique after n values is 1 - (1/d)^n.
-  auto nOut = expectedNumDistincts(maxCardinality, inputBeforePartial);
+  auto nOut = expectedNumDistincts(maxCardinality, safeInputBeforePartial);
 
-  auto numKeys = groupingKeys.size();
   float rowBytes =
       byteSize(groupingKeys) + byteSize(aggregates) + Costs::kHashRowBytes;
   float partialCapacity = maxPartialAggregationMemory / rowBytes;
@@ -667,18 +697,18 @@ Aggregation::Aggregation(
   auto maxInTable = step == velox::core::AggregationNode::Step::kPartial
       ? partialCapacity
       : nOut;
-  auto aggCost = aggregates.size() * 2 + 2 * Costs::hashProbeCost(maxInTable);
+  auto aggCost = aggregates.size() * Costs::kSimpleAggregateCost + 2 * Costs::hashProbeCost(maxInTable);
 
   auto initialDistincts =
       expectedNumDistincts(abandonPartialAggregationMinRows, nOut);
   auto partialInput =
-      partialFlushInterval(inputBeforePartial, nOut, partialCapacity);
+      partialFlushInterval(safeInputBeforePartial, nOut, partialCapacity);
   auto partialFanout = partialCapacity / partialInput;
 
-  if ((inputBeforePartial > abandonPartialAggregationMinRows * width &&
+  if ((safeInputBeforePartial > abandonPartialAggregationMinRows * width &&
        initialDistincts > abandonPartialAggregationMinRows *
                (abandonPartialAggregationMinPct / 100)) ||
-      inputBeforePartial > nOut * 5 &&
+      safeInputBeforePartial > nOut * 5 &&
           partialFanout > (abandonPartialAggregationMinPct / 100)) {
     // Partial agg does not reduce.
     partialFanout = 1;
@@ -697,7 +727,7 @@ Aggregation::Aggregation(
     auto in = cost_.inputCardinality / partialFanout;
     cost_.unitCost =
         Costs::kHashColumnCost * numKeys + Costs::hashProbeCost(nOut) + aggCost;
-    cost_.fanout = nOut / (inputBeforePartial * partialFanout);
+    cost_.fanout = nOut / (safeInputBeforePartial * partialFanout);
   }
 }
 

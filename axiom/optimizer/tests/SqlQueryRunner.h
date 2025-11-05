@@ -42,7 +42,8 @@ class SqlQueryRunner {
     uint64_t splitTargetBytes{16 << 20};
     uint32_t optimizerTraceFlags{0};
     bool enableReducingExistences{true};
-    bool includeCustomStats{false};
+    bool includeRuntimeStats{false};
+    bool syntacticJoinOrder{false};
   };
 
   SqlResult run(std::string_view sql, const RunOptions& options);

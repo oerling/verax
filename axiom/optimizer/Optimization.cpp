@@ -56,7 +56,6 @@ Optimization::Optimization(
   toGraph_.setDtOutput(root_, *logicalPlan_);
 }
 
-// static
 PlanAndStats Optimization::toVeloxPlan(
     const logical_plan::LogicalPlanNode& logicalPlan,
     velox::memory::MemoryPool& pool,
@@ -89,6 +88,7 @@ PlanAndStats Optimization::toVeloxPlan(
       std::move(runnerOptions)};
 
   auto best = opt.bestPlan();
+  opt.trace(OptimizerOptions::kRetained, 0, best->cost, *best->op);
   return opt.toVeloxPlan(best->op);
 }
 

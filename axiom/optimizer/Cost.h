@@ -119,6 +119,9 @@ struct Costs {
   /// Cost of getting a column from a hash table
   static constexpr float kHashExtractColumnCost = 0.3;
 
+  /// Cost of sum/min/max. A little more than getting a value from the a hash table.
+  static constexpr float kSimpleAggregateCost = kHashExtractColumnCost * 1.5;
+
   /// Bytes of overhead for a hash table row: ~12 bytes for the table and ~12 bytes for the row.
   static constexpr float kHashRowBytes = 24;
   

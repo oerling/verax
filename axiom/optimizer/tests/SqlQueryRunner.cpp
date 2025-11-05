@@ -294,7 +294,7 @@ namespace {
 std::string printPlanWithStats(
     runner::LocalRunner& runner,
     const optimizer::NodePredictionMap& estimates,
-    bool includeCustomStats = false) {
+    bool includeRuntimeStats = false) {
   // Calculate predicted CPU total
   float predictedCpu = 0;
   for (auto& pair : estimates) {
@@ -346,7 +346,7 @@ std::string printPlanWithStats(
   });
 
   // Print runtime stats grouped by operator if requested
-  if (includeCustomStats) {
+  if (includeRuntimeStats) {
     result << "\n" << std::string(80, '=') << "\n";
     result << "Runtime Stats by Operator:\n";
     result << std::string(80, '=') << "\n";
@@ -409,7 +409,7 @@ std::string SqlQueryRunner::runExplainAnalyze(
 
   std::stringstream out;
   out << printPlanWithStats(
-      *runner, planAndStats.prediction, options.includeCustomStats);
+      *runner, planAndStats.prediction, options.includeRuntimeStats);
 
   return out.str();
 }
@@ -441,6 +441,7 @@ optimizer::PlanAndStats SqlQueryRunner::optimize(
   optimizer::OptimizerOptions optimizerOptions;
   optimizerOptions.traceFlags = options.optimizerTraceFlags;
   optimizerOptions.enableReducingExistences = options.enableReducingExistences;
+  optimizerOptions.syntacticJoinOrder = options.syntacticJoinOrder;
 
   optimizer::Optimization optimization(
       session,
