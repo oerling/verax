@@ -816,7 +816,7 @@ HashBuild::HashBuild(RelationOpPtr input, ExprVector keysVector, PlanP plan)
   const auto numKeys = static_cast<float>(keys.size());
   const auto numColumns = static_cast<float>(columns().size());
   cost_.unitCost = numKeys * Costs::kHashColumnCost +
-      Costs::hashProbeCost(cost_.inputCardinality) +
+      Costs::hashBuildCost(cost_.inputCardinality) +
       numColumns * Costs::kHashExtractColumnCost * 2;
   cost_.totalBytes = cost_.inputCardinality * byteSize(columns());
 }

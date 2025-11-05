@@ -105,6 +105,11 @@ struct Costs {
                                : kLargeHashCost;
   }
 
+  static float  hashBuildCost(float cardinality) {
+    // To build, a row is written once and read at least once. A write is ~2 redreads.
+    return 3 * hashProbeCost(cardinality);
+  }
+  
   static constexpr float kKeyCompareCost =
       6; // ~30 instructions to find, decode and an compare
   static constexpr float kArrayProbeCost = 2; // ~10 instructions.

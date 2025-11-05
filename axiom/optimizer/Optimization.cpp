@@ -203,17 +203,16 @@ void reducingJoinsRecursive(
   }
 }
 
-  bool allowReducingInnerJoins(const JoinCandidate& candidate) {
-    if (!candidate.join->isInner()) {
-      return false;
-    }
-    if(candidate.tables[0]->is(PlanType::kDerivedTableNode)) {
-      return false;
+bool allowReducingInnerJoins(const JoinCandidate& candidate) {
+  if (!candidate.join->isInner()) {
+    return false;
+  }
+  if (candidate.tables[0]->is(PlanType::kDerivedTableNode)) {
+    return false;
   }
   return true;
 }
 
-  
 // For an inner join, see if can bundle reducing joins on the build.
 std::optional<JoinCandidate> reducingJoins(
     const PlanState& state,
@@ -1286,7 +1285,6 @@ void Optimization::joinByHashRight(
   buildColumns.unionObjects(buildInput->columns());
 
   const auto leftJoinType = probe.leftJoinType();
-  auto fanout = fanoutJoinTypeLimit(leftJoinType, candidate.fanout);
 
   // Change the join type to the right join variant.
   const auto rightJoinType = reverseJoinType(leftJoinType);
@@ -1294,24 +1292,39 @@ void Optimization::joinByHashRight(
       leftJoinType != rightJoinType,
       "Join type does not have right hash join variant");
 
-  const bool buildOnly =
+  float markTrueFraction = Value::kUnknown;
+    const bool buildOnly =
       rightJoinType == velox::core::JoinType::kRightSemiFilter ||
       rightJoinType == velox::core::JoinType::kRightSemiProject;
 
-  ColumnVector columns;
-  PlanObjectSet columnSet;
-  ColumnCP mark = nullptr;
-  float markTrueFraction = 1;
-
-  state.downstreamColumns().forEach<Column>([&](auto column) {
-    if (rightJoinType == velox::core::JoinType::kRightSemiFilter) {
-      fanout = 1.0 / fanout;
-    } else if (rightJoinType == velox::core::JoinType::kRightSemiProject) {
+  // Initialize fanout to invalid value, check that it is assigned after the
+  // below switch.
+  float fanout = -1;
+  switch (rightJoinType) {
+    case velox::core::JoinType::kRightSemiFilter:
+      fanout = 1.0 / candidate.fanout;
+      break;
+    case velox::core::JoinType::kRightSemiProject:
       markTrueFraction = 1 / fanout;
       fanout = state.cost.cardinality < 1
           ? 1
           : state.cost.cardinality / probePlan->cost.cardinality;
-    }
+      break;
+    case velox::core::JoinType::kRight:
+      // A right oj produces every probe side row plus unhit build side rows.
+      // rlFanout is the approximation but never < 1.
+      fanout = std::max<float>(candidate.join->rlFanout(), 1);
+      break;
+  default:
+      VELOX_UNREACHABLE("Bad right join type {}", rightJoinType);
+  }
+  VELOX_CHECK_GE(fanout, 0);
+
+  ColumnVector columns;
+  PlanObjectSet columnSet;
+  ColumnCP mark = nullptr;
+
+  state.downstreamColumns().forEach<Column>([&](auto column) {
     if (column == probe.markColumn) {
       mark = column;
       columnSet.add(column);
