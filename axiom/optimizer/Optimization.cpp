@@ -1293,7 +1293,7 @@ void Optimization::joinByHashRight(
       "Join type does not have right hash join variant");
 
   float markTrueFraction = Value::kUnknown;
-    const bool buildOnly =
+  const bool buildOnly =
       rightJoinType == velox::core::JoinType::kRightSemiFilter ||
       rightJoinType == velox::core::JoinType::kRightSemiProject;
 
@@ -1315,7 +1315,7 @@ void Optimization::joinByHashRight(
       // rlFanout is the approximation but never < 1.
       fanout = std::max<float>(candidate.join->rlFanout(), 1);
       break;
-  default:
+    default:
       VELOX_UNREACHABLE("Bad right join type {}", rightJoinType);
   }
   VELOX_CHECK_GE(fanout, 0);
@@ -1995,7 +1995,7 @@ PlanP Optimization::makeDtPlan(
   return plans->best(distribution, needsShuffle);
 }
 
-ExprCP Optimization::combineLeftDeep(Name func, const ExprVector& exprs) {
+             ExprCP Optimization::combineLeftDeep(Name func, const ExprVector& exprs) {
   ExprVector copy = exprs;
   std::ranges::sort(copy, [&](ExprCP left, ExprCP right) {
     return left->id() < right->id();
