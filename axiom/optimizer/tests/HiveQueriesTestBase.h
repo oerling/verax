@@ -50,6 +50,12 @@ class HiveQueriesTestBase : public test::QueryTestBase {
     return *prestoParser_;
   }
 
+  void explain(
+      std::string_view sql,
+      std::string* shortRel,
+      std::string* longRel,
+      std::string* graph);
+
  private:
   inline static std::shared_ptr<velox::exec::test::TempDirectoryPath>
       gTempDirectory;

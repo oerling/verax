@@ -135,6 +135,12 @@ class QueryTestBase : public runner::test::LocalRunnerTestBase {
       const std::vector<std::string>& expected,
       bool negative = false);
 
+  void explain(
+      const logical_plan::LogicalPlanNodePtr& query,
+      std::string* shortRel,
+      std::string* longRel,
+      std::string* graph);
+
   void checkSameSingleNode(
       const logical_plan::LogicalPlanNodePtr& planNode,
       const velox::core::PlanNodePtr& referencePlan,

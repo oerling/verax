@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "axiom/optimizer/tests/PlanMatcherGenerator.h"
 #include <iostream>
+#include "axiom/optimizer/tests/PlanMatcherGenerator.h"
 
 /// Example usage of generatePlanMatcherCode
 ///
@@ -27,7 +27,8 @@
 ///   auto plan = ...; // your PlanNode tree
 ///
 ///   // Generate the matcher code:
-///   std::string matcherCode = facebook::velox::core::generatePlanMatcherCode(plan);
+///   std::string matcherCode =
+///   facebook::velox::core::generatePlanMatcherCode(plan);
 ///
 ///   // Print or save the generated code:
 ///   std::cout << matcherCode << std::endl;
@@ -50,11 +51,14 @@ int main() {
   std::cout << "To use the PlanMatcherGenerator:" << std::endl;
   std::cout << std::endl;
   std::cout << "1. Include the header:" << std::endl;
-  std::cout << "   #include \"axiom/optimizer/tests/PlanMatcherGenerator.h\"" << std::endl;
+  std::cout << "   #include \"axiom/optimizer/tests/PlanMatcherGenerator.h\""
+            << std::endl;
   std::cout << std::endl;
   std::cout << "2. Call the function with your PlanNode:" << std::endl;
   std::cout << "   auto plan = ...; // your PlanNode tree" << std::endl;
-  std::cout << "   std::string code = facebook::velox::core::generatePlanMatcherCode(plan);" << std::endl;
+  std::cout
+      << "   std::string code = facebook::velox::core::generatePlanMatcherCode(plan);"
+      << std::endl;
   std::cout << std::endl;
   std::cout << "3. Use the generated code in your tests:" << std::endl;
   std::cout << "   std::cout << code << std::endl;" << std::endl;

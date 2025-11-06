@@ -16,13 +16,18 @@
 
 #include <folly/init/Init.h>
 #include <gtest/gtest.h>
+#include <fstream>
+#include <functional>
+#include <sstream>
 #include "axiom/logical_plan/ExprApi.h"
 #include "axiom/logical_plan/PlanBuilder.h"
 #include "axiom/optimizer/tests/HiveQueriesTestBase.h"
+#include "axiom/optimizer/tests/PlanMatcherGenerator.h"
 #include "velox/dwio/common/tests/utils/DataFiles.h"
 #include "velox/exec/tests/utils/TpchQueryBuilder.h"
 
 DEFINE_int32(num_repeats, 1, "Number of repeats for optimization timing");
+DEFINE_bool(record_plans, false, "Record plan checkers to files");
 
 DECLARE_uint32(optimizer_trace);
 DECLARE_string(history_save_path);
@@ -33,8 +38,31 @@ namespace {
 using namespace facebook::velox;
 namespace lp = facebook::axiom::logical_plan;
 
+struct CheckerKey {
+  int32_t queryNo;
+  int32_t numWorkers;
+  int32_t numDrivers;
+
+  bool operator==(const CheckerKey& other) const {
+    return queryNo == other.queryNo && numWorkers == other.numWorkers &&
+        numDrivers == other.numDrivers;
+  }
+};
+
+struct CheckerKeyHash {
+  std::size_t operator()(const CheckerKey& key) const {
+    // Combine hash values using a simple hash combination technique
+    std::size_t h1 = std::hash<int32_t>{}(key.queryNo);
+    std::size_t h2 = std::hash<int32_t>{}(key.numWorkers);
+    std::size_t h3 = std::hash<int32_t>{}(key.numDrivers);
+    return h1 ^ (h2 << 1) ^ (h3 << 2);
+  }
+};
+
 class TpchPlanTest : public virtual test::HiveQueriesTestBase {
  protected:
+  using PlanChecker = std::function<void(const PlanAndStats&)>;
+
   static void SetUpTestCase() {
     test::HiveQueriesTestBase::SetUpTestCase();
   }
@@ -58,9 +86,142 @@ class TpchPlanTest : public virtual test::HiveQueriesTestBase {
     HiveQueriesTestBase::TearDown();
   }
 
+  void setChecker(
+      int32_t queryNo,
+      int32_t numWorkers,
+      int32_t numDrivers,
+      PlanChecker checker) {
+    checkers_[CheckerKey{queryNo, numWorkers, numDrivers}] = std::move(checker);
+  }
+
+  PlanChecker*
+  getChecker(int32_t queryNo, int32_t numWorkers, int32_t numDrivers) {
+    auto it = checkers_.find(CheckerKey{queryNo, numWorkers, numDrivers});
+    if (it != checkers_.end()) {
+      return &it->second;
+    }
+    return nullptr;
+  }
+
+  void recordPlanCheckerStart(int32_t queryNo) {
+    if (!FLAGS_record_plans) {
+      return;
+    }
+
+    auto filename = fmt::format("check_{}.inc", queryNo);
+    std::ofstream file(filename);
+
+    if (!file.is_open()) {
+      LOG(ERROR) << "Failed to open file: " << filename;
+      return;
+    }
+
+    file << "void defineCheckers" << queryNo << "() {\n";
+    file.close();
+  }
+
+  void recordPlanCheckerEnd(int32_t queryNo) {
+    if (!FLAGS_record_plans) {
+      return;
+    }
+
+    auto filename = fmt::format("check_{}.inc", queryNo);
+    std::ofstream file(filename, std::ios::app);
+
+    if (!file.is_open()) {
+      LOG(ERROR) << "Failed to open file: " << filename;
+      return;
+    }
+
+    file << "}\n";
+    file.close();
+  }
+
+  void recordPlanChecker(
+      int32_t queryNo,
+      const lp::LogicalPlanNodePtr& logicalPlan,
+      const PlanAndStats& planAndStats,
+      int32_t numWorkers,
+      int32_t numDrivers) {
+    if (!FLAGS_record_plans) {
+      return;
+    }
+
+    auto filename = fmt::format("check_{}.inc", queryNo);
+    std::ofstream file(filename, std::ios::app);
+
+    if (!file.is_open()) {
+      LOG(ERROR) << "Failed to open file: " << filename;
+      return;
+    }
+
+    // Get the short RelationOp representation
+    std::string shortRel;
+    QueryTestBase::explain(logicalPlan, &shortRel, nullptr, nullptr);
+
+    file << "// Configuration: numWorkers=" << numWorkers
+         << ", numDrivers=" << numDrivers << "\n";
+    file << "setChecker(" << queryNo << ", " << numWorkers << ", " << numDrivers
+         << ", [](const PlanAndStats& planAndStats) {\n";
+
+    // Add the plan as a comment for readability
+    file << "  // Plan:\n";
+    std::istringstream planStream(shortRel);
+    std::string line;
+    while (std::getline(planStream, line)) {
+      file << "  // " << line << "\n";
+    }
+    file << "\n";
+
+    const auto& fragments = planAndStats.plan->fragments();
+    for (size_t i = 0; i < fragments.size(); ++i) {
+      const auto& fragment = fragments[i];
+      const auto& topNode = fragment.fragment.planNode;
+
+      file << "  // Fragment " << i << "\n";
+      file << "  {\n";
+      file << "    auto matcher = "
+           << velox::core::generatePlanMatcherCode(topNode, "builder") << ";\n";
+      file << "    EXPECT_TRUE(matcher->match(planAndStats.plan->fragments()["
+           << i << "].fragment.planNode));\n";
+      file << "  }\n";
+    }
+
+    file << "});\n\n";
+    file.close();
+  }
+
   void checkTpch(int32_t query, const lp::LogicalPlanNodePtr& logicalPlan) {
     auto referencePlan = referenceBuilder_->getQueryPlan(query).plan;
     checkSame(logicalPlan, referencePlan);
+
+    // Run checker if one exists for this query with default config
+    constexpr int32_t kDefaultNumWorkers = 4;
+    constexpr int32_t kDefaultNumDrivers = 4;
+    auto* checker = getChecker(query, kDefaultNumWorkers, kDefaultNumDrivers);
+    if (checker) {
+      auto planAndStats = planVelox(logicalPlan);
+      (*checker)(planAndStats);
+    }
+
+    // Record plan if flag is set
+    if (FLAGS_record_plans) {
+      recordPlanCheckerStart(query);
+
+      // Run with different configurations and record each
+      std::vector<std::pair<int32_t, int32_t>> configs = {
+          {1, 1}, {1, 4}, {4, 1}, {4, 4}};
+
+      for (const auto& [numWorkers, numDrivers] : configs) {
+        auto plan = planVelox(
+            logicalPlan,
+            runner::MultiFragmentPlan::Options{
+                .numWorkers = numWorkers, .numDrivers = numDrivers});
+        recordPlanChecker(query, logicalPlan, plan, numWorkers, numDrivers);
+      }
+
+      recordPlanCheckerEnd(query);
+    }
   }
 
   static std::string readSqlFromFile(const std::string& filePath) {
@@ -111,10 +272,39 @@ class TpchPlanTest : public virtual test::HiveQueriesTestBase {
   void checkTpchSql(int32_t query) {
     auto sql = readTpchSql(query);
     auto referencePlan = referenceBuilder_->getQueryPlan(query).plan;
-    checkResults(sql, referencePlan);
+    auto planAndStats = checkResults(sql, referencePlan);
+
+    // Run checker if one exists for this query with default config
+    constexpr int32_t kDefaultNumWorkers = 4;
+    constexpr int32_t kDefaultNumDrivers = 4;
+    auto* checker = getChecker(query, kDefaultNumWorkers, kDefaultNumDrivers);
+    if (checker) {
+      (*checker)(planAndStats);
+    }
+
+    // Record plan if flag is set
+    if (FLAGS_record_plans) {
+      recordPlanCheckerStart(query);
+
+      // Run with different configurations and record each
+      std::vector<std::pair<int32_t, int32_t>> configs = {
+          {1, 1}, {1, 4}, {4, 1}, {4, 4}};
+
+      for (const auto& [numWorkers, numDrivers] : configs) {
+        auto logicalPlan = parseTpchSql(query);
+        auto plan = planVelox(
+            logicalPlan,
+            runner::MultiFragmentPlan::Options{
+                .numWorkers = numWorkers, .numDrivers = numDrivers});
+        recordPlanChecker(query, logicalPlan, plan, numWorkers, numDrivers);
+      }
+
+      recordPlanCheckerEnd(query);
+    }
   }
 
   std::unique_ptr<exec::test::TpchQueryBuilder> referenceBuilder_;
+  std::unordered_map<CheckerKey, PlanChecker, CheckerKeyHash> checkers_;
 };
 
 TEST_F(TpchPlanTest, stats) {
@@ -128,7 +318,7 @@ TEST_F(TpchPlanTest, stats) {
     auto planAndStats = planVelox(logicalPlan);
     auto stats = planAndStats.prediction;
 
-    // We expect a prediction for the table scan and 
+    // We expect a prediction for the table scan and
     ASSERT_EQ(stats.size(), 2);
 
     // Node ids start at 0, the scan is always first.
@@ -601,9 +791,7 @@ TEST_F(TpchPlanTest, supplierAggregationJoin) {
        {"s_acctbal", DOUBLE()},
        {"s_nationkey", BIGINT()}});
 
-  auto nationType = ROW(
-      {{"n_nationkey", BIGINT()},
-       {"n_name", VARCHAR()}});
+  auto nationType = ROW({{"n_nationkey", BIGINT()}, {"n_name", VARCHAR()}});
 
   // Create shared plan node ID generator
   auto planNodeIdGenerator = std::make_shared<core::PlanNodeIdGenerator>();

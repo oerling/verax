@@ -31,9 +31,11 @@ class PlanMatcherGeneratorTest : public test::HiveQueriesTestBase {};
 
 TEST_F(PlanMatcherGeneratorTest, filterProject) {
   // Test with an actual SQL query - parse and get logical plan
-  auto statement = prestoParser().parse("SELECT n_name FROM nation WHERE n_regionkey > 2");
+  auto statement =
+      prestoParser().parse("SELECT n_name FROM nation WHERE n_regionkey > 2");
   ASSERT_TRUE(statement->isSelect());
-  auto logicalPlan = statement->as<::axiom::sql::presto::SelectStatement>()->plan();
+  auto logicalPlan =
+      statement->as<::axiom::sql::presto::SelectStatement>()->plan();
 
   // Convert to single node plan
   auto plan = toSingleNodePlan(logicalPlan);
@@ -41,17 +43,20 @@ TEST_F(PlanMatcherGeneratorTest, filterProject) {
   // Generate the matcher code
   auto code = core::generatePlanMatcherCode(plan);
 
-  std::cout << "Generated code for 'SELECT n_name FROM nation WHERE n_regionkey > 2':\n"
-            << code << std::endl;
+  std::cout
+      << "Generated code for 'SELECT n_name FROM nation WHERE n_regionkey > 2':\n"
+      << code << std::endl;
 
   EXPECT_FALSE(code.empty());
 }
 
 TEST_F(PlanMatcherGeneratorTest, aggregation) {
   // Test with an aggregation query
-  auto statement = prestoParser().parse("SELECT n_regionkey, count(*) FROM nation GROUP BY n_regionkey");
+  auto statement = prestoParser().parse(
+      "SELECT n_regionkey, count(*) FROM nation GROUP BY n_regionkey");
   ASSERT_TRUE(statement->isSelect());
-  auto logicalPlan = statement->as<::axiom::sql::presto::SelectStatement>()->plan();
+  auto logicalPlan =
+      statement->as<::axiom::sql::presto::SelectStatement>()->plan();
 
   // Convert to single node plan
   auto plan = toSingleNodePlan(logicalPlan);
@@ -59,8 +64,9 @@ TEST_F(PlanMatcherGeneratorTest, aggregation) {
   // Generate the matcher code
   auto code = core::generatePlanMatcherCode(plan);
 
-  std::cout << "Generated code for 'SELECT n_regionkey, count(*) FROM nation GROUP BY n_regionkey':\n"
-            << code << std::endl;
+  std::cout
+      << "Generated code for 'SELECT n_regionkey, count(*) FROM nation GROUP BY n_regionkey':\n"
+      << code << std::endl;
 
   EXPECT_FALSE(code.empty());
   EXPECT_TRUE(code.find("Aggregation") != std::string::npos);
@@ -71,7 +77,8 @@ TEST_F(PlanMatcherGeneratorTest, join) {
   auto statement = prestoParser().parse(
       "SELECT n_name, r_name FROM nation, region WHERE n_regionkey = r_regionkey");
   ASSERT_TRUE(statement->isSelect());
-  auto logicalPlan = statement->as<::axiom::sql::presto::SelectStatement>()->plan();
+  auto logicalPlan =
+      statement->as<::axiom::sql::presto::SelectStatement>()->plan();
 
   // Convert to single node plan
   auto plan = toSingleNodePlan(logicalPlan);

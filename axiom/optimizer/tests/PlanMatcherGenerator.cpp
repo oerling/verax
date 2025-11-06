@@ -301,7 +301,8 @@ void generateJoinMatchers(
     std::vector<std::string>& matchers,
     int& matcherCounter) {
   if (auto* joinNode = dynamic_cast<const HashJoinNode*>(planNode.get())) {
-    VELOX_CHECK_EQ(joinNode->sources().size(), 2, "HashJoinNode must have 2 sources");
+    VELOX_CHECK_EQ(
+        joinNode->sources().size(), 2, "HashJoinNode must have 2 sources");
 
     // Recursively process left side for nested joins
     generateJoinMatchers(joinNode->sources()[0], matchers, matcherCounter);
@@ -389,20 +390,25 @@ int countJoins(const PlanNodePtr& planNode, int currentIndex = 0) {
 }
 
 /// Helper to find the matcher index for a specific join node.
-int findJoinMatcherIndex(const PlanNodePtr& root, const PlanNodePtr& targetJoin, int& currentIndex) {
+int findJoinMatcherIndex(
+    const PlanNodePtr& root,
+    const PlanNodePtr& targetJoin,
+    int& currentIndex) {
   if (auto* joinNode = dynamic_cast<const HashJoinNode*>(root.get())) {
     if (root == targetJoin) {
       return currentIndex++;
     }
     // Process left side first
-    int leftIndex = findJoinMatcherIndex(joinNode->sources()[0], targetJoin, currentIndex);
+    int leftIndex =
+        findJoinMatcherIndex(joinNode->sources()[0], targetJoin, currentIndex);
     if (leftIndex >= 0) {
       return leftIndex;
     }
     // Then increment for this join
     currentIndex++;
     // Then process right side
-    return findJoinMatcherIndex(joinNode->sources()[1], targetJoin, currentIndex);
+    return findJoinMatcherIndex(
+        joinNode->sources()[1], targetJoin, currentIndex);
   } else {
     for (const auto& source : root->sources()) {
       int result = findJoinMatcherIndex(source, targetJoin, currentIndex);
@@ -450,11 +456,15 @@ std::string generatePlanMatcherCodeImpl(const PlanNodePtr& planNode) {
       result << generateValuesCode(*values);
     } else if (auto* filter = dynamic_cast<const FilterNode*>(planNode.get())) {
       result << generateFilterCode(*filter);
-    } else if (auto* parallelProject = dynamic_cast<const ParallelProjectNode*>(planNode.get())) {
+    } else if (
+        auto* parallelProject =
+            dynamic_cast<const ParallelProjectNode*>(planNode.get())) {
       result << generateParallelProjectCode(*parallelProject);
-    } else if (auto* project = dynamic_cast<const ProjectNode*>(planNode.get())) {
+    } else if (
+        auto* project = dynamic_cast<const ProjectNode*>(planNode.get())) {
       result << generateProjectCode(*project);
-    } else if (auto* agg = dynamic_cast<const AggregationNode*>(planNode.get())) {
+    } else if (
+        auto* agg = dynamic_cast<const AggregationNode*>(planNode.get())) {
       result << generateAggregationCode(*agg);
     } else if (auto* unnest = dynamic_cast<const UnnestNode*>(planNode.get())) {
       result << generateUnnestCode(*unnest);
@@ -462,23 +472,36 @@ std::string generatePlanMatcherCodeImpl(const PlanNodePtr& planNode) {
       result << generateLimitCode(*limit);
     } else if (auto* topN = dynamic_cast<const TopNNode*>(planNode.get())) {
       result << generateTopNCode(*topN);
-    } else if (auto* orderBy = dynamic_cast<const OrderByNode*>(planNode.get())) {
+    } else if (
+        auto* orderBy = dynamic_cast<const OrderByNode*>(planNode.get())) {
       result << generateOrderByCode(*orderBy);
-    } else if (auto* localPartition = dynamic_cast<const LocalPartitionNode*>(planNode.get())) {
+    } else if (
+        auto* localPartition =
+            dynamic_cast<const LocalPartitionNode*>(planNode.get())) {
       result << generateLocalPartitionCode(*localPartition);
-    } else if (auto* localMerge = dynamic_cast<const LocalMergeNode*>(planNode.get())) {
+    } else if (
+        auto* localMerge =
+            dynamic_cast<const LocalMergeNode*>(planNode.get())) {
       result << generateLocalMergeCode(*localMerge);
-    } else if (auto* partitionedOutput = dynamic_cast<const PartitionedOutputNode*>(planNode.get())) {
+    } else if (
+        auto* partitionedOutput =
+            dynamic_cast<const PartitionedOutputNode*>(planNode.get())) {
       result << generatePartitionedOutputCode(*partitionedOutput);
-    } else if (auto* mergeExchange = dynamic_cast<const MergeExchangeNode*>(planNode.get())) {
+    } else if (
+        auto* mergeExchange =
+            dynamic_cast<const MergeExchangeNode*>(planNode.get())) {
       result << generateMergeExchangeCode(*mergeExchange);
-    } else if (auto* exchange = dynamic_cast<const ExchangeNode*>(planNode.get())) {
+    } else if (
+        auto* exchange = dynamic_cast<const ExchangeNode*>(planNode.get())) {
       result << generateExchangeCode(*exchange);
-    } else if (auto* tableWrite = dynamic_cast<const TableWriteNode*>(planNode.get())) {
+    } else if (
+        auto* tableWrite =
+            dynamic_cast<const TableWriteNode*>(planNode.get())) {
       result << generateTableWriteCode(*tableWrite);
     } else {
       // For unknown node types, add a comment
-      result << "  // Unknown node type: " << folly::demangle(typeid(*planNode).name());
+      result << "  // Unknown node type: "
+             << folly::demangle(typeid(*planNode).name());
     }
   }
 

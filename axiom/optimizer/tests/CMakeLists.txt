@@ -161,7 +161,6 @@ target_link_libraries(
   velox_parse_utils
 )
 
-
 add_executable(axiom_sql_benchmark AxiomSqlBenchmark.cpp linenoise/linenoise.c)
 
 target_link_libraries(
@@ -181,7 +180,6 @@ target_link_libraries(
   velox_parse_expression
   velox_parse_utils
 )
-
 
 add_subdirectory(utils)
 

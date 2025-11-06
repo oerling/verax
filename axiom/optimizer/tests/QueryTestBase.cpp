@@ -18,6 +18,7 @@
 #include <re2/re2.h>
 #include <sstream>
 #include "axiom/connectors/SchemaResolver.h"
+#include "axiom/optimizer/DerivedTablePrinter.h"
 #include "axiom/optimizer/Optimization.h"
 #include "axiom/optimizer/Plan.h"
 #include "axiom/optimizer/VeloxHistory.h"
@@ -325,10 +326,8 @@ void QueryTestBase::checkPlanText(
       // Pattern not found
       if (!negative) {
         // Expected to find all patterns - fail
-        std::string errorMsg = fmt::format(
-            "Pattern {} not found: '{}'\n",
-            i,
-            expected[i]);
+        std::string errorMsg =
+            fmt::format("Pattern {} not found: '{}'\n", i, expected[i]);
         if (lastMatchLine >= 0) {
           errorMsg += fmt::format(
               "Previous pattern ({}) matched at line {}\n",
@@ -353,6 +352,53 @@ void QueryTestBase::checkPlanText(
         planString);
   }
   // else: success (all patterns found and negative=false)
+}
+
+void QueryTestBase::explain(
+    const logical_plan::LogicalPlanNodePtr& query,
+    std::string* shortRel,
+    std::string* longRel,
+    std::string* graph) {
+  auto& queryCtx = getQueryCtx();
+
+  auto allocator = std::make_unique<HashStringAllocator>(optimizerPool_.get());
+  auto context = std::make_unique<optimizer::QueryGraphContext>(*allocator);
+  optimizer::queryCtx() = context.get();
+  SCOPE_EXIT {
+    optimizer::queryCtx() = nullptr;
+  };
+  exec::SimpleExpressionEvaluator evaluator(
+      queryCtx.get(), optimizerPool_.get());
+
+  auto session = std::make_shared<Session>(queryCtx->queryId());
+
+  connector::SchemaResolver schemaResolver;
+  runner::MultiFragmentPlan::Options options{.numWorkers = 4, .numDrivers = 4};
+
+  optimizer::Optimization opt(
+      session,
+      *query,
+      schemaResolver,
+      *history_,
+      queryCtx,
+      evaluator,
+      optimizerOptions_,
+      options);
+
+  auto best = opt.bestPlan();
+
+  if (shortRel) {
+    *shortRel = best->op->toString(true, false);
+  }
+
+  if (longRel) {
+    *longRel = best->op->toString(true, true);
+  }
+
+  if (graph) {
+    auto rootDt = opt.rootDt();
+    *graph = DerivedTablePrinter::toText(*rootDt);
+  }
 }
 
 } // namespace facebook::axiom::optimizer::test
