@@ -16,9 +16,10 @@
 
 #include "axiom/connectors/hive/HiveConnectorMetadata.h"
 #include "velox/connectors/hive/HiveConnector.h"
+#include "velox/connectors/hive/HiveConnectorUtil.h"
 #include "velox/connectors/hive/TableHandle.h"
 #include "velox/exec/TableWriter.h"
-#include "velox/expression/ExprToSubfieldFilter.h"
+#include "velox/expression/ExprConstants.h"
 
 namespace facebook::axiom::connector::hive {
 
@@ -119,6 +120,24 @@ velox::connector::hive::HiveColumnHandle::ColumnType columnType(
   // TODO recognize special names like $path, $bucket etc.
   return velox::connector::hive::HiveColumnHandle::ColumnType::kRegular;
 }
+
+/// Adds input fields referenced by the given expression to 'names'.
+void extractInputFields(
+    const velox::core::TypedExprPtr& expr,
+    std::unordered_set<std::string>& names) {
+  if (expr->isFieldAccessKind()) {
+    if (expr->inputs().empty() || expr->inputs()[0]->isInputKind()) {
+      names.emplace(
+          expr->asUnchecked<velox::core::FieldAccessTypedExpr>()->name());
+    }
+    return;
+  }
+
+  for (const auto& child : expr->inputs()) {
+    extractInputFields(child, names);
+  }
+}
+
 } // namespace
 
 velox::connector::ColumnHandlePtr HiveConnectorMetadata::createColumnHandle(
@@ -129,9 +148,12 @@ velox::connector::ColumnHandlePtr HiveConnectorMetadata::createColumnHandle(
     std::optional<velox::TypePtr> castToType,
     SubfieldMapping subfieldMapping) {
   // castToType and subfieldMapping are not yet supported.
+  VELOX_CHECK(!castToType.has_value());
   VELOX_CHECK(subfieldMapping.empty());
   auto* hiveLayout = reinterpret_cast<const HiveTableLayout*>(&layout);
   auto* column = hiveLayout->findColumn(columnName);
+  VELOX_CHECK_NOT_NULL(
+      column, "Column not found: {} in table {}", columnName, layout.name());
   return std::make_shared<velox::connector::hive::HiveColumnHandle>(
       columnName,
       columnType(*hiveLayout, columnName),
@@ -147,51 +169,56 @@ HiveConnectorMetadata::createTableHandle(
     std::vector<velox::connector::ColumnHandlePtr> columnHandles,
     velox::core::ExpressionEvaluator& evaluator,
     std::vector<velox::core::TypedExprPtr> filters,
-    std::vector<velox::core::TypedExprPtr>& rejectedFilters,
+    std::vector<velox::core::TypedExprPtr>& /*rejectedFilters*/,
     velox::RowTypePtr dataColumns,
     std::optional<LookupKeys> lookupKeys) {
   VELOX_CHECK(!lookupKeys.has_value(), "Hive does not support lookup keys");
   auto* hiveLayout = dynamic_cast<const HiveTableLayout*>(&layout);
 
+  std::unordered_set<std::string> filterColumnNames;
+  for (const auto& filter : filters) {
+    extractInputFields(filter, filterColumnNames);
+  }
+
   std::vector<velox::core::TypedExprPtr> remainingConjuncts;
   velox::common::SubfieldFilters subfieldFilters;
+  double sampleRate = 1.0;
   for (auto& typedExpr : filters) {
-    try {
-      auto pair = velox::exec::toSubfieldFilter(typedExpr, &evaluator);
-      if (!pair.second) {
-        remainingConjuncts.push_back(std::move(typedExpr));
-        continue;
-      }
-      auto it = subfieldFilters.find(pair.first);
-      if (it != subfieldFilters.end()) {
-        auto merged = it->second->mergeWith(pair.second.get());
-        subfieldFilters[std::move(pair.first)] = std::move(merged);
-      } else {
-        subfieldFilters[std::move(pair.first)] = std::move(pair.second);
-      }
-    } catch (const std::exception&) {
-      remainingConjuncts.push_back(std::move(typedExpr));
+    auto remaining = velox::connector::hive::extractFiltersFromRemainingFilter(
+        typedExpr, &evaluator, subfieldFilters, sampleRate);
+
+    if (remaining != nullptr) {
+      remainingConjuncts.push_back(std::move(remaining));
     }
   }
 
   velox::core::TypedExprPtr remainingFilter;
-  for (const auto& conjunct : remainingConjuncts) {
-    if (!remainingFilter) {
-      remainingFilter = conjunct;
-    } else {
-      remainingFilter = std::make_shared<velox::core::CallTypedExpr>(
-          velox::BOOLEAN(),
-          std::vector<velox::core::TypedExprPtr>{remainingFilter, conjunct},
-          "and");
-    }
+  if (remainingConjuncts.size() == 1) {
+    remainingFilter = std::move(remainingConjuncts[0]);
+  } else if (remainingConjuncts.size() > 1) {
+    remainingFilter = std::make_shared<velox::core::CallTypedExpr>(
+        velox::BOOLEAN(), remainingConjuncts, velox::expression::kAnd);
   }
+
+  std::vector<velox::connector::hive::HiveColumnHandlePtr> filterColumnHandles;
+  filterColumnHandles.reserve(filterColumnNames.size());
+  for (const auto& name : filterColumnNames) {
+    filterColumnHandles.emplace_back(
+        std::static_pointer_cast<
+            const velox::connector::hive::HiveColumnHandle>(
+            createColumnHandle(session, *hiveLayout, name)));
+  }
+
   return std::make_shared<velox::connector::hive::HiveTableHandle>(
       hiveConnector_->connectorId(),
       hiveLayout->table().name(),
       true,
       std::move(subfieldFilters),
       remainingFilter,
-      dataColumns ? dataColumns : layout.rowType());
+      dataColumns ? dataColumns : layout.rowType(),
+      /*tableParameters=*/std::unordered_map<std::string, std::string>{},
+      filterColumnHandles,
+      sampleRate);
 }
 
 namespace {

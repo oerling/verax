@@ -22,6 +22,8 @@
 #include "axiom/optimizer/VeloxHistory.h"
 #include "axiom/runner/LocalRunner.h"
 #include "axiom/runner/tests/LocalRunnerTestBase.h"
+#include "velox/expression/ExprToSubfieldFilter.h"
+#include "velox/type/tests/SubfieldFiltersBuilder.h"
 
 DECLARE_string(history_save_path);
 
@@ -179,4 +181,33 @@ class QueryTestBase : public runner::test::LocalRunnerTestBase {
   inline static int32_t gQueryCounter{0};
   inline static std::unique_ptr<VeloxHistory> gSuiteHistory;
 };
+
+inline auto gte(const std::string& name, int64_t n) {
+  return velox::common::test::singleSubfieldFilter(
+      name, velox::exec::greaterThanOrEqual(n));
+}
+
+inline auto lte(const std::string& name, int64_t n) {
+  return velox::common::test::singleSubfieldFilter(
+      name, velox::exec::lessThanOrEqual(n));
+}
+
+inline auto between(const std::string& name, int64_t min, int64_t max) {
+  return velox::common::test::singleSubfieldFilter(
+      name, velox::exec::between(min, max));
+}
+
+inline auto gt(const std::string& name, double d) {
+  return velox::common::test::singleSubfieldFilter(
+      name, velox::exec::greaterThanDouble(d));
+}
+
+inline auto lt(const std::string& name, double d) {
+  return velox::common::test::singleSubfieldFilter(
+      name, velox::exec::lessThanDouble(d));
+}
+
 } // namespace facebook::axiom::optimizer::test
+
+#define AXIOM_ASSERT_PLAN(plan, matcher) \
+  ASSERT_TRUE(matcher->match(plan)) << plan->toString(true, true);

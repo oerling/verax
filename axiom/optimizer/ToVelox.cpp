@@ -15,6 +15,7 @@
  */
 
 #include "axiom/optimizer/ToVelox.h"
+#include <iostream>
 #include "axiom/optimizer/DerivedTablePrinter.h"
 #include "axiom/optimizer/FunctionRegistry.h"
 #include "axiom/optimizer/Optimization.h"
@@ -22,10 +23,8 @@
 #include "velox/core/PlanNode.h"
 #include "velox/exec/HashPartitionFunction.h"
 #include "velox/exec/RoundRobinPartitionFunction.h"
-#include "velox/expression/ExprToSubfieldFilter.h"
 #include "velox/expression/ScopedVarSetter.h"
 #include "velox/vector/VariantToVector.h"
-#include <iostream>
 
 namespace facebook::axiom::optimizer {
 
@@ -152,34 +151,14 @@ void ToVelox::filterUpdated(BaseTableCP table, bool updateSelectivity) {
   auto* optimization = queryCtx()->optimization();
   auto* evaluator = optimization->evaluator();
 
-  std::vector<velox::core::TypedExprPtr> remainingConjuncts;
-  std::vector<velox::core::TypedExprPtr> pushdownConjuncts;
+  std::vector<velox::core::TypedExprPtr> filterConjuncts;
   velox::ScopedVarSetter noAlias(&makeVeloxExprWithNoAlias_, true);
   velox::ScopedVarSetter getters(&getterForPushdownSubfield_, true);
   for (auto filter : table->columnFilters) {
-    auto typedExpr = toTypedExpr(filter);
-    try {
-      auto pair = velox::exec::toSubfieldFilter(typedExpr, evaluator);
-      if (!pair.second) {
-        remainingConjuncts.push_back(std::move(typedExpr));
-        continue;
-      }
-      pushdownConjuncts.push_back(typedExpr);
-    } catch (const std::exception&) {
-      remainingConjuncts.push_back(std::move(typedExpr));
-    }
+    filterConjuncts.push_back(toTypedExpr(filter));
   }
   for (auto expr : table->filter) {
-    remainingConjuncts.push_back(toTypedExpr(expr));
-  }
-  velox::core::TypedExprPtr remainingFilter;
-  if (remainingConjuncts.size() == 1) {
-    remainingFilter = std::move(remainingConjuncts[0]);
-  } else if (!remainingConjuncts.empty()) {
-    remainingFilter = std::make_shared<velox::core::CallTypedExpr>(
-        velox::BOOLEAN(),
-        specialForm(logical_plan::SpecialForm::kAnd),
-        std::move(remainingConjuncts));
+    filterConjuncts.push_back(toTypedExpr(expr));
   }
 
   columnAlteredTypes_.clear();
@@ -206,17 +185,14 @@ void ToVelox::filterUpdated(BaseTableCP table, bool updateSelectivity) {
         dataColumns->nameOf(i),
         std::move(subfields)));
   }
-  auto allFilters = std::move(pushdownConjuncts);
-  if (remainingFilter) {
-    allFilters.push_back(remainingFilter);
-  }
+
   std::vector<velox::core::TypedExprPtr> rejectedFilters;
   auto handle = metadata->createTableHandle(
       connectorSession,
       *layout,
       columns,
       *evaluator,
-      std::move(allFilters),
+      std::move(filterConjuncts),
       rejectedFilters);
 
   setLeafHandle(table->id(), handle, std::move(rejectedFilters));
@@ -234,7 +210,7 @@ PlanAndStats ToVelox::toVeloxPlan(
   if ((opt->options().traceFlags & OptimizerOptions::kRetained) != 0) {
     std::cout << "Velox Plan: " << plan->toString(true, false) << std::endl;
   }
-  
+
   prediction_.clear();
   nodeHistory_.clear();
 
@@ -1257,7 +1233,7 @@ velox::core::PlanNodePtr ToVelox::makeAggregation(
       aggregates,
       false,
       input);
-    makePredictionAndHistory(result->id(), &op);
+  makePredictionAndHistory(result->id(), &op);
   return result;
 }
 
@@ -1303,7 +1279,7 @@ velox::core::PlanNodePtr ToVelox::makeRepartition(
             exchangeSerdeKind_,
             sourcePlan);
   }
-    makePredictionAndHistory(source.fragment.planNode->id(), &repartition);
+  makePredictionAndHistory(source.fragment.planNode->id(), &repartition);
 
   if (exchange == nullptr) {
     exchange = std::make_shared<velox::core::ExchangeNode>(
@@ -1488,7 +1464,7 @@ void ToVelox::makePredictionAndHistory(
   prediction_[id] = NodePrediction{
       .cardinality = op->resultCardinality(),
       .peakMemory = op->cost().totalBytes,
-      .cpu = op->cost().totalCost() };
+      .cpu = op->cost().totalCost()};
 }
 
 velox::core::PlanNodePtr ToVelox::makeFragment(

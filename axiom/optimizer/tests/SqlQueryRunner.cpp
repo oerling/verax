@@ -15,10 +15,6 @@
  */
 
 #include "axiom/optimizer/tests/SqlQueryRunner.h"
-#include <sys/resource.h>
-#include <sys/time.h>
-#include "axiom/connectors/hive/LocalHiveConnectorMetadata.h"
-#include "axiom/connectors/tpch/TpchConnectorMetadata.h"
 #include "axiom/logical_plan/PlanPrinter.h"
 #include "axiom/optimizer/ConstantExprEvaluator.h"
 #include "axiom/optimizer/DerivedTablePrinter.h"
@@ -44,53 +40,9 @@ using namespace facebook::axiom;
 
 namespace axiom::sql {
 
-namespace {
-std::shared_ptr<velox::connector::Connector> registerTpchConnector() {
-  auto emptyConfig = std::make_shared<velox::config::ConfigBase>(
-      std::unordered_map<std::string, std::string>{});
-
-  velox::connector::tpch::TpchConnectorFactory factory;
-  auto connector = factory.newConnector("tpch", emptyConfig);
-  velox::connector::registerConnector(connector);
-
-  connector::ConnectorMetadata::registerMetadata(
-      connector->connectorId(),
-      std::make_shared<connector::tpch::TpchConnectorMetadata>(
-          dynamic_cast<velox::connector::tpch::TpchConnector*>(
-              connector.get())));
-
-  return connector;
-}
-
-std::shared_ptr<velox::connector::Connector> registerHiveConnector(
-    const std::string& dataPath,
-    const std::string& dataFormat,
-    folly::IOThreadPoolExecutor* ioExecutor) {
-  std::unordered_map<std::string, std::string> connectorConfig = {
-      {velox::connector::hive::HiveConfig::kLocalDataPath, dataPath},
-      {velox::connector::hive::HiveConfig::kLocalFileFormat, dataFormat},
-  };
-
-  auto config =
-      std::make_shared<velox::config::ConfigBase>(std::move(connectorConfig));
-
-  velox::connector::hive::HiveConnectorFactory factory;
-  auto connector = factory.newConnector("hive", config, ioExecutor);
-  velox::connector::registerConnector(connector);
-
-  connector::ConnectorMetadata::registerMetadata(
-      connector->connectorId(),
-      std::make_shared<connector::hive::LocalHiveConnectorMetadata>(
-          dynamic_cast<velox::connector::hive::HiveConnector*>(
-              connector.get())));
-
-  return connector;
-}
-} // namespace
-
 void SqlQueryRunner::initialize(
-    const std::string& dataPath,
-    const std::string& dataFormat) {
+    const std::function<std::string(optimizer::VeloxHistory& history)>&
+        initializeConnectors) {
   velox::memory::MemoryManager::testingSetInstance(
       velox::memory::MemoryManager::Options{});
 
@@ -104,11 +56,7 @@ void SqlQueryRunner::initialize(
   optimizer::FunctionRegistry::registerPrestoFunctions();
 
   velox::filesystems::registerLocalFileSystem();
-  velox::dwio::common::registerFileSinks();
-  velox::parquet::registerParquetReaderFactory();
-  velox::parquet::registerParquetWriterFactory();
-  velox::dwrf::registerDwrfReaderFactory();
-  velox::dwrf::registerDwrfWriterFactory();
+
   velox::exec::ExchangeSource::registerFactory(
       velox::exec::test::createLocalExchangeSource);
   velox::serializer::presto::PrestoVectorSerde::registerVectorSerde();
@@ -116,26 +64,14 @@ void SqlQueryRunner::initialize(
     velox::serializer::presto::PrestoVectorSerde::registerNamedVectorSerde();
   }
 
-  std::shared_ptr<velox::connector::Connector> connector;
-  if (!dataPath.empty()) {
-    ioExecutor_ = std::make_unique<folly::IOThreadPoolExecutor>(8);
-    connector = registerHiveConnector(dataPath, dataFormat, ioExecutor_.get());
-  } else {
-    connector = registerTpchConnector();
-  }
+  history_ = std::make_unique<optimizer::VeloxHistory>();
 
-  defaultConnectorId_ = connector->connectorId();
+  defaultConnectorId_ = initializeConnectors(*history_);
 
   schema_ = std::make_shared<connector::SchemaResolver>();
 
   prestoParser_ = std::make_unique<presto::PrestoParser>(
       defaultConnectorId_, optimizerPool_.get());
-
-  history_ = std::make_unique<optimizer::VeloxHistory>();
-
-  if (!dataPath.empty()) {
-    history_->updateFromFile(dataPath + "/.history");
-  }
 
   spillExecutor_ = std::make_shared<folly::IOThreadPoolExecutor>(4);
 }
@@ -313,8 +249,7 @@ std::string printPlanWithStats(
     // For each plan node, sum up CPU from addInput, getOutput, and finish
     for (const auto& [nodeId, stats] : planStats) {
       int64_t nodeCpu = stats.addInputTiming.cpuNanos +
-                        stats.getOutputTiming.cpuNanos +
-                        stats.finishTiming.cpuNanos;
+          stats.getOutputTiming.cpuNanos + stats.finishTiming.cpuNanos;
 
       // Accumulate (PlanNodeIds may not be unique across tasks)
       nodeCpuNanos[nodeId] += nodeCpu;
@@ -328,11 +263,11 @@ std::string printPlanWithStats(
                                           std::ostream& out) {
     auto it = estimates.find(nodeId);
     if (it != estimates.end()) {
-      out << indentation << "Estimate: " << it->second.cardinality
-          << " rows, " << velox::succinctBytes(it->second.peakMemory)
+      out << indentation << "Estimate: " << it->second.cardinality << " rows, "
+          << velox::succinctBytes(it->second.peakMemory)
           << " peak memory, predicted cpu=" << std::fixed
-          << std::setprecision(2)
-          << (it->second.cpu * 100.0f / predictedCpu) << "%";
+          << std::setprecision(2) << (it->second.cpu * 100.0f / predictedCpu)
+          << "%";
 
       // Add actual CPU percentage
       auto cpuIt = nodeCpuNanos.find(nodeId);
@@ -352,8 +287,9 @@ std::string printPlanWithStats(
     result << std::string(80, '=') << "\n";
 
     // Collect all runtime stats grouped by node ID
-    std::map<velox::core::PlanNodeId,
-             std::unordered_map<std::string, velox::RuntimeMetric>>
+    std::map<
+        velox::core::PlanNodeId,
+        std::unordered_map<std::string, velox::RuntimeMetric>>
         allNodeStats;
 
     for (const auto& taskStat : taskStats) {

@@ -278,20 +278,16 @@ class ToGraph {
   // Adds a JoinEdge corresponding to 'join' to the enclosing DerivedTable.
   void translateJoin(const logical_plan::JoinNode& join);
 
-  void translateSetJoin(const logical_plan::SetNode& set, DerivedTableP setDt);
+  // Given an INTERSECT or an EXCEPT set operation, create derived tables for
+  // inputs, add them to 'currentDt_' and connect them with join edges.
+  void translateSetJoin(const logical_plan::SetNode& set);
 
-  // Updates the distribution and column stats of 'setDt', which must
-  // be a union. 'innerDt' should be null on top level call. Adds up
-  // the cardinality of union branches and their columns.
-  void makeUnionDistributionAndStats(
-      DerivedTableP setDt,
-      DerivedTableP innerDt = nullptr);
-
-  DerivedTableP translateUnion(
-      const logical_plan::SetNode& set,
-      DerivedTableP setDt,
-      bool isTopLevel,
-      bool& isLeftLeaf);
+  // Given a UNION or UNION ALL set operation, recursively flattens the inputs
+  // and converts these into derived tables.
+  // Flattens UNION ALL inside UNION and UNION ALL.
+  // Flattens UNION inside UNION.
+  // Example: u(a, u(b, c)) -> u(a, b, c)
+  void translateUnion(const logical_plan::SetNode& set);
 
   void translateUnnest(
       const logical_plan::UnnestNode& logicalUnnest,

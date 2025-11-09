@@ -1187,6 +1187,12 @@ PlanBuilder& PlanBuilder::except(const PlanBuilder& other) {
 
 PlanBuilder& PlanBuilder::setOperation(
     SetOperation op,
+    const PlanBuilder& other) {
+  return setOperation(op, {std::move(*this), other});
+}
+
+PlanBuilder& PlanBuilder::setOperation(
+    SetOperation op,
     const std::vector<PlanBuilder>& inputs) {
   VELOX_USER_CHECK_NULL(node_, "setOperation must be a leaf");
   outputMapping_ = inputs.front().outputMapping_;

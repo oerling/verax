@@ -62,6 +62,10 @@ class QualifiedName : public Expression {
     return parts_;
   }
 
+  std::string fullyQualifiedName() const {
+    return folly::join(".", parts_);
+  }
+
   std::string suffix() const {
     return parts_.empty() ? "" : parts_.back();
   }

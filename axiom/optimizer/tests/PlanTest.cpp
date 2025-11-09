@@ -24,7 +24,6 @@
 #include "axiom/optimizer/tests/QueryTestBase.h"
 #include "axiom/optimizer/tests/utils/DfFunctions.h"
 #include "velox/exec/tests/utils/TpchQueryBuilder.h"
-#include "velox/expression/ExprToSubfieldFilter.h"
 #include "velox/type/tests/SubfieldFiltersBuilder.h"
 
 #define AXIOM_ASSERT_PLAN(plan, matcher) \
@@ -32,9 +31,6 @@
 
 namespace facebook::axiom::optimizer {
 namespace {
-
-#define AXIOM_ASSERT_PLAN(plan, matcher) \
-  ASSERT_TRUE(matcher->match(plan)) << plan->toString(true, true);
 
 using namespace facebook::velox;
 namespace lp = facebook::axiom::logical_plan;
@@ -89,26 +85,6 @@ class PlanTest : public test::QueryTestBase {
 
   std::shared_ptr<connector::TestConnector> testConnector_;
 };
-
-auto gte(const std::string& name, int64_t n) {
-  return common::test::singleSubfieldFilter(name, exec::greaterThanOrEqual(n));
-}
-
-auto lte(const std::string& name, int64_t n) {
-  return common::test::singleSubfieldFilter(name, exec::lessThanOrEqual(n));
-}
-
-auto between(const std::string& name, int64_t min, int64_t max) {
-  return common::test::singleSubfieldFilter(name, exec::between(min, max));
-}
-
-auto gt(const std::string& name, double d) {
-  return common::test::singleSubfieldFilter(name, exec::greaterThanDouble(d));
-}
-
-auto lt(const std::string& name, double d) {
-  return common::test::singleSubfieldFilter(name, exec::lessThanDouble(d));
-}
 
 // TODO Move this test into its own file.
 TEST_F(PlanTest, queryGraph) {
@@ -506,7 +482,6 @@ TEST_F(PlanTest, filterToJoinEdge) {
   auto regionType = ROW({"r_regionkey"}, {BIGINT()});
 
   const auto connectorId = exec::test::kHiveConnectorId;
-  const auto connector = velox::connector::getConnector(connectorId);
 
   lp::PlanBuilder::Context context;
   auto logicalPlan = lp::PlanBuilder(context)
@@ -661,7 +636,6 @@ TEST_F(PlanTest, filterBreakup) {
        {"p_size", INTEGER()}});
 
   const auto connectorId = exec::test::kHiveConnectorId;
-  const auto connector = velox::connector::getConnector(connectorId);
 
   lp::PlanBuilder::Context context;
   auto logicalPlan =
@@ -723,292 +697,6 @@ TEST_F(PlanTest, filterBreakup) {
   checkSame(logicalPlan, referencePlan);
 }
 
-TEST_F(PlanTest, unionAll) {
-  auto nationType =
-      ROW({"n_nationkey", "n_regionkey", "n_name", "n_comment"},
-          {BIGINT(), BIGINT(), VARCHAR(), VARCHAR()});
-
-  const auto connectorId = exec::test::kHiveConnectorId;
-  const auto connector = velox::connector::getConnector(connectorId);
-
-  const std::vector<std::string>& names = nationType->names();
-
-  lp::PlanBuilder::Context ctx;
-  auto t1 = lp::PlanBuilder(ctx)
-                .tableScan(connectorId, "nation", names)
-                .filter("n_nationkey < 11");
-  auto t2 = lp::PlanBuilder(ctx)
-                .tableScan(connectorId, "nation", names)
-                .filter("n_nationkey > 13");
-
-  auto logicalPlan = t1.unionAll(t2)
-                         .project({"n_regionkey + 1 as rk"})
-                         .filter("rk % 3 = 1")
-                         .build();
-
-  {
-    auto plan = toSingleNodePlan(logicalPlan);
-    auto matcher =
-        core::PlanMatcherBuilder()
-            .hiveScan(
-                "nation", lte("n_nationkey", 10), "(n_regionkey + 1) % 3 = 1")
-            .localPartition(
-                core::PlanMatcherBuilder()
-                    .hiveScan(
-                        "nation",
-                        gte("n_nationkey", 14),
-                        "(n_regionkey + 1) % 3 = 1")
-                    .project()
-                    .build())
-            .project()
-            .build();
-
-    AXIOM_ASSERT_PLAN(plan, matcher);
-  }
-
-  auto referencePlan = exec::test::PlanBuilder(pool_.get())
-                           .tableScan("nation", nationType)
-                           .filter("n_nationkey < 11 or n_nationkey > 13")
-                           .project({"n_regionkey + 1 as rk"})
-                           .filter("rk % 3 = 1")
-                           .planNode();
-
-  checkSame(logicalPlan, referencePlan);
-}
-
-TEST_F(PlanTest, unionJoin) {
-  auto partType = ROW({"p_partkey", "p_retailprice"}, {BIGINT(), DOUBLE()});
-  auto partSuppType = ROW({"ps_partkey", "ps_availqty"}, {BIGINT(), INTEGER()});
-
-  const auto connectorId = exec::test::kHiveConnectorId;
-  const auto connector = velox::connector::getConnector(connectorId);
-
-  lp::PlanBuilder::Context ctx;
-  auto ps1 =
-      lp::PlanBuilder(ctx)
-          .tableScan(connectorId, "partsupp", {"ps_partkey", "ps_availqty"})
-          .filter("ps_availqty < 1000::int")
-          .project({"ps_partkey"});
-
-  auto ps2 =
-      lp::PlanBuilder(ctx)
-          .tableScan(connectorId, "partsupp", {"ps_partkey", "ps_availqty"})
-          .filter("ps_availqty > 2000::int")
-          .project({"ps_partkey"});
-
-  auto ps3 =
-      lp::PlanBuilder(ctx)
-          .tableScan(connectorId, "partsupp", {"ps_partkey", "ps_availqty"})
-          .filter("ps_availqty between 1200::int and 1400::int")
-          .project({"ps_partkey"});
-
-  // The shape of the partsupp union is ps1 union all (ps2 union all ps3). We
-  // verify that a stack of multiple set ops works.
-  auto psu2 = ps2.unionAll(ps3);
-
-  auto p1 = lp::PlanBuilder(ctx)
-                .tableScan(connectorId, "part", {"p_partkey", "p_retailprice"})
-                .filter("p_retailprice < 1100.0");
-
-  auto p2 = lp::PlanBuilder(ctx)
-                .tableScan(connectorId, "part", {"p_partkey", "p_retailprice"})
-                .filter("p_retailprice > 1200.0");
-
-  auto logicalPlan =
-      ps1.unionAll(psu2)
-          .join(p1.unionAll(p2), "ps_partkey = p_partkey", lp::JoinType::kInner)
-          .aggregate({}, {"sum(1)"})
-          .build();
-
-  {
-    auto plan = toSingleNodePlan(logicalPlan);
-    auto matcher =
-        core::PlanMatcherBuilder()
-            .hiveScan("partsupp", lte("ps_availqty", 999))
-            .localPartition(
-                core::PlanMatcherBuilder()
-                    .hiveScan("partsupp", gte("ps_availqty", 2001))
-                    .project()
-                    .localPartition(
-                        core::PlanMatcherBuilder()
-                            .hiveScan(
-                                "partsupp", between("ps_availqty", 1200, 1400))
-                            .project()
-                            .build())
-                    .build())
-            .hashJoin(
-                core::PlanMatcherBuilder()
-                    .hiveScan("part", lt("p_retailprice", 1100.0))
-                    .localPartition(
-                        core::PlanMatcherBuilder()
-                            .hiveScan("part", gt("p_retailprice", 1200.0))
-                            .project()
-                            .build())
-                    .build(),
-                core::JoinType::kInner)
-            .singleAggregation({}, {"sum(1)"})
-            .build();
-
-    AXIOM_ASSERT_PLAN(plan, matcher);
-  }
-
-  auto idGenerator = std::make_shared<core::PlanNodeIdGenerator>();
-  auto referencePlan =
-      exec::test::PlanBuilder(idGenerator)
-          .tableScan("partsupp", partSuppType)
-          .filter(
-              "ps_availqty < 1000::int or ps_availqty > 2000::int "
-              "or ps_availqty between 1200::int and 1400::int")
-          .hashJoin(
-              {"ps_partkey"},
-              {"p_partkey"},
-              exec::test::PlanBuilder(idGenerator)
-                  .tableScan("part", partType)
-                  .filter("p_retailprice < 1100.0 or p_retailprice > 1200.0")
-                  .planNode(),
-              "",
-              {"p_partkey"})
-          .project({"p_partkey"})
-          .localPartition({})
-          .singleAggregation({}, {"sum(1)"})
-          .planNode();
-
-  // Skip distributed run. Problem with local exchange source with
-  // multiple inputs.
-  checkSame(logicalPlan, referencePlan, {.numWorkers = 1, .numDrivers = 4});
-}
-
-TEST_F(PlanTest, intersect) {
-  auto nationType =
-      ROW({"n_nationkey", "n_regionkey", "n_name", "n_comment"},
-          {BIGINT(), BIGINT(), VARCHAR(), VARCHAR()});
-
-  const auto connectorId = exec::test::kHiveConnectorId;
-  const auto connector = velox::connector::getConnector(connectorId);
-
-  const std::vector<std::string>& names = nationType->names();
-
-  lp::PlanBuilder::Context ctx;
-  auto t1 = lp::PlanBuilder(ctx)
-                .tableScan(connectorId, "nation", names)
-                .filter("n_nationkey < 21")
-                .project({"n_nationkey", "n_regionkey"});
-  auto t2 = lp::PlanBuilder(ctx)
-                .tableScan(connectorId, "nation", names)
-                .filter("n_nationkey > 11")
-                .project({"n_nationkey", "n_regionkey"});
-  auto t3 = lp::PlanBuilder(ctx)
-                .tableScan(connectorId, "nation", names)
-                .filter("n_nationkey > 12")
-                .project({"n_nationkey", "n_regionkey"});
-
-  auto logicalPlan =
-      lp::PlanBuilder(ctx)
-          .setOperation(lp::SetOperation::kIntersect, {t1, t2, t3})
-          .project({"n_regionkey + 1 as rk"})
-          .filter("rk % 3 = 1")
-          .build();
-
-  {
-    auto plan = toSingleNodePlan(logicalPlan);
-    auto matcher =
-        core::PlanMatcherBuilder()
-            // TODO Fix this plan to push down (n_regionkey + 1) % 3
-            // = 1 to all branches of 'intersect'.
-            .hiveScan(
-                "nation", lte("n_nationkey", 20), "(n_regionkey + 1) % 3 = 1")
-            .hashJoin(
-                core::PlanMatcherBuilder()
-                    .hiveScan("nation", gte("n_nationkey", 12))
-                    .build(),
-                core::JoinType::kLeftSemiFilter)
-            .hashJoin(
-                core::PlanMatcherBuilder()
-                    .hiveScan("nation", gte("n_nationkey", 13))
-                    .build(),
-                core::JoinType::kLeftSemiFilter)
-            .singleAggregation()
-            .project()
-            .build();
-
-    AXIOM_ASSERT_PLAN(plan, matcher);
-  }
-
-  auto referencePlan = exec::test::PlanBuilder(pool_.get())
-                           .tableScan("nation", nationType)
-                           .filter("n_nationkey > 12 and n_nationkey < 21")
-                           .project({"n_regionkey + 1 as rk"})
-                           .filter("rk % 3 = 1")
-                           .planNode();
-
-  checkSame(logicalPlan, referencePlan);
-}
-
-TEST_F(PlanTest, except) {
-  auto nationType =
-      ROW({"n_nationkey", "n_regionkey", "n_name", "n_comment"},
-          {BIGINT(), BIGINT(), VARCHAR(), VARCHAR()});
-
-  const auto connectorId = exec::test::kHiveConnectorId;
-  const auto connector = velox::connector::getConnector(connectorId);
-
-  const std::vector<std::string>& names = nationType->names();
-
-  lp::PlanBuilder::Context ctx;
-  auto t1 = lp::PlanBuilder(ctx)
-                .tableScan(connectorId, "nation", names)
-                .filter("n_nationkey < 21")
-                .project({"n_nationkey", "n_regionkey"});
-  auto t2 = lp::PlanBuilder(ctx)
-                .tableScan(connectorId, "nation", names)
-                .filter("n_nationkey > 16")
-                .project({"n_nationkey", "n_regionkey"});
-  auto t3 = lp::PlanBuilder(ctx)
-                .tableScan(connectorId, "nation", names)
-                .filter("n_nationkey <= 5")
-                .project({"n_nationkey", "n_regionkey"});
-
-  auto logicalPlan = lp::PlanBuilder(ctx)
-                         .setOperation(lp::SetOperation::kExcept, {t1, t2, t3})
-                         .project({"n_nationkey", "n_regionkey + 1 as rk"})
-                         .filter("rk % 3 = 1")
-                         .build();
-
-  {
-    auto plan = toSingleNodePlan(logicalPlan);
-    auto matcher =
-        core::PlanMatcherBuilder()
-            .hiveScan(
-                "nation", lte("n_nationkey", 20), "(n_regionkey + 1) % 3 = 1")
-            .hashJoin(
-                core::PlanMatcherBuilder()
-                    // TODO Fix this plan to push down (n_regionkey + 1) % 3 = 1
-                    // to all branches of 'except'.
-                    .hiveScan("nation", gte("n_nationkey", 17))
-                    .build(),
-                core::JoinType::kAnti)
-            .hashJoin(
-                core::PlanMatcherBuilder()
-                    .hiveScan("nation", lte("n_nationkey", 5))
-                    .build(),
-                core::JoinType::kAnti)
-            .singleAggregation()
-            .project()
-            .build();
-
-    AXIOM_ASSERT_PLAN(plan, matcher);
-  }
-
-  auto referencePlan = exec::test::PlanBuilder(pool_.get())
-                           .tableScan("nation", nationType)
-                           .filter("n_nationkey > 5 and n_nationkey <= 16")
-                           .project({"n_nationkey", "n_regionkey + 1 as rk"})
-                           .filter("rk % 3 = 1")
-                           .planNode();
-
-  checkSame(logicalPlan, referencePlan);
-}
-
 // Tests that value nodes can have complex literal types.
 TEST_F(PlanTest, valuesComplex) {
   auto rowVector = makeRowVector({
@@ -1021,7 +709,6 @@ TEST_F(PlanTest, valuesComplex) {
   });
 
   const auto connectorId = exec::test::kHiveConnectorId;
-  const auto connector = velox::connector::getConnector(connectorId);
 
   lp::PlanBuilder::Context ctx{connectorId};
   auto logicalPlan = lp::PlanBuilder(ctx).values({rowVector}).build();

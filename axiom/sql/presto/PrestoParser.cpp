@@ -188,6 +188,12 @@ class ExprAnalyzer : public AstVisitor {
         "Not yet supported node type: {}", NodeTypeName::toName(node->type()));
   }
 
+  void visitArrayConstructor(ArrayConstructor* node) override {
+    for (const auto& value : node->values()) {
+      value->accept(this);
+    }
+  }
+
   void visitCast(Cast* node) override {
     node->expression()->accept(this);
   }
@@ -218,6 +224,10 @@ class ExprAnalyzer : public AstVisitor {
     }
 
     aggregateName_.reset();
+  }
+
+  void visitLambdaExpression(LambdaExpression* node) override {
+    node->body()->accept(this);
   }
 
   void visitArithmeticBinaryExpression(
@@ -262,6 +272,32 @@ class ExprAnalyzer : public AstVisitor {
   size_t numAggregates_{0};
   std::optional<std::string> aggregateName_;
 };
+
+std::pair<std::string, std::string> toConnectorTable(
+    const QualifiedName& name,
+    const std::optional<std::string>& defaultConnectorId) {
+  const auto& parts = name.parts();
+  VELOX_CHECK(!parts.empty(), "Table name cannot be empty");
+
+  const auto& tableName = parts.back();
+
+  if (parts.size() == 1) {
+    // name
+    VELOX_CHECK(defaultConnectorId.has_value());
+    return {defaultConnectorId.value(), tableName};
+  }
+
+  if (parts.size() == 2) {
+    // schema.name
+    VELOX_CHECK(defaultConnectorId.has_value());
+    return {
+        defaultConnectorId.value(), fmt::format("{}.{}", parts[0], tableName)};
+  }
+
+  // connector.schema.name
+  VELOX_CHECK_EQ(3, parts.size());
+  return {parts[0], fmt::format("{}.{}", parts[1], tableName)};
+}
 
 class RelationPlanner : public AstVisitor {
  public:
@@ -536,6 +572,18 @@ class RelationPlanner : public AstVisitor {
           args.push_back(toExpr(arg));
         }
         return lp::Call(call->name()->suffix(), args);
+      }
+
+      case NodeType::kLambdaExpression: {
+        auto* lambda = node->as<LambdaExpression>();
+
+        std::vector<std::string> names;
+        names.reserve(lambda->arguments().size());
+        for (const auto& arg : lambda->arguments()) {
+          names.emplace_back(arg->name()->value());
+        }
+
+        return lp::Lambda(names, toExpr(lambda->body()));
       }
 
       default:
@@ -842,8 +890,12 @@ class RelationPlanner : public AstVisitor {
         return;
       }
 
-      builder_->tableScan(table->name()->suffix());
-      builder_->as(table->name()->suffix());
+      const auto connectorTable =
+          toConnectorTable(*table->name(), context_.defaultConnectorId);
+      builder_->tableScan(connectorTable.first, connectorTable.second);
+
+      const auto& tableName = table->name()->suffix();
+      builder_->as(tableName);
       return;
     }
 
@@ -1216,6 +1268,38 @@ class RelationPlanner : public AstVisitor {
     }
   }
 
+  void visitValues(Values* node) override {
+    VELOX_CHECK(!node->rows().empty());
+
+    const auto numColumns = node->rows().front()->as<Row>()->items().size();
+
+    std::vector<Variant> rows;
+    for (const auto& row : node->rows()) {
+      const auto& columns = row->as<Row>()->items();
+
+      VELOX_CHECK_EQ(numColumns, columns.size());
+
+      std::vector<Variant> values;
+      for (const auto& expr : columns) {
+        auto value = toExpr(expr);
+        VELOX_CHECK(value.expr()->is(core::IExpr::Kind::kConstant));
+
+        values.emplace_back(value.expr()->as<core::ConstantExpr>()->value());
+      }
+
+      rows.emplace_back(Variant::row(values));
+    }
+
+    auto rowType = asRowType(rows.front().inferType());
+    std::vector<std::string> names;
+    names.reserve(rowType->size());
+    for (auto i = 0; i < rowType->size(); ++i) {
+      names.emplace_back(fmt::format("c{}", i));
+    }
+
+    builder_->values(ROW(names, rowType->children()), rows);
+  }
+
   void visitUnion(Union* node) override {
     node->left()->accept(this);
 
@@ -1333,18 +1417,24 @@ SqlStatementPtr parseExplain(
       type);
 }
 
+static facebook::axiom::connector::TablePtr findTable(
+    const QualifiedName& name,
+    const std::string& defaultConnectorId) {
+  const auto connectorTable = toConnectorTable(name, defaultConnectorId);
+
+  auto table = facebook::axiom::connector::ConnectorMetadata::metadata(
+                   connectorTable.first)
+                   ->findTable(connectorTable.second);
+
+  VELOX_USER_CHECK_NOT_NULL(
+      table, "Table not found: {}", name.fullyQualifiedName());
+  return table;
+}
+
 SqlStatementPtr parseShowColumns(
     const ShowColumns& showColumns,
     const std::string& connectorId) {
-  const auto tableName = showColumns.table()->suffix();
-
-  auto table =
-      facebook::axiom::connector::ConnectorMetadata::metadata(connectorId)
-          ->findTable(tableName);
-
-  VELOX_USER_CHECK_NOT_NULL(table, "Table not found: {}", tableName);
-
-  const auto& schema = table->type();
+  const auto schema = findTable(*showColumns.table(), connectorId)->type();
 
   std::vector<Variant> data;
   data.reserve(schema->size());
@@ -1363,12 +1453,7 @@ SqlStatementPtr parseShowColumns(
 SqlStatementPtr parseInsert(
     const Insert& insert,
     const std::string& connectorId) {
-  auto tableName = insert.target()->suffix();
-
-  auto table =
-      facebook::axiom::connector::ConnectorMetadata::metadata(connectorId)
-          ->findTable(tableName);
-  VELOX_USER_CHECK_NOT_NULL(table, "Table not found: {}", tableName);
+  const auto table = findTable(*insert.target(), connectorId);
 
   const auto& columns = insert.columns();
 
@@ -1390,7 +1475,7 @@ SqlStatementPtr parseInsert(
 
   planner.builder().tableWrite(
       connectorId,
-      tableName,
+      table->name(),
       lp::WriteKind::kInsert,
       columnNames,
       inputColumns);

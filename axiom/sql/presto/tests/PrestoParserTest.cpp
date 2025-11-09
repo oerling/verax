@@ -546,6 +546,18 @@ TEST_F(PrestoParserTest, exists) {
       matcher);
 }
 
+TEST_F(PrestoParserTest, lambda) {
+  auto matcher = lp::test::LogicalPlanMatcherBuilder().values().project();
+
+  testSql("SELECT filter(array[1,2,3], x -> x > 1)", matcher);
+}
+
+TEST_F(PrestoParserTest, values) {
+  auto matcher = lp::test::LogicalPlanMatcherBuilder().values();
+
+  testSql("SELECT * FROM (VALUES (1, 1.1, 'foo'), (2, null, 'bar'))", matcher);
+}
+
 TEST_F(PrestoParserTest, everything) {
   auto matcher =
       lp::test::LogicalPlanMatcherBuilder()
@@ -692,7 +704,7 @@ TEST_F(PrestoParserTest, insertIntoTable) {
 
     VELOX_ASSERT_THROW(
         parser.parse("INSERT INTO nation SELECT 100, 'n-100', 2, 3"),
-        "Wrong column type: BIGINT vs. VARCHAR, column n_comment in table nation");
+        "Wrong column type: BIGINT vs. VARCHAR, column n_comment in table tiny.nation");
   }
 }
 

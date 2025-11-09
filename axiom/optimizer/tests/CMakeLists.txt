@@ -96,6 +96,7 @@ add_executable(
   PlanTest.cpp
   PlanMatcherGeneratorTest.cpp
   RelationOpPrinterTest.cpp
+  SetTest.cpp
   UnnestTest.cpp
   ParquetTpchTest.cpp
   SyntacticJoinOrderTest.cpp
@@ -103,6 +104,7 @@ add_executable(
   FeatureGen.cpp
   Genies.cpp
   TestConnectorQueryTest.cpp
+  TpchConnectorQueryTest.cpp
   WriteTest.cpp
 )
 

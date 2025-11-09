@@ -16,14 +16,115 @@
 
 #include <folly/init/Init.h>
 #include <gflags/gflags.h>
+#include "axiom/connectors/hive/LocalHiveConnectorMetadata.h"
+#include "axiom/connectors/tpch/TpchConnectorMetadata.h"
 #include "axiom/optimizer/tests/Console.h"
 #include "axiom/optimizer/tests/SqlQueryRunner.h"
+#include "velox/connectors/Connector.h"
+#include "velox/connectors/hive/HiveConnector.h"
+#include "velox/dwio/dwrf/RegisterDwrfReader.h"
+#include "velox/dwio/dwrf/RegisterDwrfWriter.h"
+#include "velox/dwio/parquet/RegisterParquetReader.h"
+#include "velox/dwio/parquet/RegisterParquetWriter.h"
+
+namespace facebook::axiom {
+namespace {
+
+class Connectors {
+ public:
+  Connectors(const std::string& dataPath, const std::string& dataFormat)
+      : dataPath_{dataPath}, dataFormat_{dataFormat} {}
+
+  std::string initialize(optimizer::VeloxHistory& history) {
+    velox::dwio::common::registerFileSinks();
+    velox::parquet::registerParquetReaderFactory();
+    velox::parquet::registerParquetWriterFactory();
+    velox::dwrf::registerDwrfReaderFactory();
+    velox::dwrf::registerDwrfWriterFactory();
+
+    std::shared_ptr<velox::connector::Connector> connector;
+
+    // Register the Hive connector.
+    if (!dataPath_.empty()) {
+      ioExecutor_ = std::make_unique<folly::IOThreadPoolExecutor>(8);
+      connector = registerHiveConnector(
+          dataPath_, dataFormat_, ioExecutor_.get(), history);
+    }
+
+    // Register the TPC-H connector.
+    {
+      auto tpchConnector = registerTpchConnector();
+      if (connector == nullptr) {
+        connector = tpchConnector;
+      }
+    }
+
+    return connector->connectorId();
+  }
+
+ private:
+  std::shared_ptr<velox::connector::Connector> registerTpchConnector() {
+    auto emptyConfig = std::make_shared<velox::config::ConfigBase>(
+        std::unordered_map<std::string, std::string>{});
+
+    velox::connector::tpch::TpchConnectorFactory factory;
+    auto connector = factory.newConnector("tpch", emptyConfig);
+    velox::connector::registerConnector(connector);
+
+    connector::ConnectorMetadata::registerMetadata(
+        connector->connectorId(),
+        std::make_shared<connector::tpch::TpchConnectorMetadata>(
+            dynamic_cast<velox::connector::tpch::TpchConnector*>(
+                connector.get())));
+
+    return connector;
+  }
+
+  std::shared_ptr<velox::connector::Connector> registerHiveConnector(
+      const std::string& dataPath,
+      const std::string& dataFormat,
+      folly::IOThreadPoolExecutor* ioExecutor,
+      optimizer::VeloxHistory& history) {
+    std::unordered_map<std::string, std::string> connectorConfig = {
+        {velox::connector::hive::HiveConfig::kLocalDataPath, dataPath},
+        {velox::connector::hive::HiveConfig::kLocalFileFormat, dataFormat},
+    };
+
+    auto config =
+        std::make_shared<velox::config::ConfigBase>(std::move(connectorConfig));
+
+    velox::connector::hive::HiveConnectorFactory factory;
+    auto connector = factory.newConnector("hive", config, ioExecutor);
+    velox::connector::registerConnector(connector);
+
+    connector::ConnectorMetadata::registerMetadata(
+        connector->connectorId(),
+        std::make_shared<connector::hive::LocalHiveConnectorMetadata>(
+            dynamic_cast<velox::connector::hive::HiveConnector*>(
+                connector.get())));
+
+    if (!dataPath.empty()) {
+      history.updateFromFile(dataPath + "/.history");
+    }
+
+    return connector;
+  }
+
+  const std::string dataPath_;
+  const std::string dataFormat_;
+  std::unique_ptr<folly::IOThreadPoolExecutor> ioExecutor_;
+};
+} // namespace
+} // namespace facebook::axiom
 
 int main(int argc, char** argv) {
   folly::Init init(&argc, &argv, false);
 
+  facebook::axiom::Connectors connectors{FLAGS_data_path, FLAGS_data_format};
+
   axiom::sql::SqlQueryRunner runner;
-  runner.initialize(FLAGS_data_path, FLAGS_data_format);
+  runner.initialize(
+      [&](auto& history) { return connectors.initialize(history); });
 
   axiom::sql::Console console{runner};
   console.initialize();

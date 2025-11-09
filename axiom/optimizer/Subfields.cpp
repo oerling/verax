@@ -174,14 +174,16 @@ void ToGraph::markFieldAccessed(
     // The source is a lambda arg. We apply the path to the corresponding
     // container arg of the 2nd order function call that has the lambda.
     const auto* metadata = functionMetadata(toName(source.call->name()));
-    const auto* lambdaInfo = metadata->lambdaInfo(source.lambdaOrdinal);
-    const auto nth = lambdaInfo->argOrdinal[ordinal];
+    if (metadata != nullptr) {
+      const auto* lambdaInfo = metadata->lambdaInfo(source.lambdaOrdinal);
+      const auto nth = lambdaInfo->argOrdinal[ordinal];
 
-    markSubfields(
-        source.call->inputAt(nth),
-        steps,
-        isControl,
-        {context.rowTypes.subspan(1), context.sources.subspan(1)});
+      markSubfields(
+          source.call->inputAt(nth),
+          steps,
+          isControl,
+          {context.rowTypes.subspan(1), context.sources.subspan(1)});
+    }
     return;
   }
 
@@ -290,6 +292,29 @@ lp::ConstantExprPtr ToGraph::tryFoldConstant(const lp::ExprPtr& expr) {
   return nullptr;
 }
 
+namespace {
+MarkFieldsAccessedContextVector makeContextForLambdaArg(
+    const lp::LambdaExpr* lambda,
+    const LogicalContextSource& source,
+    const MarkFieldsAccessedContext& context) {
+  const auto& argType = lambda->signature();
+
+  std::vector<const velox::RowType*> newRowTypes;
+  newRowTypes.reserve(context.rowTypes.size() + 1);
+  newRowTypes.push_back(argType.get());
+  newRowTypes.insert(
+      newRowTypes.end(), context.rowTypes.begin(), context.rowTypes.end());
+
+  std::vector<LogicalContextSource> newSources;
+  newSources.reserve(context.sources.size() + 1);
+  newSources.push_back(source);
+  newSources.insert(
+      newSources.end(), context.sources.begin(), context.sources.end());
+
+  return {newRowTypes, newSources};
+}
+} // namespace
+
 void ToGraph::markSubfields(
     const lp::ExprPtr& expr,
     std::vector<Step>& steps,
@@ -372,7 +397,21 @@ void ToGraph::markSubfields(
     const auto* metadata = functionMetadata(toName(name));
     if (!metadata || !metadata->processSubfields()) {
       std::vector<Step> argumentSteps;
-      for (const auto& input : expr->inputs()) {
+      const auto* call = expr->as<lp::CallExpr>();
+      for (auto i = 0; i < expr->inputs().size(); ++i) {
+        const auto& input = expr->inputAt(i);
+        if (input->isLambda()) {
+          const auto* lambda = input->as<lp::LambdaExpr>();
+          auto lambdaContext = makeContextForLambdaArg(
+              lambda, {.call = call, .lambdaOrdinal = i}, context);
+
+          std::vector<Step> lambdaSteps;
+          markSubfields(
+              lambda->body(), lambdaSteps, isControl, lambdaContext.toCtx());
+          VELOX_DCHECK(lambdaSteps.empty());
+          continue;
+        }
+
         markSubfields(input, argumentSteps, isControl, context);
         VELOX_DCHECK(argumentSteps.empty());
       }
@@ -432,28 +471,16 @@ void ToGraph::markSubfields(
 
       if (metadata->lambdaInfo(i)) {
         const auto* lambda = expr->inputAt(i)->as<lp::LambdaExpr>();
-        const auto& argType = lambda->signature();
-
-        std::vector<const velox::RowType*> newRowTypes;
-        newRowTypes.reserve(context.rowTypes.size() + 1);
-        newRowTypes.push_back(argType.get());
-        newRowTypes.insert(
-            newRowTypes.end(),
-            context.rowTypes.begin(),
-            context.rowTypes.end());
-
-        std::vector<LogicalContextSource> newSources;
-        newSources.reserve(context.sources.size() + 1);
-        newSources.push_back({.call = call, .lambdaOrdinal = i});
-        newSources.insert(
-            newSources.end(), context.sources.begin(), context.sources.end());
+        auto lambdaContext = makeContextForLambdaArg(
+            lambda, {.call = call, .lambdaOrdinal = i}, context);
 
         std::vector<Step> lambdaSteps;
         markSubfields(
-            lambda->body(), lambdaSteps, isControl, {newRowTypes, newSources});
+            lambda->body(), lambdaSteps, isControl, lambdaContext.toCtx());
         VELOX_DCHECK(lambdaSteps.empty());
         continue;
       }
+
       // The argument is not special, just mark through without path.
       std::vector<Step> argumentSteps;
       markSubfields(expr->inputAt(i), argumentSteps, isControl, context);

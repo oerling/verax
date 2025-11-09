@@ -67,28 +67,27 @@ void Column::equals(ColumnCP other) const {
 
 std::string Column::toString() const {
   const auto* opt = queryCtx()->optimization();
-  if (!opt->cnamesInExpr()) {
+  if (!opt->cnamesInExpr() || relation_ == nullptr) {
     return name_;
   }
 
-  Name cname = "";
-  if (relation_) {
-    switch (relation_->type()) {
-      case PlanType::kTableNode:
-        cname = relation_->as<BaseTable>()->cname;
-        break;
-      case PlanType::kValuesTableNode:
-        cname = relation_->as<ValuesTable>()->cname;
-        break;
-      case PlanType::kUnnestTableNode:
-        cname = relation_->as<UnnestTable>()->cname;
-        break;
-      case PlanType::kDerivedTableNode:
-        cname = relation_->as<DerivedTable>()->cname;
-        break;
-      default:
-        cname = "--";
-    }
+  Name cname;
+  switch (relation_->type()) {
+    case PlanType::kTableNode:
+      cname = relation_->as<BaseTable>()->cname;
+      break;
+    case PlanType::kValuesTableNode:
+      cname = relation_->as<ValuesTable>()->cname;
+      break;
+    case PlanType::kUnnestTableNode:
+      cname = relation_->as<UnnestTable>()->cname;
+      break;
+    case PlanType::kDerivedTableNode:
+      cname = relation_->as<DerivedTable>()->cname;
+      break;
+    default:
+      VELOX_UNREACHABLE(
+          "Unexpected relation: {}", PlanTypeName::toName(relation_->type()));
   }
 
   return fmt::format("{}.{}", cname, name_);
