@@ -588,7 +588,8 @@ class VeloxRunner : public velox::QueryBenchmarkBase {
 
     axiom::optimizer::OptimizerOptions optimizerOptions;
     optimizerOptions.traceFlags = FLAGS_optimizer_trace;
-    optimizerOptions.enableReducingExistences = FLAGS_enable_reducing_existences;
+    optimizerOptions.enableReducingExistences =
+        FLAGS_enable_reducing_existences;
 
     optimizer::Optimization optimization(
         session,
@@ -626,7 +627,6 @@ class VeloxRunner : public velox::QueryBenchmarkBase {
   static void printPlanWithStats(
       runner::LocalRunner& runner,
       const optimizer::NodePredictionMap& estimates) {
-
     // Calculate predicted CPU total
     float predictedCpu = 0;
     for (auto& pair : estimates) {
@@ -645,8 +645,7 @@ class VeloxRunner : public velox::QueryBenchmarkBase {
       // For each plan node, sum up CPU from addInput, getOutput, and finish
       for (const auto& [nodeId, stats] : planStats) {
         int64_t nodeCpu = stats.addInputTiming.cpuNanos +
-                          stats.getOutputTiming.cpuNanos +
-                          stats.finishTiming.cpuNanos;
+            stats.getOutputTiming.cpuNanos + stats.finishTiming.cpuNanos;
 
         // Accumulate (PlanNodeIds may not be unique across tasks)
         nodeCpuNanos[nodeId] += nodeCpu;
@@ -662,8 +661,8 @@ class VeloxRunner : public velox::QueryBenchmarkBase {
         out << indentation << "Estimate: " << it->second.cardinality
             << " rows, " << succinctBytes(it->second.peakMemory)
             << " peak memory, predicted cpu=" << std::fixed
-            << std::setprecision(2)
-            << (it->second.cpu * 100.0f / predictedCpu) << "%";
+            << std::setprecision(2) << (it->second.cpu * 100.0f / predictedCpu)
+            << "%";
 
         // Add actual CPU percentage
         auto cpuIt = nodeCpuNanos.find(nodeId);
@@ -709,8 +708,7 @@ class VeloxRunner : public velox::QueryBenchmarkBase {
       for (const auto& [nodeId, customStats] : allNodeStats) {
         std::cout << "\nNode " << nodeId << ":\n";
         for (const auto& [statName, statValue] : customStats) {
-          std::cout << "  " << statName << ": " << statValue.toString()
-                    << "\n";
+          std::cout << "  " << statName << ": " << statValue.toString() << "\n";
         }
       }
 
