@@ -656,11 +656,11 @@ Aggregation::Aggregation(
   } else {
     // Global aggregation (no grouping keys)
     // Avoid division by zero
-    float safeInputCardinality = std::max(1.0f, static_cast<float>(cost_.inputCardinality));
+    float safeInputCardinality =
+        std::max(1.0f, static_cast<float>(cost_.inputCardinality));
 
-      cost_.unitCost = aggregates.size() * Costs::kSimpleAggregateCost;
-      cost_.fanout = 1.0f / safeInputCardinality;
-
+    cost_.unitCost = aggregates.size() * Costs::kSimpleAggregateCost;
+    cost_.fanout = 1.0f / safeInputCardinality;
   }
 }
 
@@ -671,7 +671,8 @@ void Aggregation::setCostWithGroups(
     float abandonPartialAggregationMinRows,
     float abandonPartialAggregationMinPct) {
   // Avoid division by zero
-  float safeInputBeforePartial = std::max(1.0f, static_cast<float>(inputBeforePartial));
+  float safeInputBeforePartial =
+      std::max(1.0f, static_cast<float>(inputBeforePartial));
 
   auto numKeys = groupingKeys.size();
 
@@ -697,7 +698,8 @@ void Aggregation::setCostWithGroups(
   auto maxInTable = step == velox::core::AggregationNode::Step::kPartial
       ? partialCapacity
       : nOut;
-  auto aggCost = aggregates.size() * Costs::kSimpleAggregateCost + 2 * Costs::hashProbeCost(maxInTable);
+  auto aggCost = aggregates.size() * Costs::kSimpleAggregateCost +
+      2 * Costs::hashProbeCost(maxInTable);
 
   auto initialDistincts =
       expectedNumDistincts(abandonPartialAggregationMinRows, nOut);

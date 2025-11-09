@@ -587,7 +587,7 @@ class JoinEdge {
   bool isLeftOuter() const {
     return rightOptional_ && !leftOptional_ && !isSemi() && !isAnti();
   }
-  
+
   bool isAnti() const {
     return rightNotExists_;
   }
