@@ -70,7 +70,6 @@ std::string generateTableScanCode(const TableScanNode& node) {
   const auto& tableName = node.tableHandle()->name();
 
   // Get the column names and types
-  const auto& outputType = node.outputType();
 
   std::ostringstream oss;
   oss << ".tableScan(\"" << escapeString(tableName) << "\")";

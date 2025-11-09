@@ -710,8 +710,8 @@ void Aggregation::setCostWithGroups(
   if ((safeInputBeforePartial > abandonPartialAggregationMinRows * width &&
        initialDistincts > abandonPartialAggregationMinRows *
                (abandonPartialAggregationMinPct / 100)) ||
-      safeInputBeforePartial > nOut * 5 &&
-          partialFanout > (abandonPartialAggregationMinPct / 100)) {
+      (safeInputBeforePartial > nOut * 5 &&
+       partialFanout > (abandonPartialAggregationMinPct / 100))) {
     // Partial agg does not reduce.
     partialFanout = 1;
   }
@@ -726,7 +726,7 @@ void Aggregation::setCostWithGroups(
     }
   } else {
     cost_.totalBytes = nOut * rowBytes;
-    auto in = cost_.inputCardinality / partialFanout;
+    // auto in = cost_.inputCardinality / partialFanout;
     cost_.unitCost =
         Costs::kHashColumnCost * numKeys + Costs::hashProbeCost(nOut) + aggCost;
     cost_.fanout = nOut / (safeInputBeforePartial * partialFanout);
@@ -855,7 +855,7 @@ Filter::Filter(RelationOpPtr input, ExprVector exprs)
   cost_.unitCost = Costs::kMinimumFilterCost * numExprs;
 
   cost_.fanout = 1;
-  for (auto& conjunct : exprs) {
+  for (auto& conjunct : exprs_) {
     auto maybeCardinality = filterCardinality(conjunct);
     // We assume each unknown filter selects 4/5. Small effect makes it so
     // join and scan selectivities that are better known have more
