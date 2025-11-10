@@ -180,8 +180,8 @@ class TpchPlanTest : public virtual test::HiveQueriesTestBase {
 
       file << "  // Fragment " << i << "\n";
       file << "  {\n";
-      file << "    auto matcher = "
-           << velox::core::generatePlanMatcherCode(topNode, "builder") << ";\n";
+      file << "    " << velox::core::generatePlanMatcherCode(topNode, "matcher")
+           << ";\n";
       file << "    EXPECT_TRUE(matcher->match(planAndStats.plan->fragments()["
            << i << "].fragment.planNode));\n";
       file << "  }\n";
@@ -193,34 +193,19 @@ class TpchPlanTest : public virtual test::HiveQueriesTestBase {
 
   void checkTpch(int32_t query, const lp::LogicalPlanNodePtr& logicalPlan) {
     auto referencePlan = referenceBuilder_->getQueryPlan(query).plan;
-    checkSame(logicalPlan, referencePlan);
 
-    // Run checker if one exists for this query with default config
-    constexpr int32_t kDefaultNumWorkers = 4;
-    constexpr int32_t kDefaultNumDrivers = 4;
-    auto* checker = getChecker(query, kDefaultNumWorkers, kDefaultNumDrivers);
-    if (checker) {
-      auto planAndStats = planVelox(logicalPlan);
-      (*checker)(planAndStats);
-    }
+    // Define configurations to test
+    std::vector<std::pair<int32_t, int32_t>> configs = {
+        {1, 1}, {1, 4}, {4, 1}, {4, 4}};
 
-    // Record plan if flag is set
-    if (FLAGS_record_plans) {
-      recordPlanCheckerStart(query);
-
-      // Run with different configurations and record each
-      std::vector<std::pair<int32_t, int32_t>> configs = {
-          {1, 1}, {1, 4}, {4, 1}, {4, 4}};
-
-      for (const auto& [numWorkers, numDrivers] : configs) {
-        auto plan = planVelox(
-            logicalPlan,
-            runner::MultiFragmentPlan::Options{
-                .numWorkers = numWorkers, .numDrivers = numDrivers});
-        recordPlanChecker(query, logicalPlan, plan, numWorkers, numDrivers);
-      }
-
-      recordPlanCheckerEnd(query);
+    // Loop over configs and test the plan against reference builder for each
+    for (const auto& [numWorkers, numDrivers] : configs) {
+      // Generate plan with this config and test against reference builder
+      planVelox(
+          logicalPlan,
+          runner::MultiFragmentPlan::Options{
+              .numWorkers = numWorkers, .numDrivers = numDrivers});
+      checkSame(logicalPlan, referencePlan);
     }
   }
 
@@ -272,39 +257,62 @@ class TpchPlanTest : public virtual test::HiveQueriesTestBase {
   void checkTpchSql(int32_t query) {
     auto sql = readTpchSql(query);
     auto referencePlan = referenceBuilder_->getQueryPlan(query).plan;
-    auto planAndStats = checkResults(sql, referencePlan);
 
-    // Run checker if one exists for this query with default config
-    constexpr int32_t kDefaultNumWorkers = 4;
-    constexpr int32_t kDefaultNumDrivers = 4;
-    auto* checker = getChecker(query, kDefaultNumWorkers, kDefaultNumDrivers);
-    if (checker) {
-      (*checker)(planAndStats);
-    }
+    // Define configurations to test
+    std::vector<std::pair<int32_t, int32_t>> configs = {
+        {1, 1}, {1, 4}, {4, 1}, {4, 4}};
 
-    // Record plan if flag is set
-    if (FLAGS_record_plans) {
-      recordPlanCheckerStart(query);
+    // Loop over configs
+    for (size_t i = 0; i < configs.size(); ++i) {
+      const auto& [numWorkers, numDrivers] = configs[i];
+      bool isFirstConfig = (i == 0);
+      bool isLastConfig = (i == configs.size() - 1);
 
-      // Run with different configurations and record each
-      std::vector<std::pair<int32_t, int32_t>> configs = {
-          {1, 1}, {1, 4}, {4, 1}, {4, 4}};
+      // First run the SQL query and compare with reference builder
+      auto logicalPlan = parseTpchSql(query);
+      auto planAndStats = planVelox(
+          logicalPlan,
+          runner::MultiFragmentPlan::Options{
+              .numWorkers = numWorkers, .numDrivers = numDrivers});
 
-      for (const auto& [numWorkers, numDrivers] : configs) {
-        auto logicalPlan = parseTpchSql(query);
-        auto plan = planVelox(
-            logicalPlan,
-            runner::MultiFragmentPlan::Options{
-                .numWorkers = numWorkers, .numDrivers = numDrivers});
-        recordPlanChecker(query, logicalPlan, plan, numWorkers, numDrivers);
+      // Check the optimized query against the reference builder
+      checkSame(logicalPlan, referencePlan);
+
+      // If FLAGS_record_plans is set, initialize the recording at first config
+      if (FLAGS_record_plans && isFirstConfig) {
+        recordPlanCheckerStart(query);
       }
 
-      recordPlanCheckerEnd(query);
+      // If FLAGS_record_plans is set, record the checker
+      if (FLAGS_record_plans) {
+        recordPlanChecker(
+            query, logicalPlan, planAndStats, numWorkers, numDrivers);
+      }
+
+      // If FLAGS_record_plans is set, after recording with the last config,
+      // finalize the recording
+      if (FLAGS_record_plans && isLastConfig) {
+        recordPlanCheckerEnd(query);
+      }
+
+      // If FLAGS_record_plans is not set and there is a checker for the query
+      // and config, run the checker
+      if (!FLAGS_record_plans) {
+        auto* checker = getChecker(query, numWorkers, numDrivers);
+        if (checker) {
+          (*checker)(planAndStats);
+        }
+      }
+
+      // Continue loop with the next config
     }
   }
 
   std::unique_ptr<exec::test::TpchQueryBuilder> referenceBuilder_;
   std::unordered_map<CheckerKey, PlanChecker, CheckerKeyHash> checkers_;
+
+#include "check_1.inc"
+#include "check_3.inc"
 };
 
 TEST_F(TpchPlanTest, stats) {
@@ -332,6 +340,7 @@ TEST_F(TpchPlanTest, stats) {
 }
 
 TEST_F(TpchPlanTest, q01) {
+  defineCheckers1();
   auto logicalPlan =
       lp::PlanBuilder()
           .tableScan(exec::test::kHiveConnectorId, "lineitem")

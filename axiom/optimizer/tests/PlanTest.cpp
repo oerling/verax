@@ -1174,18 +1174,21 @@ TEST_F(PlanTest, outerJoinWithInnerJoin) {
     SCOPED_TRACE("left join with inner join on right");
 
     auto plan = toSingleNodePlan(logicalPlan);
+
+    // The expected plan is a right oj with T, which has the filter on the build
+    // side and the wider row with no filter on the probe side.
     auto matcher =
         core::PlanMatcherBuilder()
-            .tableScan("t")
-            .filter("b > 50")
+            .tableScan("u")
+            .hashJoin(core::PlanMatcherBuilder().tableScan("v").build())
             .hashJoin(
                 core::PlanMatcherBuilder()
-                    .tableScan("u")
-                    .hashJoin(core::PlanMatcherBuilder().tableScan("v").build())
+                    .tableScan("t")
+                    .filter("b > 50")
 
                     .build())
-            .build();
 
+            .build();
     AXIOM_ASSERT_PLAN(plan, matcher);
   }
 
@@ -1208,16 +1211,20 @@ TEST_F(PlanTest, outerJoinWithInnerJoin) {
   {
     SCOPED_TRACE("Aggregation left join filter over inner join");
     auto plan = toSingleNodePlan(logicalPlan);
+
+    // Expect a right oj with the aggregation and filter on the build side and
+    // the join to the right on probe. The aggregation is expected to be the
+    // narrower row.
     auto matcher =
         core::PlanMatcherBuilder()
-            .tableScan("t")
+            .tableScan("u")
+            .hashJoin(core::PlanMatcherBuilder().tableScan("v").build())
             .filter()
-            .aggregation()
             .hashJoin(
                 core::PlanMatcherBuilder()
-                    .tableScan("u")
-                    .hashJoin(core::PlanMatcherBuilder().tableScan("v").build())
+                    .tableScan("t")
                     .filter()
+                    .aggregation()
                     .build())
             .project()
             .build();

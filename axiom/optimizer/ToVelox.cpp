@@ -15,6 +15,7 @@
  */
 
 #include "axiom/optimizer/ToVelox.h"
+#include <algorithm>
 #include <iostream>
 #include "axiom/optimizer/DerivedTablePrinter.h"
 #include "axiom/optimizer/FunctionRegistry.h"
@@ -54,6 +55,12 @@ ToVelox::ToVelox(
       optimizerOptions_{optimizerOptions},
       isSingle_{options.numWorkers == 1},
       subscript_{FunctionRegistry::instance()->subscript()} {}
+
+std::string sanitizeFieldName(std::string_view name) {
+  std::string result(name);
+  std::replace(result.begin(), result.end(), '.', '_');
+  return result;
+}
 
 namespace {
 
@@ -260,7 +267,7 @@ velox::RowTypePtr ToVelox::makeOutputType(const ColumnVector& columns) const {
     }
     auto name = makeVeloxExprWithNoAlias_ ? std::string(column->name())
                                           : column->outputName();
-    names.push_back(name);
+    names.push_back(sanitizeFieldName(name));
     types.push_back(toTypePtr(columns[i]->value().type));
   }
   return ROW(std::move(names), std::move(types));
@@ -320,7 +327,7 @@ velox::core::TypedExprPtr stepToGetter(
         auto& type = arg->type()->childAt(
             arg->type()->as<velox::TypeKind::ROW>().getChildIdx(step.field));
         return std::make_shared<velox::core::FieldAccessTypedExpr>(
-            type, arg, step.field);
+            type, arg, sanitizeFieldName(step.field));
       }
       auto& type = arg->type()->childAt(step.id);
       return std::make_shared<velox::core::DereferenceTypedExpr>(
@@ -433,10 +440,10 @@ velox::core::TypedExprPtr ToVelox::toTypedExpr(ExprCP expr) {
       auto it = columnAlteredTypes_.find(column);
       if (it != columnAlteredTypes_.end()) {
         return std::make_shared<velox::core::FieldAccessTypedExpr>(
-            it->second, name);
+            it->second, sanitizeFieldName(name));
       }
       return std::make_shared<velox::core::FieldAccessTypedExpr>(
-          toTypePtr(expr->value().type), name);
+          toTypePtr(expr->value().type), sanitizeFieldName(name));
     }
     case PlanType::kCallExpr: {
       std::vector<velox::core::TypedExprPtr> inputs;
@@ -478,7 +485,7 @@ velox::core::TypedExprPtr ToVelox::toTypedExpr(ExprCP expr) {
         return std::make_shared<velox::core::FieldAccessTypedExpr>(
             toTypePtr(expr->value().type),
             toTypedExpr(expr->as<Field>()->base()),
-            field);
+            sanitizeFieldName(field));
       }
       return std::make_shared<velox::core::DereferenceTypedExpr>(
           toTypePtr(expr->value().type),
@@ -503,7 +510,7 @@ velox::core::TypedExprPtr ToVelox::toTypedExpr(ExprCP expr) {
       std::vector<std::string> names;
       std::vector<velox::TypePtr> types;
       for (auto& c : lambda->args()) {
-        names.push_back(c->toString());
+        names.push_back(sanitizeFieldName(c->toString()));
         types.push_back(toTypePtr(c->value().type));
       }
       return std::make_shared<velox::core::LambdaTypedExpr>(
@@ -622,7 +629,7 @@ velox::core::FieldAccessTypedExprPtr ToVelox::toFieldRef(ExprCP expr) {
 
   auto column = expr->as<Column>();
   return std::make_shared<velox::core::FieldAccessTypedExpr>(
-      toTypePtr(column->value().type), column->outputName());
+      toTypePtr(column->value().type), sanitizeFieldName(column->outputName()));
 }
 
 std::vector<velox::core::FieldAccessTypedExprPtr> ToVelox::toFieldRefs(
@@ -846,7 +853,7 @@ velox::RowTypePtr skylineStruct(BaseTableCP baseTable, ColumnCP column) {
     const auto& first = path->steps()[0];
     auto name =
         first.field ? std::string{first.field} : fmt::format("{}", first.id);
-    names.push_back(name);
+    names.push_back(sanitizeFieldName(name));
     types.push_back(valueType);
   });
 
@@ -869,7 +876,7 @@ velox::RowTypePtr ToVelox::subfieldPushdownScanType(
       }
       top.add(topColumn);
       topColumns.push_back(topColumn);
-      names.push_back(topColumn->name());
+      names.push_back(sanitizeFieldName(topColumn->name()));
       if (isMapAsStruct(baseTable->schemaTable->name(), topColumn->name())) {
         types.push_back(skylineStruct(baseTable, topColumn));
         typeMap[topColumn] = types.back();
@@ -881,7 +888,7 @@ velox::RowTypePtr ToVelox::subfieldPushdownScanType(
         continue;
       }
       topColumns.push_back(column);
-      names.push_back(column->name());
+      names.push_back(sanitizeFieldName(column->name()));
       types.push_back(toTypePtr(column->value().type));
     }
   }
@@ -897,7 +904,7 @@ velox::core::PlanNodePtr ToVelox::makeSubfieldProjections(
   std::vector<std::string> names;
   std::vector<velox::core::TypedExprPtr> exprs;
   for (auto* column : scan.columns()) {
-    names.push_back(column->outputName());
+    names.push_back(sanitizeFieldName(column->outputName()));
     exprs.push_back(toTypedExpr(column));
   }
   return std::make_shared<velox::core::ProjectNode>(
@@ -950,7 +957,8 @@ velox::core::TypedExprPtr toAndWithAliases(
   for (const auto& column : baseTable->columns) {
     auto name = column->name();
     mapping[name] = std::make_shared<velox::core::FieldAccessTypedExpr>(
-        toTypePtr(column->value().type), column->outputName());
+        toTypePtr(column->value().type),
+        sanitizeFieldName(column->outputName()));
 
     if (usedFieldNames.contains(name)) {
       if (!columnSet.contains(column)) {
@@ -1077,7 +1085,7 @@ velox::core::PlanNodePtr ToVelox::makeProject(
   names.reserve(numOutputs);
   exprs.reserve(numOutputs);
   for (auto i = 0; i < numOutputs; ++i) {
-    names.push_back(project.columns()[i]->outputName());
+    names.push_back(sanitizeFieldName(project.columns()[i]->outputName()));
     exprs.push_back(toTypedExpr(project.exprs()[i]));
   }
 
@@ -1197,7 +1205,8 @@ velox::core::PlanNodePtr ToVelox::makeAggregation(
           type,
           aggregate->name(),
           std::make_shared<velox::core::FieldAccessTypedExpr>(
-              toTypePtr(aggregate->intermediateType()), aggregateNames.back()));
+              toTypePtr(aggregate->intermediateType()),
+              sanitizeFieldName(aggregateNames.back())));
       aggregates.push_back({.call = call, .rawInputTypes = rawInputTypes});
     }
   }
@@ -1400,7 +1409,7 @@ velox::core::PlanNodePtr ToVelox::makeWrite(
   inputNames.reserve(tableWrite.inputColumns.size());
   inputTypes.reserve(tableWrite.inputColumns.size());
   for (const auto* column : tableWrite.inputColumns) {
-    inputNames.push_back(column->as<Column>()->outputName());
+    inputNames.push_back(sanitizeFieldName(column->as<Column>()->outputName()));
     inputTypes.push_back(toTypePtr(column->value().type));
   }
 

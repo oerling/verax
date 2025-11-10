@@ -1315,6 +1315,11 @@ void Optimization::joinByHashRight(
       // rlFanout is the approximation but never < 1.
       fanout = std::max<float>(candidate.join->rlFanout(), 1);
       break;
+    case velox::core::JoinType::kLeft:
+      // A right oj reversed produces every right side row and never limits the
+      // lrFanout.
+      fanout = std::max<float>(candidate.join->lrFanout(), 1);
+      break;
     default:
       VELOX_UNREACHABLE("Bad right join type {}", rightJoinType);
   }
