@@ -151,7 +151,15 @@ void reducingJoinsRecursive(
         resultFunc = {}) {
   bool isLeaf = true;
   for (auto join : joinedBy(candidate)) {
-    if (join->leftOptional() || join->rightOptional()) {
+    if (join->isLeftOuter() && candidate == join->rightTable() &&
+        candidate->is(PlanType::kDerivedTableNode)) {
+      // One can restrict the build of the optional side by a
+      // restriction on the probe. This happens specially when value
+      // subqueries are represented as optional sides of left
+      // oj. These are often aggregations and htere is no point
+      // creating values for groups that can't be probed.
+      ;
+    } else if (join->leftOptional() || join->rightOptional()) {
       continue;
     }
     JoinSide other = join->sideOf(candidate, true);
