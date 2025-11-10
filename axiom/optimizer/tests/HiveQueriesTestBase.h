@@ -54,7 +54,9 @@ class HiveQueriesTestBase : public test::QueryTestBase {
       std::string_view sql,
       std::string* shortRel,
       std::string* longRel,
-      std::string* graph);
+      std::string* graph,
+      const runner::MultiFragmentPlan::Options& runnerOptions = {},
+      const OptimizerOptions& optimizerOptions = {});
 
  private:
   inline static std::shared_ptr<velox::exec::test::TempDirectoryPath>

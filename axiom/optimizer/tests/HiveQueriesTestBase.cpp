@@ -96,14 +96,17 @@ void HiveQueriesTestBase::explain(
     std::string_view sql,
     std::string* shortRel,
     std::string* longRel,
-    std::string* graph) {
+    std::string* graph,
+    const runner::MultiFragmentPlan::Options& runnerOptions,
+    const OptimizerOptions& optimizerOptions) {
   auto statement = prestoParser_->parse(sql);
 
   VELOX_CHECK(statement->isSelect());
   auto logicalPlan =
       statement->as<::axiom::sql::presto::SelectStatement>()->plan();
 
-  QueryTestBase::explain(logicalPlan, shortRel, longRel, graph);
+  QueryTestBase::explain(
+      logicalPlan, shortRel, longRel, graph, runnerOptions, optimizerOptions);
 }
 
 } // namespace facebook::axiom::optimizer::test

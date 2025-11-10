@@ -141,7 +141,9 @@ class QueryTestBase : public runner::test::LocalRunnerTestBase {
       const logical_plan::LogicalPlanNodePtr& query,
       std::string* shortRel,
       std::string* longRel,
-      std::string* graph);
+      std::string* graph,
+      const runner::MultiFragmentPlan::Options& runnerOptions = {},
+      const OptimizerOptions& optimizerOptions = {});
 
   void checkSameSingleNode(
       const logical_plan::LogicalPlanNodePtr& planNode,

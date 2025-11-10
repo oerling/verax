@@ -336,7 +336,7 @@ std::string generateHashJoinCode(const HashJoinNode& node, int matcherIndex) {
 
   const auto joinType = node.joinType();
   std::ostringstream oss;
-  oss << ".hashJoin(" << matcherVar << ", JoinType::";
+  oss << ".hashJoin(" << matcherVar << ", velox::core::JoinType::";
 
   // Map JoinType to its enum name
   switch (joinType) {

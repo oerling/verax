@@ -358,7 +358,9 @@ void QueryTestBase::explain(
     const logical_plan::LogicalPlanNodePtr& query,
     std::string* shortRel,
     std::string* longRel,
-    std::string* graph) {
+    std::string* graph,
+    const runner::MultiFragmentPlan::Options& runnerOptions,
+    const OptimizerOptions& optimizerOptions) {
   auto& queryCtx = getQueryCtx();
 
   auto allocator = std::make_unique<HashStringAllocator>(optimizerPool_.get());
@@ -373,7 +375,6 @@ void QueryTestBase::explain(
   auto session = std::make_shared<Session>(queryCtx->queryId());
 
   connector::SchemaResolver schemaResolver;
-  runner::MultiFragmentPlan::Options options{.numWorkers = 4, .numDrivers = 4};
 
   optimizer::Optimization opt(
       session,
@@ -382,8 +383,8 @@ void QueryTestBase::explain(
       *history_,
       queryCtx,
       evaluator,
-      optimizerOptions_,
-      options);
+      optimizerOptions,
+      runnerOptions);
 
   auto best = opt.bestPlan();
 

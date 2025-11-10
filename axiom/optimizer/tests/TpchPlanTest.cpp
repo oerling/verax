@@ -157,7 +157,13 @@ class TpchPlanTest : public virtual test::HiveQueriesTestBase {
 
     // Get the short RelationOp representation
     std::string shortRel;
-    QueryTestBase::explain(logicalPlan, &shortRel, nullptr, nullptr);
+    QueryTestBase::explain(
+        logicalPlan,
+        &shortRel,
+        nullptr,
+        nullptr,
+        runner::MultiFragmentPlan::Options{
+            .numWorkers = numWorkers, .numDrivers = numDrivers});
 
     file << "// Configuration: numWorkers=" << numWorkers
          << ", numDrivers=" << numDrivers << "\n";
@@ -312,7 +318,9 @@ class TpchPlanTest : public virtual test::HiveQueriesTestBase {
   std::unordered_map<CheckerKey, PlanChecker, CheckerKeyHash> checkers_;
 
 #include "check_1.inc"
+#include "check_13.inc"
 #include "check_3.inc"
+#include "check_4.inc"
 };
 
 TEST_F(TpchPlanTest, stats) {
@@ -394,6 +402,7 @@ TEST_F(TpchPlanTest, q03) {
 }
 
 TEST_F(TpchPlanTest, q04) {
+  defineCheckers4();
   checkTpchSql(4);
 }
 
@@ -654,6 +663,7 @@ TEST_F(TpchPlanTest, q12) {
 }
 
 TEST_F(TpchPlanTest, q13) {
+  defineCheckers13();
   lp::PlanBuilder::Context context{exec::test::kHiveConnectorId};
   auto logicalPlan =
       lp::PlanBuilder(context)
