@@ -16,6 +16,7 @@
 
 #include "axiom/optimizer/tests/PlanMatcherGenerator.h"
 #include <sstream>
+#include <unordered_map>
 #include <vector>
 #include "velox/core/PlanNode.h"
 
@@ -280,11 +281,14 @@ std::string generateTableWriteCode(const TableWriteNode& node) {
 }
 
 /// Forward declarations
-std::string generatePlanMatcherCodeImpl(const PlanNodePtr& planNode);
+std::string generatePlanMatcherCodeImpl(
+    const PlanNodePtr& planNode,
+    std::unordered_map<const PlanNode*, std::string>& rightMatchers);
 void generateJoinMatchers(
     const PlanNodePtr& planNode,
     std::vector<std::string>& matchers,
-    int& matcherCounter);
+    int& matcherCounter,
+    std::unordered_map<const PlanNode*, std::string>& rightMatchers);
 
 /// Generates the matcher variable name for a join side.
 std::string getJoinMatcherVarName(int counter) {
@@ -298,23 +302,29 @@ std::string getJoinMatcherVarName(int counter) {
 void generateJoinMatchers(
     const PlanNodePtr& planNode,
     std::vector<std::string>& matchers,
-    int& matcherCounter) {
+    int& matcherCounter,
+    std::unordered_map<const PlanNode*, std::string>& rightMatchers) {
   if (auto* joinNode = dynamic_cast<const HashJoinNode*>(planNode.get())) {
     VELOX_CHECK_EQ(
         joinNode->sources().size(), 2, "HashJoinNode must have 2 sources");
 
     // Recursively process left side for nested joins
-    generateJoinMatchers(joinNode->sources()[0], matchers, matcherCounter);
+    generateJoinMatchers(
+        joinNode->sources()[0], matchers, matcherCounter, rightMatchers);
 
     // Generate matcher for the right side
     const auto& rightSource = joinNode->sources()[1];
 
     // First, collect any nested joins on the right side
-    generateJoinMatchers(rightSource, matchers, matcherCounter);
+    generateJoinMatchers(rightSource, matchers, matcherCounter, rightMatchers);
 
     // Then generate the matcher for this right side
-    std::string rightMatcherCode = generatePlanMatcherCodeImpl(rightSource);
+    std::string rightMatcherCode =
+        generatePlanMatcherCodeImpl(rightSource, rightMatchers);
     std::string matcherVar = getJoinMatcherVarName(matcherCounter++);
+
+    // Record the mapping from right child PlanNode to matcher variable name
+    rightMatchers[rightSource.get()] = matcherVar;
 
     std::ostringstream oss;
     oss << "auto " << matcherVar << " = core::PlanMatcherBuilder()";
@@ -325,14 +335,20 @@ void generateJoinMatchers(
   } else {
     // Recursively process sources
     for (const auto& source : planNode->sources()) {
-      generateJoinMatchers(source, matchers, matcherCounter);
+      generateJoinMatchers(source, matchers, matcherCounter, rightMatchers);
     }
   }
 }
 
 /// Generates code for a HashJoinNode (inline call only, not the right matcher).
-std::string generateHashJoinCode(const HashJoinNode& node, int matcherIndex) {
-  std::string matcherVar = getJoinMatcherVarName(matcherIndex);
+std::string generateHashJoinCode(
+    const HashJoinNode& node,
+    const std::unordered_map<const PlanNode*, std::string>& rightMatchers) {
+  // Look up the matcher variable name for this join's right child
+  const auto& rightSource = node.sources()[1];
+  auto it = rightMatchers.find(rightSource.get());
+  VELOX_CHECK(it != rightMatchers.end(), "Right matcher not found for join");
+  std::string matcherVar = it->second;
 
   const auto joinType = node.joinType();
   std::ostringstream oss;
@@ -376,59 +392,10 @@ std::string generateHashJoinCode(const HashJoinNode& node, int matcherIndex) {
   return oss.str();
 }
 
-/// Helper to count joins in a tree (to track matcher indices).
-int countJoins(const PlanNodePtr& planNode, int currentIndex = 0) {
-  int index = currentIndex;
-  if (dynamic_cast<const HashJoinNode*>(planNode.get())) {
-    index++;
-  }
-  for (const auto& source : planNode->sources()) {
-    index = countJoins(source, index);
-  }
-  return index;
-}
-
-/// Helper to find the matcher index for a specific join node.
-int findJoinMatcherIndex(
-    const PlanNodePtr& root,
-    const PlanNodePtr& targetJoin,
-    int& currentIndex) {
-  if (auto* joinNode = dynamic_cast<const HashJoinNode*>(root.get())) {
-    if (root == targetJoin) {
-      return currentIndex++;
-    }
-    // Process left side first
-    int leftIndex =
-        findJoinMatcherIndex(joinNode->sources()[0], targetJoin, currentIndex);
-    if (leftIndex >= 0) {
-      return leftIndex;
-    }
-    // Then increment for this join
-    currentIndex++;
-    // Then process right side
-    return findJoinMatcherIndex(
-        joinNode->sources()[1], targetJoin, currentIndex);
-  } else {
-    for (const auto& source : root->sources()) {
-      int result = findJoinMatcherIndex(source, targetJoin, currentIndex);
-      if (result >= 0) {
-        return result;
-      }
-    }
-  }
-  return -1;
-}
-
-// Thread-local counter for tracking join matcher indices
-thread_local int g_joinMatcherIndex = 0;
-
-/// Resets the join matcher index counter
-void resetJoinMatcherIndex() {
-  g_joinMatcherIndex = 0;
-}
-
 /// Recursive implementation of generatePlanMatcherCode
-std::string generatePlanMatcherCodeImpl(const PlanNodePtr& planNode) {
+std::string generatePlanMatcherCodeImpl(
+    const PlanNodePtr& planNode,
+    std::unordered_map<const PlanNode*, std::string>& rightMatchers) {
   std::ostringstream result;
 
   // Process sources first (post-order traversal for non-join nodes)
@@ -439,13 +406,13 @@ std::string generatePlanMatcherCodeImpl(const PlanNodePtr& planNode) {
     // For joins, we generate the left source inline
     // The right source matcher is generated separately
     if (!sources.empty()) {
-      result << generatePlanMatcherCodeImpl(sources[0]);
+      result << generatePlanMatcherCodeImpl(sources[0], rightMatchers);
     }
-    result << generateHashJoinCode(*joinNode, g_joinMatcherIndex++);
+    result << generateHashJoinCode(*joinNode, rightMatchers);
   } else {
     // For non-join nodes, process the first source recursively
     if (!sources.empty()) {
-      result << generatePlanMatcherCodeImpl(sources[0]);
+      result << generatePlanMatcherCodeImpl(sources[0], rightMatchers);
     }
 
     // Generate code for the current node
@@ -514,16 +481,13 @@ std::string generatePlanMatcherCode(
     const std::string& builderVarName) {
   std::ostringstream oss;
 
-  // Reset the join matcher index counter
-  resetJoinMatcherIndex();
+  // Create the map to track right child PlanNode -> matcher variable name
+  std::unordered_map<const PlanNode*, std::string> rightMatchers;
 
   // First, collect all join right-side matchers
   std::vector<std::string> joinMatchers;
   int matcherCounter = 0;
-  generateJoinMatchers(planNode, joinMatchers, matcherCounter);
-
-  // Reset again for the main matcher generation
-  resetJoinMatcherIndex();
+  generateJoinMatchers(planNode, joinMatchers, matcherCounter, rightMatchers);
 
   // Generate the join matchers first
   for (const auto& matcher : joinMatchers) {
@@ -532,7 +496,7 @@ std::string generatePlanMatcherCode(
 
   // Then generate the main matcher
   oss << "auto " << builderVarName << " = core::PlanMatcherBuilder()";
-  oss << generatePlanMatcherCodeImpl(planNode);
+  oss << generatePlanMatcherCodeImpl(planNode, rightMatchers);
   oss << ".build();\n";
 
   return oss.str();

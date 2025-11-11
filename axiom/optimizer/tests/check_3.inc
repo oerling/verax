@@ -35,7 +35,7 @@ void defineCheckers3() {
       auto matcher =
           core::PlanMatcherBuilder()
               .tableScan("lineitem")
-              .hashJoin(rightMatcher, velox::core::JoinType::kInner)
+              .hashJoin(rightMatcher1, velox::core::JoinType::kInner)
               .project(
                   {"\"l_orderkey\" AS l_orderkey",
                    "\"o_orderdate\" AS o_orderdate",
@@ -78,7 +78,7 @@ void defineCheckers3() {
       auto matcher =
           core::PlanMatcherBuilder()
               .tableScan("lineitem")
-              .hashJoin(rightMatcher, velox::core::JoinType::kInner)
+              .hashJoin(rightMatcher1, velox::core::JoinType::kInner)
               .project(
                   {"\"l_orderkey\" AS l_orderkey",
                    "\"o_orderdate\" AS o_orderdate",

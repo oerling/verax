@@ -627,6 +627,7 @@ void DerivedTable::flattenDt(const DerivedTable* dt) {
   tableSet = dt->tableSet;
   joins = dt->joins;
   joinOrder = dt->joinOrder;
+  conjuncts = dt->conjuncts;
   columns = dt->columns;
   exprs = dt->exprs;
   fullyImported = dt->fullyImported;

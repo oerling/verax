@@ -378,6 +378,7 @@ TEST_F(TpchPlanTest, q02) {
 }
 
 TEST_F(TpchPlanTest, q03) {
+  defineCheckers3();
   lp::PlanBuilder::Context context{exec::test::kHiveConnectorId};
   auto logicalPlan =
       lp::PlanBuilder(context)
