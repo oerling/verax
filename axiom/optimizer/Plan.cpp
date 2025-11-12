@@ -319,6 +319,7 @@ PlanP PlanSet::addPlan(
     PlanState& state,
     bool isSingleWorker) {
   int32_t replaceIndex = -1;
+  bool isRoot = state.dt->id() == 0;
   const float shuffle = isSingleWorker
       ? 0
       : shuffleCost(plan->columns()) * state.cost.cardinality;
@@ -336,7 +337,9 @@ PlanP PlanSet::addPlan(
 
       const bool newIsBetter = old->isStateBetter(state);
       const bool newIsBetterWithShuffle = old->isStateBetter(state, shuffle);
-      const bool sameDist =
+      // We do not differentiate plans by their result distribution for root
+      // plans or single worker plans.
+      const bool sameDist = isRoot || isSingleWorker ||
           old->op->distribution().isSamePartition(plan->distribution());
       const bool sameOrder =
           old->op->distribution().isSameOrder(plan->distribution());

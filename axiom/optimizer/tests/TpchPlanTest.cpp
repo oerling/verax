@@ -319,6 +319,7 @@ class TpchPlanTest : public virtual test::HiveQueriesTestBase {
 
 #include "check_1.inc"
 #include "check_13.inc"
+#include "check_17.inc"
 #include "check_3.inc"
 #include "check_4.inc"
 };
@@ -714,6 +715,7 @@ TEST_F(TpchPlanTest, q16) {
 }
 
 TEST_F(TpchPlanTest, q17) {
+  defineCheckers17();
   checkTpchSql(17);
 }
 
