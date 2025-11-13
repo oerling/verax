@@ -95,27 +95,38 @@ class History {
 /// core. This is ~6GB/s, so ~10ns. Other times are expressed as
 /// multiples of that.
 struct Costs {
+  /// Average clock of 2GHz
+  static constexpr float kClocksPerUnit = 20;
+
   static float byteShuffleCost() {
     return 12; // ~500MB/s
   }
 
-  static float hashProbeCost(float cardinality) {
-    return cardinality < 10000 ? kArrayProbeCost
-        : cardinality < 500000 ? kSmallHashCost
-                               : kLargeHashCost;
+  /// Returns the latency in clocks based on working set size and access
+  /// size, accounting for L1/L2/L3 cache hierarchy and memory latency.
+  static float cacheMissClocks(float workingSet, float accessBytes);
+
+  /// Approximation of cost of the hash table access in hash
+  /// probe/build/aggregation. Relative to expected cache misses.
+  static float hashTableCost(float cardinality) {
+    return cacheMissClocks(8 * cardinality, 1) / kClocksPerUnit;
   }
 
-  static float hashBuildCost(float cardinality) {
-    // To build, a row is written once and read at least once. A write is ~2
-    // redreads.
-    return 3 * hashProbeCost(cardinality);
+  /// Approximation of the cost of accessing a hash table row in join or
+  /// aggregation. Relative to expected cache misses.
+  static float hashRowCost(float cardinality, int32_t rowBytes) {
+    return cacheMissClocks(cardinality * rowBytes, rowBytes) / kClocksPerUnit;
+  }
+
+  static float hashBuildCost(float cardinality, int32_t rowBytes) {
+    // One probe per row, one write per row, 1 read for partitioning build, 1
+    // read for insert, estimated 1 row for colision in insert.
+    return hashTableCost(cardinality) + 5 * hashRowCost(cardinality, rowBytes);
   }
 
   static constexpr float kKeyCompareCost =
-      6; // ~30 instructions to find, decode and an compare
-  static constexpr float kArrayProbeCost = 2; // ~10 instructions.
-  static constexpr float kSmallHashCost = 4; // 50 instructions
-  static constexpr float kLargeHashCost = 12; // 2 LLC misses
+      0.5; // ~10 instructions to find, decode and an compare
+
   static constexpr float kColumnRowCost = 5;
   static constexpr float kColumnByteCost = 0.1;
 

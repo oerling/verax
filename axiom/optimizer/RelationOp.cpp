@@ -394,10 +394,16 @@ Join::Join(
   const float buildSize = right->resultCardinality();
   const auto numRightColumns =
       static_cast<float>(right->input()->columns().size());
-  auto rowCost = numRightColumns * Costs::kHashExtractColumnCost;
+  auto rowBytes = byteSize(right->input()->columns());
+  auto numKeys = leftKeys.size();
+  auto probeCost = Costs::hashTableCost(buildSize) +
+      // Multiply by min(fanout, 1) because most misses will not compare and if
+      // fanout > 1, there is still only one compare.
+      (Costs::kKeyCompareCost * numKeys * std::min<float>(fanout, 1.0f)) +
+      numKeys * Costs::kHashColumnCost;
+  auto rowCost = Costs::hashRowCost(buildSize, rowBytes);
   const auto numLeftKeys = static_cast<float>(leftKeys.size());
-  cost_.unitCost = Costs::hashProbeCost(buildSize) + cost_.fanout * rowCost +
-      numLeftKeys * Costs::kHashColumnCost;
+  cost_.unitCost = probeCost + cost_.fanout * rowCost;
 }
 
 namespace {
@@ -699,7 +705,8 @@ void Aggregation::setCostWithGroups(
       ? partialCapacity
       : nOut;
   auto aggCost = aggregates.size() * Costs::kSimpleAggregateCost +
-      2 * Costs::hashProbeCost(maxInTable);
+      Costs::hashTableCost(maxInTable) +
+      2 * Costs::hashRowCost(maxInTable, rowBytes);
 
   auto initialDistincts =
       expectedNumDistincts(abandonPartialAggregationMinRows, nOut);
@@ -721,14 +728,14 @@ void Aggregation::setCostWithGroups(
       cost_.unitCost = 0.1 * rowBytes;
     } else {
       cost_.unitCost = Costs::kHashColumnCost * numKeys +
-          Costs::hashProbeCost(partialCapacity) + aggCost;
+          Costs::hashTableCost(partialCapacity) + aggCost;
       cost_.totalBytes = partialCapacity * rowBytes;
     }
   } else {
     cost_.totalBytes = nOut * rowBytes;
     // auto in = cost_.inputCardinality / partialFanout;
     cost_.unitCost =
-        Costs::kHashColumnCost * numKeys + Costs::hashProbeCost(nOut) + aggCost;
+        Costs::kHashColumnCost * numKeys + Costs::hashTableCost(nOut) + aggCost;
     cost_.fanout = nOut / (safeInputBeforePartial * partialFanout);
   }
 }
@@ -816,11 +823,16 @@ HashBuild::HashBuild(RelationOpPtr input, ExprVector keysVector, PlanP plan)
   cost_.fanout = 1;
 
   const auto numKeys = static_cast<float>(keys.size());
+  const auto rowBytes = byteSize(columns());
   const auto numColumns = static_cast<float>(columns().size());
-  cost_.unitCost = numKeys * Costs::kHashColumnCost +
-      Costs::hashBuildCost(cost_.inputCardinality) +
+  // Per row cost calculates the column hashes twice, once to partition and a
+  // second time to insert.
+  cost_.unitCost = (numKeys * 2 * Costs::kHashColumnCost) +
+      Costs::hashBuildCost(cost_.inputCardinality, rowBytes) +
+      numKeys * Costs::kKeyCompareCost +
       numColumns * Costs::kHashExtractColumnCost * 2;
-  cost_.totalBytes = cost_.inputCardinality * byteSize(columns());
+
+  cost_.totalBytes = cost_.inputCardinality * rowBytes;
 }
 
 std::string HashBuild::toString(bool recursive, bool detail) const {

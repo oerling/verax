@@ -193,6 +193,20 @@ lineitem t2*H  (part t3  Build )*H left (lineitem t5*H exists (part t3  Build ) 
 ###Q18
 
 
+This query has exotic optimization possibilities that have to do with pushing down the top k through order by. Velox does not have execution support for this though.
+
+The standard full scan + hash join model of executing will as usual
+probe with the larger tables, producing the order lineitem, orders,
+customer. There is the subquery with lineitem with an actually very
+selective having.  The best join order would be lineitem x subquery x
+orders x customer. We get
+
+lineitem t4*H  (orders t3  Build )*H exists-flag (lineitem t6 PARTIAL agg FINAL agg filter 1 exprs  project 1 columns   Build ) filter 1 exprs *H  (customer t2  Build ) PARTIAL agg FINAL agg order by 2 columns  project 6 columns
+
+instead because the semijoin edge to the subquery is not translated
+via the equivalence class of l_orderkey, o_orderkey. If this were an
+inner edge it would be. So, expanding implied edges outside of just
+inner join edges would improve the plan by a little.
 
 ##$#Q19
 

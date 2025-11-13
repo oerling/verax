@@ -1129,7 +1129,10 @@ velox::core::PlanNodePtr ToVelox::makeJoin(
       right,
       makeOutputType(join.columns()));
 
-  makePredictionAndHistory(joinNode->id(), &join);
+  auto* buildOp = join.right->as<HashBuild>();
+  float buildCost = buildOp->cost().unitCost * buildOp->cost().inputCardinality;
+  makePredictionAndHistory(
+      joinNode->id(), &join, buildCost, buildOp->cost().totalBytes);
   return joinNode;
 }
 
@@ -1468,12 +1471,14 @@ velox::core::PlanNodePtr ToVelox::makeWrite(
 
 void ToVelox::makePredictionAndHistory(
     const velox::core::PlanNodeId& id,
-    const RelationOp* op) {
+    const RelationOp* op,
+    float extraCost,
+    float extraBytes) {
   nodeHistory_[id] = op->historyKey();
   prediction_[id] = NodePrediction{
       .cardinality = op->resultCardinality(),
-      .peakMemory = op->cost().totalBytes,
-      .cpu = op->cost().totalCost()};
+      .peakMemory = op->cost().totalBytes + extraBytes,
+      .cpu = op->cost().totalCost() + extraCost};
 }
 
 velox::core::PlanNodePtr ToVelox::makeFragment(
