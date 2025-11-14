@@ -39,7 +39,47 @@ comes from the probe side so that we do not calculate the min cost for
 parts that will in any case not be probed.
 
 The one-line plan is:
-partsupp t4*H  (part t2  Build )*H  (supplier t3*H  (nation t5*H  (region t6  Build ) project 2 columns   Build ) project 7 columns   Build )*H left (partsupp t8*H exists (part t2  Build )*H  (supplier t9*H  (nation t10*H  (region t11  Build ) project 1 columns   Build ) project 1 columns   Build ) PARTIAL agg FINAL agg project 1 columns   Build ) order by 4 columns  project 8 columns
+
+```
+partsupp t4*H
+  (part t2
+    Build
+  )*H
+  (supplier t3*H
+    (nation t5*H
+      (region t6
+        Build
+      )
+      project 2 columns
+      Build
+    )
+    project 7 columns
+    Build
+  )*H left
+  (partsupp t8*H exists
+    (part t2
+      Build
+    )*H
+    (supplier t9*H
+      (nation t10*H
+        (region t11
+          Build
+        )
+        project 1 columns
+        Build
+      )
+      project 1 columns
+      Build
+    )
+    PARTIAL agg
+    FINAL agg
+    project 1 columns
+    Build
+  )
+  order by 4 columns
+  project 8 columns
+```
+
 
 
 Note the exists with part in the subquery right of the left outer
@@ -72,7 +112,32 @@ Q5
 The filters are on region and order date. There is also a diamond between supplier and customer, this being that they have the same nation.
 We get the plan:
 
-lineitem t4*H  (supplier t5*H  (nation t6*H  (region t7  Build ) project 2 columns   Build ) project 4 columns   Build )*H  (orders t3  Build )*H  (customer t2  Build ) project 2 columns  PARTIAL agg FINAL agg order by 1 columns  project 2 columns
+```
+lineitem t4*H
+  (supplier t5*H
+    (nation t6*H
+      (region t7
+        Build
+      )
+      project 2 columns
+      Build
+    )
+    project 4 columns
+    Build
+  )*H
+  (orders t3
+    Build
+  )*H
+  (customer t2
+    Build
+  )
+  project 2 columns
+  PARTIAL agg
+  FINAL agg
+  order by 1 columns
+  project 2 columns
+```
+
 
 
 Lineitem is the driving table that is joined to 1/5 of supplier and
@@ -99,7 +164,34 @@ is broken up and pushed down into the scans of nation that are a
 reducing join against both customer and supplier.  The plan that we
 get:
 
-lineitem t3*H  (supplier t2*H  (nation t6  Build ) project 2 columns   Build )*H  (orders t4*H  (customer t5*H  (nation t7  Build ) project 2 columns   Build ) project 2 columns   Build ) filter 1 exprs  project 4 columns  PARTIAL agg FINAL agg order by 3 columns  project 4 columns
+```
+lineitem t3*H
+  (supplier t2*H
+    (nation t6
+      Build
+    )
+    project 2 columns
+    Build
+  )*H
+  (orders t4*H
+    (customer t5*H
+      (nation t7
+        Build
+      )
+      project 2 columns
+      Build
+    )
+    project 2 columns
+    Build
+  )
+  filter 1 exprs
+  project 4 columns
+  PARTIAL agg
+  FINAL agg
+  order by 3 columns
+  project 4 columns
+```
+
 
 
 first joins with supplier because this is the smaller table and the reduction is the same as the one with orders, i.e. 2/25 in both cases. The biger table is slower to probe so we reduce with the smaller one first.
@@ -111,8 +203,39 @@ and the most selective filter on part, plus 2/7 selection on orders.
 
 The join order of first joining with part and then orders joined with customer makes sense, doing the more reducing join first. At the tail we have supplier and the supplier's nation.
 
- lineitem t4*H  (part t2  Build )*H  (orders t5*H  (customer t6*H  (nation t7*H  (region t9  Build ) project 1 columns   Build ) project 1 columns   Build ) project 2 columns   Build )
- *H  (supplier t3  Build )*H  (nation t8  Build ) project 3 columns  PARTIAL agg FINAL agg order by 1 columns  project 2 columns
+```
+lineitem t4*H
+  (part t2
+    Build
+  )*H
+  (orders t5*H
+    (customer t6*H
+      (nation t7*H
+        (region t9
+          Build
+        )
+        project 1 columns
+        Build
+      )
+      project 1 columns
+      Build
+    )
+    project 2 columns
+    Build
+  )*H
+  (supplier t3
+    Build
+  )*H
+  (nation t8
+    Build
+  )
+  project 3 columns
+  PARTIAL agg
+  FINAL agg
+  order by 1 columns
+  project 2 columns
+```
+
 
 ###Q9
 
@@ -120,9 +243,32 @@ The plan is a natural join of lineitem, orders, part, partsupp, supplier and nat
 
 The outcome is actually quite ingenious. One would think we should begin with lineitem x part. Instead we get:
 
+```
 orders t6*H
-(partsupp t5*H  (lineitem t4*H  (part t2  Build ) project 6 columns   Build ) project 7 columns   Build )
-*H  (supplier t3  Build )*H  (nation t7  Build ) project 3 columns  PARTIAL agg FINAL agg order by 2 columns  project 3 columns
+  (partsupp t5*H
+    (lineitem t4*H
+      (part t2
+        Build
+      )
+      project 6 columns
+      Build
+    )
+    project 7 columns
+    Build
+  )*H
+  (supplier t3
+    Build
+  )*H
+  (nation t7
+    Build
+  )
+  project 3 columns
+  PARTIAL agg
+  FINAL agg
+  order by 2 columns
+  project 3 columns
+```
+
 
 
 We get a complicated build side that has 1/17 of lineitem as a build
@@ -141,7 +287,24 @@ c_custkey, so do not need to figure in hte group by at all. This
 information is not known because the schema does not have primary key
 information, so we cannot take advantage of this.
 
-lineitem t4*H  (orders t3  Build )*H  (customer t2  Build )*H  (nation t5  Build ) project 8 columns  PARTIAL agg FINAL agg order by 1 columns  project 8 columns
+```
+lineitem t4*H
+  (orders t3
+    Build
+  )*H
+  (customer t2
+    Build
+  )*H
+  (nation t5
+    Build
+  )
+  project 8 columns
+  PARTIAL agg
+  FINAL agg
+  order by 1 columns
+  project 8 columns
+```
+
 
 
 
@@ -172,7 +335,30 @@ filters (1 month out of 7 years) make it smaller than part.
 
 The plan
 
-lineitem t4 project 2 columns  PARTIAL agg FINAL agg project 2 columns *H  (lineitem t6 project 2 columns  PARTIAL agg FINAL agg project 1 columns  PARTIAL agg FINAL agg project 1 columns   Build )*H  (supplier t2  Build ) order by 1 columns  project 5 columns
+```
+lineitem t4
+  project 2 columns
+  PARTIAL agg
+  FINAL agg
+  project 2 columns
+*H
+  (lineitem t6
+    project 2 columns
+    PARTIAL agg
+    FINAL agg
+    project 1 columns
+    PARTIAL agg
+    FINAL agg
+    project 1 columns
+    Build
+  )*H
+  (supplier t2
+    Build
+  )
+  order by 1 columns
+  project 5 columns
+```
+
 
 We join with the aggregation on lineitem, which is the most selective join available for the first lineitem, , then we join with supplier.
 
@@ -188,7 +374,26 @@ observe that only lineitems with a very specific part will occur on
 the probe side, so we copy the restriction inside the group by as a
 semijoin (exists).
 
-lineitem t2*H  (part t3  Build )*H left (lineitem t5*H exists (part t3  Build ) PARTIAL agg FINAL agg project 2 columns   Build ) filter 1 exprs  PARTIAL agg FINAL agg project 1 columns
+```
+lineitem t2*H
+  (part t3
+    Build
+  )*H left
+  (lineitem t5*H exists
+    (part t3
+      Build
+    )
+    PARTIAL agg
+    FINAL agg
+    project 2 columns
+    Build
+  )
+  filter 1 exprs
+  PARTIAL agg
+  FINAL agg
+  project 1 columns
+```
+
 
 ###Q18
 
@@ -201,7 +406,29 @@ customer. There is the subquery with lineitem with an actually very
 selective having.  The best join order would be lineitem x subquery x
 orders x customer. We get
 
-lineitem t4*H  (orders t3  Build )*H exists-flag (lineitem t6 PARTIAL agg FINAL agg filter 1 exprs  project 1 columns   Build ) filter 1 exprs *H  (customer t2  Build ) PARTIAL agg FINAL agg order by 2 columns  project 6 columns
+```
+lineitem t4*H
+  (orders t3
+    Build
+  )*H exists-flag
+  (lineitem t6
+    PARTIAL agg
+    FINAL agg
+    filter 1 exprs
+    project 1 columns
+    Build
+  )
+  filter 1 exprs
+*H
+  (customer t2
+    Build
+  )
+  PARTIAL agg
+  FINAL agg
+  order by 2 columns
+  project 6 columns
+```
+
 
 instead because the semijoin edge to the subquery is not translated
 via the equivalence class of l_orderkey, o_orderkey. If this were an
@@ -223,15 +450,44 @@ supplier nations, 1/7 years of lineitem and ~1/20 of part.  The larger
 compute is the subquery with lineitem that adds up the volume for part
 and supplier combinations.
 
-The subquery flattens into a left oj with a group by derived table on the right.  
+The subquery flattens into a left oj with a group by derived table on the right.
 
+```
+lineitem t7
+  PARTIAL agg
+  FINAL agg
+  project 3 columns
+*H right
+  (partsupp t5*H exists-flag
+    (part t11
+      project 1 columns
+      Build
+    )
+    filter 1 exprs
+  *H exists
+    (supplier t2*H
+      (nation t3
+        Build
+      )
+      project 1 columns
+      Build
+    )
+    Build
+  )
+  filter 1 exprs
+  project 1 columns
+*H right exists-flag
+  (supplier t2*H
+    (nation t3
+      Build
+    )
+    Build
+  )
+  filter 1 exprs
+  order by 1 columns
+  project 2 columns
+```
 
-
- lineitem t7 PARTIAL agg FINAL agg project 3 columns *H right
- (partsupp t5*H exists-flag (part t11 project 1 columns   Build ) filter 1 exprs *H exists (supplier t2*H  (nation t3  Build ) project 1 columns   Build )  Build )
- filter 1 exprs  project 1 columns *H right exists-flag
- (supplier t2*H  (nation t3  Build )  Build )
- filter 1 exprs  order by 1 columns  project 2 columns
 
 
 We should have the exists with part inside the aggregation on
@@ -248,7 +504,36 @@ The plan we get builds on lineitem l1 joined to supplier joined to nation joined
 
 The plan is  as expected.
 
-lineitem t7 project 2 columns *H right exists-flag (lineitem t9 project 2 columns *H right exists-flag (lineitem t3*H  (supplier t2*H  (nation t5  Build ) project 2 columns   Build )*H  (orders t4  Build )  Build ) filter 1 exprs   Build ) filter 1 exprs  PARTIAL agg FINAL agg order by 2 columns  project 2 columns
+```
+lineitem t7
+  project 2 columns
+*H right exists-flag
+  (lineitem t9
+    project 2 columns
+  *H right exists-flag
+    (lineitem t3*H
+      (supplier t2*H
+        (nation t5
+          Build
+        )
+        project 2 columns
+        Build
+      )*H
+      (orders t4
+        Build
+      )
+      Build
+    )
+    filter 1 exprs
+    Build
+  )
+  filter 1 exprs
+  PARTIAL agg
+  FINAL agg
+  order by 2 columns
+  project 2 columns
+```
+
 
 ###Q22
 

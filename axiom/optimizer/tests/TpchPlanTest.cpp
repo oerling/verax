@@ -280,11 +280,11 @@ class TpchPlanTest : public virtual test::HiveQueriesTestBase {
 
   std::unique_ptr<exec::test::TpchQueryBuilder> referenceBuilder_;
 
-#include "h01_check_1.inc"
-#include "h01_check_13.inc"
-#include "h01_check_17.inc"
-#include "h01_check_3.inc"
-#include "h01_check_4.inc"
+#include "check_1.inc"
+#include "check_13.inc"
+#include "check_17.inc"
+#include "check_3.inc"
+#include "check_4.inc"
 };
 
 TEST_F(TpchPlanTest, stats) {
@@ -312,7 +312,7 @@ TEST_F(TpchPlanTest, stats) {
 }
 
 TEST_F(TpchPlanTest, q01) {
-  h01DefineCheckers1();
+  defineCheckers1();
   auto logicalPlan =
       lp::PlanBuilder()
           .tableScan(exec::test::kHiveConnectorId, "lineitem")
@@ -342,7 +342,7 @@ TEST_F(TpchPlanTest, q02) {
 }
 
 TEST_F(TpchPlanTest, q03) {
-  h01DefineCheckers3();
+  defineCheckers3();
   lp::PlanBuilder::Context context{exec::test::kHiveConnectorId};
   auto logicalPlan =
       lp::PlanBuilder(context)
@@ -367,7 +367,7 @@ TEST_F(TpchPlanTest, q03) {
 }
 
 TEST_F(TpchPlanTest, q04) {
-  h01DefineCheckers4();
+  defineCheckers4();
   checkTpchSql(4);
 }
 
@@ -628,7 +628,7 @@ TEST_F(TpchPlanTest, q12) {
 }
 
 TEST_F(TpchPlanTest, q13) {
-  h01DefineCheckers13();
+  defineCheckers13();
   lp::PlanBuilder::Context context{exec::test::kHiveConnectorId};
   auto logicalPlan =
       lp::PlanBuilder(context)
@@ -678,7 +678,7 @@ TEST_F(TpchPlanTest, q16) {
 }
 
 TEST_F(TpchPlanTest, q17) {
-  h01DefineCheckers17();
+  defineCheckers17();
   checkTpchSql(17);
 }
 
