@@ -392,8 +392,6 @@ Join::Join(
   cost_.fanout = fanout;
 
   const float buildSize = right->resultCardinality();
-  const auto numRightColumns =
-      static_cast<float>(right->input()->columns().size());
   auto rowBytes = byteSize(right->input()->columns());
   auto numKeys = leftKeys.size();
   auto probeCost = Costs::hashTableCost(buildSize) +
@@ -402,7 +400,6 @@ Join::Join(
       (Costs::kKeyCompareCost * numKeys * std::min<float>(fanout, 1.0f)) +
       numKeys * Costs::kHashColumnCost;
   auto rowCost = Costs::hashRowCost(buildSize, rowBytes);
-  const auto numLeftKeys = static_cast<float>(leftKeys.size());
   cost_.unitCost = probeCost + cost_.fanout * rowCost;
 }
 

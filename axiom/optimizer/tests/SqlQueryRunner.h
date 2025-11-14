@@ -66,6 +66,10 @@ class SqlQueryRunner {
     history_ = std::make_unique<facebook::axiom::optimizer::VeloxHistory>();
   }
 
+  void saveColumnStats(const std::string& path);
+
+  void loadColumnStats(const std::string& path);
+
  private:
   std::shared_ptr<facebook::velox::core::QueryCtx> newQuery(
       const RunOptions& options);

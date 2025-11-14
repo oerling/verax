@@ -68,10 +68,12 @@ void Console::run() {
   if (!FLAGS_query.empty()) {
     runNoThrow(FLAGS_query);
   } else {
-    std::cout << "Axiom SQL. Type statement and end with ;.\n"
-                 "flag name = value; sets a gflag.\n"
-                 "help; prints help text."
-              << std::endl;
+    std::cout
+        << "Axiom SQL. Type statement and end with ;.\n"
+           "flag name = value; sets a gflag.\n"
+           "savestats <file>; and loadstats <file>; save/load column statistics.\n"
+           "help; prints help text."
+        << std::endl;
     readCommands("SQL> ");
   }
 }
@@ -338,6 +340,11 @@ void Console::readCommands(const std::string& prompt) {
           "Axiom Interactive SQL\n\n"
           "Type SQL and end with ';'.\n"
           "To set a flag, type 'flag <gflag_name> = <value>;' Leave a space on either side of '='.\n\n"
+          "Commands:\n"
+          "  savestats <file>; - Save column statistics to a JSON file\n"
+          "  loadstats <file>; - Load column statistics from a JSON file\n"
+          "  savehistory; - Save query history\n"
+          "  clearhistory; - Clear query history\n\n"
           "Useful flags:\n\n"
           "num_workers - Make a distributed plan for this many workers. Runs it in-process with remote exchanges with serialization and passing data in memory. If num_workers is 1, makes single node plans without remote exchanges.\n\n"
           "num_drivers - Specifies the parallelism for workers. This many threads per pipeline per worker.\n\n";
@@ -408,6 +415,37 @@ void Console::readCommands(const std::string& prompt) {
 
     if (command.starts_with("clearhistory")) {
       runner_.clearHistory();
+      continue;
+    }
+
+    char* filename = nullptr;
+    SCOPE_EXIT {
+      if (filename != nullptr) {
+        free(filename);
+      }
+    };
+
+    if (sscanf(command.c_str(), "savestats %ms", &filename) == 1) {
+      try {
+        runner_.saveColumnStats(std::string(filename));
+        std::cout << "Column statistics saved to '" << filename << "'"
+                  << std::endl;
+      } catch (const std::exception& e) {
+        std::cerr << "Failed to save column statistics: " << e.what()
+                  << std::endl;
+      }
+      continue;
+    }
+
+    if (sscanf(command.c_str(), "loadstats %ms", &filename) == 1) {
+      try {
+        runner_.loadColumnStats(std::string(filename));
+        std::cout << "Column statistics loaded from '" << filename << "'"
+                  << std::endl;
+      } catch (const std::exception& e) {
+        std::cerr << "Failed to load column statistics: " << e.what()
+                  << std::endl;
+      }
       continue;
     }
 

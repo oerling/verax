@@ -88,27 +88,27 @@ float costWithChildren(ExprCP expr, const PlanObjectSet& notCounting) {
 
 float Costs::cacheMissClocks(float workingSet, float accessBytes) {
   // x86 cache architecture constants
-  const float CACHE_LINE_SIZE = 64.0f; // Cache line size in bytes
-  const float L1_SIZE = 32.0f * 1024.0f; // L1 cache: 32 KB
-  const float L2_SIZE = 256.0f * 1024.0f; // L2 cache: 256 KB
-  const float L3_SIZE = 8.0f * 1024.0f *
+  const float kCacheLineSize = 64.0f; // Cache line size in bytes
+  const float kL1Size = 32.0f * 1024.0f; // L1 cache: 32 KB
+  const float kL2Size = 256.0f * 1024.0f; // L2 cache: 256 KB
+  const float kL3Size = 8.0f * 1024.0f *
       1024.0f; // L3 cache: 8 MB per query, total cache is larger.
 
   // Cache latencies in CPU cycles
-  const float L1_LATENCY = 2.0f; // L1 hit: 2 cycles
-  const float L2_LATENCY = 6.0f; // L2 hit: 6 cycles
-  const float L3_LATENCY =
+  const float kL1Latency = 2.0f; // L1 hit: 2 cycles
+  const float kL2Latency = 6.0f; // L2 hit: 6 cycles
+  const float kL3Latency =
       22.0f; // L3 hit: 22 cycles
              // Memory miss: 60 cycles. The real latency is higher but for hash
              // tables where many concurrent misses pending at the same time, 65
              // agrees somewhat with observations.
-  const float MEMORY_LATENCY = 60.0f;
+  const float kMemoryLatency = 60.0f;
 
   // Compute number of cache lines accessed.
   // For each byte beyond the first cache line, we count 1/64 of the miss cost,
-  // which effectively means accessBytes / CACHE_LINE_SIZE cache lines.
+  // which effectively means accessBytes / kCacheLineSize cache lines.
   float numCacheLines =
-      1 + (accessBytes > 1 ? accessBytes / CACHE_LINE_SIZE : 0);
+      1 + (accessBytes > 1 ? accessBytes / kCacheLineSize : 0);
 
   // Compute expected latency per cache line access based on working set size.
   // For random access patterns, the probability of finding data in a cache
@@ -117,27 +117,27 @@ float Costs::cacheMissClocks(float workingSet, float accessBytes) {
   // and the next level based on the cache occupancy fraction.
   float expectedLatency;
 
-  if (workingSet <= L1_SIZE) {
+  if (workingSet <= kL1Size) {
     // Working set fits entirely in L1 cache
-    expectedLatency = L1_LATENCY;
-  } else if (workingSet <= L2_SIZE) {
+    expectedLatency = kL1Latency;
+  } else if (workingSet <= kL2Size) {
     // Working set exceeds L1 but fits in L2
     // Blend between L1 and L2 latencies proportional to L1 occupancy
-    float l1Fraction = L1_SIZE / workingSet;
+    float l1Fraction = kL1Size / workingSet;
     expectedLatency =
-        l1Fraction * L1_LATENCY + (1.0f - l1Fraction) * L2_LATENCY;
-  } else if (workingSet <= L3_SIZE) {
+        l1Fraction * kL1Latency + (1.0f - l1Fraction) * kL2Latency;
+  } else if (workingSet <= kL3Size) {
     // Working set exceeds L2 but fits in L3
     // Blend between L2 and L3 latencies proportional to L2 occupancy
-    float l2Fraction = L2_SIZE / workingSet;
+    float l2Fraction = kL2Size / workingSet;
     expectedLatency =
-        l2Fraction * L2_LATENCY + (1.0f - l2Fraction) * L3_LATENCY;
+        l2Fraction * kL2Latency + (1.0f - l2Fraction) * kL3Latency;
   } else {
     // Working set exceeds L3, spills to main memory
     // Blend between L3 and memory latencies proportional to L3 occupancy
-    float l3Fraction = L3_SIZE / workingSet;
+    float l3Fraction = kL3Size / workingSet;
     expectedLatency =
-        l3Fraction * L3_LATENCY + (1.0f - l3Fraction) * MEMORY_LATENCY;
+        l3Fraction * kL3Latency + (1.0f - l3Fraction) * kMemoryLatency;
   }
 
   // Total cost is the number of cache lines accessed times the expected latency

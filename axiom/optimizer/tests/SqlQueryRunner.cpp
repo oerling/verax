@@ -15,6 +15,7 @@
  */
 
 #include "axiom/optimizer/tests/SqlQueryRunner.h"
+#include "axiom/connectors/hive/LocalHiveConnectorMetadata.h"
 #include "axiom/logical_plan/PlanPrinter.h"
 #include "axiom/optimizer/ConstantExprEvaluator.h"
 #include "axiom/optimizer/DerivedTablePrinter.h"
@@ -436,6 +437,28 @@ std::vector<velox::RowVectorPtr> SqlQueryRunner::runSql(
   history_->recordVeloxExecution(planAndStats, stats);
 
   return results;
+}
+
+void SqlQueryRunner::saveColumnStats(const std::string& path) {
+  auto metadata = connector::ConnectorMetadata::metadata(defaultConnectorId_);
+  auto* localHiveMetadata =
+      dynamic_cast<connector::hive::LocalHiveConnectorMetadata*>(metadata);
+  if (!localHiveMetadata) {
+    throw std::runtime_error(
+        "saveColumnStats is only supported for LocalHiveConnectorMetadata");
+  }
+  localHiveMetadata->saveColumnStats(path);
+}
+
+void SqlQueryRunner::loadColumnStats(const std::string& path) {
+  auto metadata = connector::ConnectorMetadata::metadata(defaultConnectorId_);
+  auto* localHiveMetadata =
+      dynamic_cast<connector::hive::LocalHiveConnectorMetadata*>(metadata);
+  if (!localHiveMetadata) {
+    throw std::runtime_error(
+        "loadColumnStats is only supported for LocalHiveConnectorMetadata");
+  }
+  localHiveMetadata->loadColumnStats(path);
 }
 
 } // namespace axiom::sql

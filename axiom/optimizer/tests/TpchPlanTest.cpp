@@ -27,7 +27,10 @@
 #include "velox/exec/tests/utils/TpchQueryBuilder.h"
 
 DEFINE_int32(num_repeats, 1, "Number of repeats for optimization timing");
-DEFINE_bool(record_plans, false, "Record plan checkers to files");
+DEFINE_string(
+    record_plans,
+    "",
+    "Prefix for recorded plan checker files (e.g. 'xx' creates 'xx_check_1.inc' with 'xxDefineCheckers1()'). Empty means no recording.");
 
 DECLARE_uint32(optimizer_trace);
 DECLARE_string(history_save_path);
@@ -38,31 +41,8 @@ namespace {
 using namespace facebook::velox;
 namespace lp = facebook::axiom::logical_plan;
 
-struct CheckerKey {
-  int32_t queryNo;
-  int32_t numWorkers;
-  int32_t numDrivers;
-
-  bool operator==(const CheckerKey& other) const {
-    return queryNo == other.queryNo && numWorkers == other.numWorkers &&
-        numDrivers == other.numDrivers;
-  }
-};
-
-struct CheckerKeyHash {
-  std::size_t operator()(const CheckerKey& key) const {
-    // Combine hash values using a simple hash combination technique
-    std::size_t h1 = std::hash<int32_t>{}(key.queryNo);
-    std::size_t h2 = std::hash<int32_t>{}(key.numWorkers);
-    std::size_t h3 = std::hash<int32_t>{}(key.numDrivers);
-    return h1 ^ (h2 << 1) ^ (h3 << 2);
-  }
-};
-
 class TpchPlanTest : public virtual test::HiveQueriesTestBase {
  protected:
-  using PlanChecker = std::function<void(const PlanAndStats&)>;
-
   static void SetUpTestCase() {
     test::HiveQueriesTestBase::SetUpTestCase();
   }
@@ -86,29 +66,12 @@ class TpchPlanTest : public virtual test::HiveQueriesTestBase {
     HiveQueriesTestBase::TearDown();
   }
 
-  void setChecker(
-      int32_t queryNo,
-      int32_t numWorkers,
-      int32_t numDrivers,
-      PlanChecker checker) {
-    checkers_[CheckerKey{queryNo, numWorkers, numDrivers}] = std::move(checker);
-  }
-
-  PlanChecker*
-  getChecker(int32_t queryNo, int32_t numWorkers, int32_t numDrivers) {
-    auto it = checkers_.find(CheckerKey{queryNo, numWorkers, numDrivers});
-    if (it != checkers_.end()) {
-      return &it->second;
-    }
-    return nullptr;
-  }
-
   void recordPlanCheckerStart(int32_t queryNo) {
-    if (!FLAGS_record_plans) {
+    if (FLAGS_record_plans.empty()) {
       return;
     }
 
-    auto filename = fmt::format("check_{}.inc", queryNo);
+    auto filename = fmt::format("{}_check_{}.inc", FLAGS_record_plans, queryNo);
     std::ofstream file(filename);
 
     if (!file.is_open()) {
@@ -116,16 +79,17 @@ class TpchPlanTest : public virtual test::HiveQueriesTestBase {
       return;
     }
 
-    file << "void defineCheckers" << queryNo << "() {\n";
+    file << "void " << FLAGS_record_plans << "DefineCheckers" << queryNo
+         << "() {\n";
     file.close();
   }
 
   void recordPlanCheckerEnd(int32_t queryNo) {
-    if (!FLAGS_record_plans) {
+    if (FLAGS_record_plans.empty()) {
       return;
     }
 
-    auto filename = fmt::format("check_{}.inc", queryNo);
+    auto filename = fmt::format("{}_check_{}.inc", FLAGS_record_plans, queryNo);
     std::ofstream file(filename, std::ios::app);
 
     if (!file.is_open()) {
@@ -143,11 +107,11 @@ class TpchPlanTest : public virtual test::HiveQueriesTestBase {
       const PlanAndStats& planAndStats,
       int32_t numWorkers,
       int32_t numDrivers) {
-    if (!FLAGS_record_plans) {
+    if (FLAGS_record_plans.empty()) {
       return;
     }
 
-    auto filename = fmt::format("check_{}.inc", queryNo);
+    auto filename = fmt::format("{}_check_{}.inc", FLAGS_record_plans, queryNo);
     std::ofstream file(filename, std::ios::app);
 
     if (!file.is_open()) {
@@ -285,25 +249,25 @@ class TpchPlanTest : public virtual test::HiveQueriesTestBase {
       checkSame(logicalPlan, referencePlan);
 
       // If FLAGS_record_plans is set, initialize the recording at first config
-      if (FLAGS_record_plans && isFirstConfig) {
+      if (!FLAGS_record_plans.empty() && isFirstConfig) {
         recordPlanCheckerStart(query);
       }
 
       // If FLAGS_record_plans is set, record the checker
-      if (FLAGS_record_plans) {
+      if (!FLAGS_record_plans.empty()) {
         recordPlanChecker(
             query, logicalPlan, planAndStats, numWorkers, numDrivers);
       }
 
       // If FLAGS_record_plans is set, after recording with the last config,
       // finalize the recording
-      if (FLAGS_record_plans && isLastConfig) {
+      if (!FLAGS_record_plans.empty() && isLastConfig) {
         recordPlanCheckerEnd(query);
       }
 
       // If FLAGS_record_plans is not set and there is a checker for the query
       // and config, run the checker
-      if (!FLAGS_record_plans) {
+      if (FLAGS_record_plans.empty()) {
         auto* checker = getChecker(query, numWorkers, numDrivers);
         if (checker) {
           (*checker)(planAndStats);
@@ -315,7 +279,6 @@ class TpchPlanTest : public virtual test::HiveQueriesTestBase {
   }
 
   std::unique_ptr<exec::test::TpchQueryBuilder> referenceBuilder_;
-  std::unordered_map<CheckerKey, PlanChecker, CheckerKeyHash> checkers_;
 
 #include "check_1.inc"
 #include "check_13.inc"

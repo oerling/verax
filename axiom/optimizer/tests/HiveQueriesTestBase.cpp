@@ -109,4 +109,23 @@ void HiveQueriesTestBase::explain(
       logicalPlan, shortRel, longRel, graph, runnerOptions, optimizerOptions);
 }
 
+void HiveQueriesTestBase::setChecker(
+    int32_t queryNo,
+    int32_t numWorkers,
+    int32_t numDrivers,
+    PlanChecker checker) {
+  checkers_[CheckerKey{queryNo, numWorkers, numDrivers}] = std::move(checker);
+}
+
+HiveQueriesTestBase::PlanChecker* HiveQueriesTestBase::getChecker(
+    int32_t queryNo,
+    int32_t numWorkers,
+    int32_t numDrivers) {
+  auto it = checkers_.find(CheckerKey{queryNo, numWorkers, numDrivers});
+  if (it != checkers_.end()) {
+    return &it->second;
+  }
+  return nullptr;
+}
+
 } // namespace facebook::axiom::optimizer::test
