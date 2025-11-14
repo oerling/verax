@@ -156,6 +156,17 @@ void LocalHiveConnectorMetadata::initialize() {
   format_ = formatName == "dwrf" ? velox::dwio::common::FileFormat::DWRF
       : formatName == "parquet"  ? velox::dwio::common::FileFormat::PARQUET
                                  : velox::dwio::common::FileFormat::UNKNOWN;
+
+  // Reset existing connector query context and schema pool to avoid duplicate
+  // memory pool names when reinitialize() is called. This ensures the old
+  // "schemaReader" memory pool is destroyed before creating a new one.
+  if (connectorQueryCtx_) {
+    connectorQueryCtx_.reset();
+  }
+  if (schemaPool_) {
+    schemaPool_.reset();
+  }
+
   makeQueryCtx();
   makeConnectorQueryCtx();
   readTables(path);
@@ -1254,6 +1265,34 @@ void LocalHiveConnectorMetadata::loadColumnStats(const std::string& path) {
     VELOX_USER_FAIL("Failed to parse JSON: {}", e.what());
   }
 
+  // Helper function to parse a variant from JSON based on TypeKind
+  auto parseVariant = [](const folly::dynamic& jsonValue,
+                         velox::TypeKind typeKind) -> velox::Variant {
+    switch (typeKind) {
+      case velox::TypeKind::TINYINT:
+        return velox::Variant(static_cast<int8_t>(jsonValue.asInt()));
+      case velox::TypeKind::SMALLINT:
+        return velox::Variant(static_cast<int16_t>(jsonValue.asInt()));
+      case velox::TypeKind::INTEGER:
+        return velox::Variant(static_cast<int32_t>(jsonValue.asInt()));
+      case velox::TypeKind::BIGINT:
+        return velox::Variant(jsonValue.asInt());
+      case velox::TypeKind::REAL:
+        return velox::Variant(static_cast<float>(jsonValue.asDouble()));
+      case velox::TypeKind::DOUBLE:
+        return velox::Variant(jsonValue.asDouble());
+      case velox::TypeKind::VARCHAR:
+      case velox::TypeKind::VARBINARY:
+        return velox::Variant(jsonValue.asString());
+      case velox::TypeKind::BOOLEAN:
+        return velox::Variant(jsonValue.asBool());
+      default:
+        VELOX_UNSUPPORTED(
+            "Unsupported type kind for variant parsing: {}",
+            velox::TypeKindName::toName(typeKind));
+    }
+  };
+
   // Iterate through tables in the JSON
   for (const auto& [tableNameDynamic, tableDataDynamic] : root.items()) {
     const std::string tableName = tableNameDynamic.asString();
@@ -1318,9 +1357,11 @@ void LocalHiveConnectorMetadata::loadColumnStats(const std::string& path) {
         // Load min value if present
         if (columnStatsData.count("min") && columnStatsData.count("minType")) {
           const auto minJson = columnStatsData["min"];
+          const auto minTypeStr = columnStatsData["minType"].asString();
+          const auto minTypeKind = velox::TypeKindName::toTypeKind(minTypeStr);
           // Parse the min value based on type
           try {
-            stats->min = velox::Variant::create(minJson);
+            stats->min = parseVariant(minJson, minTypeKind);
           } catch (const std::exception& e) {
             // If parsing fails, skip this field
             LOG(WARNING) << "Failed to parse min value for column "
@@ -1331,9 +1372,11 @@ void LocalHiveConnectorMetadata::loadColumnStats(const std::string& path) {
         // Load max value if present
         if (columnStatsData.count("max") && columnStatsData.count("maxType")) {
           const auto maxJson = columnStatsData["max"];
+          const auto maxTypeStr = columnStatsData["maxType"].asString();
+          const auto maxTypeKind = velox::TypeKindName::toTypeKind(maxTypeStr);
           // Parse the max value based on type
           try {
-            stats->max = velox::Variant::create(maxJson);
+            stats->max = parseVariant(maxJson, maxTypeKind);
           } catch (const std::exception& e) {
             // If parsing fails, skip this field
             LOG(WARNING) << "Failed to parse max value for column "
