@@ -38,6 +38,10 @@ class TpchPlanStability : public virtual test::HiveQueriesTestBase {
  protected:
   static void SetUpTestCase() {
     test::HiveQueriesTestBase::SetUpTestCase();
+    gSuiteHistory = std::make_unique<optimizer::VeloxHistory>();
+    keepHistoryBetweenTests_ = true;
+    // Initialize VeloxHistory from tpch30samples.json
+    suiteHistory().updateFromFile("tpch30samples.json");
   }
 
   static void TearDownTestCase() {
@@ -55,9 +59,6 @@ class TpchPlanStability : public virtual test::HiveQueriesTestBase {
             connectorMetadata);
     VELOX_CHECK_NOT_NULL(hiveMetadata);
     hiveMetadata->loadColumnStats("tpch30stats.json");
-
-    // Initialize VeloxHistory from tpch30samples.json
-    suiteHistory().updateFromFile("tpch30samples.json");
   }
 
   void TearDown() override {
@@ -234,93 +235,137 @@ class TpchPlanStability : public virtual test::HiveQueriesTestBase {
 
     // Plans are not run
   }
+#include "h30_check_1.inc"
+#include "h30_check_10.inc"
+#include "h30_check_11.inc"
+#include "h30_check_12.inc"
+#include "h30_check_13.inc"
+#include "h30_check_14.inc"
+#include "h30_check_15.inc"
+#include "h30_check_16.inc"
+#include "h30_check_17.inc"
+#include "h30_check_18.inc"
+#include "h30_check_19.inc"
+#include "h30_check_2.inc"
+#include "h30_check_20.inc"
+#include "h30_check_21.inc"
+#include "h30_check_22.inc"
+#include "h30_check_3.inc"
+#include "h30_check_4.inc"
+#include "h30_check_5.inc"
+#include "h30_check_6.inc"
+#include "h30_check_7.inc"
+#include "h30_check_8.inc"
+#include "h30_check_9.inc"
 };
 
 TEST_F(TpchPlanStability, q01) {
+  h30DefineCheckers1();
   checkPlan(1);
 }
 
 TEST_F(TpchPlanStability, q02) {
+  h30DefineCheckers2();
   checkPlan(2);
 }
 
 TEST_F(TpchPlanStability, q03) {
+  h30DefineCheckers3();
   checkPlan(3);
 }
 
 TEST_F(TpchPlanStability, q04) {
+  h30DefineCheckers4();
   checkPlan(4);
 }
 
 TEST_F(TpchPlanStability, q05) {
+  h30DefineCheckers5();
   checkPlan(5);
 }
 
 TEST_F(TpchPlanStability, q06) {
+  h30DefineCheckers6();
   checkPlan(6);
 }
 
 TEST_F(TpchPlanStability, q07) {
+  h30DefineCheckers7();
   checkPlan(7);
 }
 
 TEST_F(TpchPlanStability, q08) {
+  h30DefineCheckers8();
   checkPlan(8);
 }
 
 TEST_F(TpchPlanStability, q09) {
+  h30DefineCheckers9();
   checkPlan(9);
 }
 
 TEST_F(TpchPlanStability, q10) {
+  h30DefineCheckers10();
   checkPlan(10);
 }
 
 TEST_F(TpchPlanStability, q11) {
+  h30DefineCheckers11();
   checkPlan(11);
 }
 
 TEST_F(TpchPlanStability, q12) {
+  h30DefineCheckers12();
   checkPlan(12);
 }
 
 TEST_F(TpchPlanStability, q13) {
+  h30DefineCheckers13();
   checkPlan(13);
 }
 
 TEST_F(TpchPlanStability, q14) {
+  h30DefineCheckers14();
   checkPlan(14);
 }
 
 TEST_F(TpchPlanStability, q15) {
+  h30DefineCheckers15();
   checkPlan(15);
 }
 
 TEST_F(TpchPlanStability, q16) {
+  h30DefineCheckers16();
   checkPlan(16);
 }
 
 TEST_F(TpchPlanStability, q17) {
+  h30DefineCheckers17();
   checkPlan(17);
 }
 
 TEST_F(TpchPlanStability, q18) {
+  h30DefineCheckers18();
   checkPlan(18);
 }
 
 TEST_F(TpchPlanStability, q19) {
+  h30DefineCheckers19();
   checkPlan(19);
 }
 
 TEST_F(TpchPlanStability, q20) {
+  h30DefineCheckers20();
   checkPlan(20);
 }
 
 TEST_F(TpchPlanStability, q21) {
+  h30DefineCheckers21();
   checkPlan(21);
 }
 
 TEST_F(TpchPlanStability, q22) {
+  h30DefineCheckers22();
   checkPlan(22);
 }
 

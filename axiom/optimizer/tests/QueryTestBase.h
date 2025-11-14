@@ -173,6 +173,11 @@ class QueryTestBase : public runner::test::LocalRunnerTestBase {
 
   OptimizerOptions optimizerOptions_;
 
+  /// History shared between tests in a test suite. This is kept between tests
+  /// if going to save the history at the end or if 'keepHistoryBetweenTests_'
+  inline static std::unique_ptr<VeloxHistory> gSuiteHistory;
+  inline static bool keepHistoryBetweenTests_{false};
+
  private:
   std::shared_ptr<velox::memory::MemoryPool> optimizerPool_;
 
@@ -181,7 +186,6 @@ class QueryTestBase : public runner::test::LocalRunnerTestBase {
   std::unique_ptr<optimizer::VeloxHistory> history_;
 
   inline static int32_t gQueryCounter{0};
-  inline static std::unique_ptr<VeloxHistory> gSuiteHistory;
 };
 
 inline auto gte(const std::string& name, int64_t n) {
