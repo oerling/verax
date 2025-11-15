@@ -235,6 +235,7 @@ class TpchPlanStability : public virtual test::HiveQueriesTestBase {
 
     // Plans are not run
   }
+
 #include "h30_check_1.inc"
 #include "h30_check_10.inc"
 #include "h30_check_11.inc"

@@ -14,35 +14,19 @@
  * limitations under the License.
  */
 void h30DefineCheckers4() {
-  // Configuration: numWorkers=1, numDrivers=4
-  setChecker(4, 1, 4, [](const PlanAndStats& planAndStats) {
-    // Plan:
-    // lineitem t4 project 1 columns *H right exists-flag (orders t2  Build )
-    // filter 1 exprs  PARTIAL agg FINAL agg order by 1 columns  project 2
-    // columns
+// Configuration: numWorkers=1, numDrivers=4
+setChecker(4, 1, 4, [](const PlanAndStats& planAndStats) {
+  // Plan:
+  // lineitem t4 project 1 columns *H right exists-flag (orders t2  Build ) filter 1 exprs  PARTIAL agg FINAL agg order by 1 columns  project 2 columns
 
-    // Fragment 0
-    {
-      auto rightMatcher =
-          core::PlanMatcherBuilder().tableScan("orders").build();
+  // Fragment 0
+  {
+    auto rightMatcher = core::PlanMatcherBuilder().tableScan("orders").build();
 
-      auto matcher =
-          core::PlanMatcherBuilder()
-              .tableScan("lineitem")
-              .hashJoin(rightMatcher, velox::core::JoinType::kRightSemiProject)
-              .filter("\"dt1___mark0\"")
-              .partialAggregation(
-                  {"\"o_orderpriority\""}, {"count() AS order_count"})
-              .localPartition()
-              .finalAggregation(
-                  {"\"o_orderpriority\""},
-                  {"count(\"order_count\") AS order_count"})
-              .orderBy({"\"o_orderpriority\" ASC NULLS LAST"})
-              .localMerge()
-              .build();
-      ;
-      EXPECT_TRUE(
-          matcher->match(planAndStats.plan->fragments()[0].fragment.planNode));
-    }
-  });
+auto matcher = core::PlanMatcherBuilder().tableScan("lineitem").hashJoin(rightMatcher, velox::core::JoinType::kRightSemiProject).filter("\"dt1___mark0\"").partialAggregation({"\"o_orderpriority\""}, {"count() AS order_count"}).localPartition().finalAggregation({"\"o_orderpriority\""}, {"count(\"order_count\") AS order_count"}).orderBy({"\"o_orderpriority\" ASC NULLS LAST"}).localMerge().build();
+;
+    EXPECT_TRUE(matcher->match(planAndStats.plan->fragments()[0].fragment.planNode));
+  }
+});
+
 }
