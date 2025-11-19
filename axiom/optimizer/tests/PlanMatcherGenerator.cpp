@@ -18,7 +18,11 @@
 #include <sstream>
 #include <unordered_map>
 #include <vector>
+#include "axiom/optimizer/tests/ExprPrinters.h"
+#include "velox/connectors/hive/TableHandle.h"
 #include "velox/core/PlanNode.h"
+#include "velox/type/Filter.h"
+#include "velox/type/tests/SubfieldFiltersBuilder.h"
 
 namespace facebook::velox::core {
 
@@ -48,6 +52,228 @@ std::string escapeString(const std::string& str) {
   return oss.str();
 }
 
+/// Generates C++ code to create a Filter object.
+std::string generateFilterCode(const common::Filter& filter) {
+  std::ostringstream oss;
+
+  switch (filter.kind()) {
+    case common::FilterKind::kIsNull:
+      oss << "std::make_unique<common::IsNull>()";
+      break;
+
+    case common::FilterKind::kIsNotNull:
+      oss << "std::make_unique<common::IsNotNull>()";
+      break;
+
+    case common::FilterKind::kBoolValue: {
+      auto& boolFilter = static_cast<const common::BoolValue&>(filter);
+      // Access value through testBool - true passes if value matches
+      bool value = boolFilter.testBool(true);
+      oss << "std::make_unique<common::BoolValue>(" << (value ? "true" : "false")
+          << ", " << (filter.nullAllowed() ? "true" : "false") << ")";
+      break;
+    }
+
+    case common::FilterKind::kBigintRange: {
+      auto& range = static_cast<const common::BigintRange&>(filter);
+      oss << "std::make_unique<common::BigintRange>("
+          << range.lower() << ", " << range.upper() << ", "
+          << (filter.nullAllowed() ? "true" : "false") << ")";
+      break;
+    }
+
+    case common::FilterKind::kNegatedBigintRange: {
+      auto& negRange = static_cast<const common::NegatedBigintRange&>(filter);
+      oss << "std::make_unique<common::NegatedBigintRange>("
+          << negRange.lower() << ", " << negRange.upper() << ", "
+          << (filter.nullAllowed() ? "true" : "false") << ")";
+      break;
+    }
+
+    case common::FilterKind::kBigintValuesUsingHashTable: {
+      auto& values = static_cast<const common::BigintValuesUsingHashTable&>(filter);
+      oss << "std::make_unique<common::BigintValuesUsingHashTable>("
+          << values.min() << ", " << values.max() << ", "
+          << "std::vector<int64_t>{";
+      bool first = true;
+      for (auto val : values.values()) {
+        if (!first) oss << ", ";
+        oss << val;
+        first = false;
+      }
+      oss << "}, " << (filter.nullAllowed() ? "true" : "false") << ")";
+      break;
+    }
+
+    case common::FilterKind::kBigintValuesUsingBitmask: {
+      auto& values = static_cast<const common::BigintValuesUsingBitmask&>(filter);
+      auto valVec = values.values();
+      oss << "std::make_unique<common::BigintValuesUsingBitmask>("
+          << values.min() << ", " << values.max() << ", "
+          << "std::vector<int64_t>{";
+      bool first = true;
+      for (auto val : valVec) {
+        if (!first) oss << ", ";
+        oss << val;
+        first = false;
+      }
+      oss << "}, " << (filter.nullAllowed() ? "true" : "false") << ")";
+      break;
+    }
+
+    case common::FilterKind::kNegatedBigintValuesUsingHashTable: {
+      auto& negValues = static_cast<const common::NegatedBigintValuesUsingHashTable&>(filter);
+      oss << "std::make_unique<common::NegatedBigintValuesUsingHashTable>("
+          << negValues.min() << ", " << negValues.max() << ", "
+          << "std::vector<int64_t>{";
+      bool first = true;
+      for (auto val : negValues.values()) {
+        if (!first) oss << ", ";
+        oss << val;
+        first = false;
+      }
+      oss << "}, " << (filter.nullAllowed() ? "true" : "false") << ")";
+      break;
+    }
+
+    case common::FilterKind::kNegatedBigintValuesUsingBitmask: {
+      auto& negValues = static_cast<const common::NegatedBigintValuesUsingBitmask&>(filter);
+      auto valVec = negValues.values();
+      oss << "std::make_unique<common::NegatedBigintValuesUsingBitmask>("
+          << negValues.min() << ", " << negValues.max() << ", "
+          << "std::vector<int64_t>{";
+      bool first = true;
+      for (auto val : valVec) {
+        if (!first) oss << ", ";
+        oss << val;
+        first = false;
+      }
+      oss << "}, " << (filter.nullAllowed() ? "true" : "false") << ")";
+      break;
+    }
+
+    case common::FilterKind::kDoubleRange: {
+      auto& range = static_cast<const common::DoubleRange&>(filter);
+      oss << "std::make_unique<common::DoubleRange>("
+          << range.lower() << ", " << (range.lowerUnbounded() ? "true" : "false") << ", "
+          << (range.lowerExclusive() ? "true" : "false") << ", "
+          << range.upper() << ", " << (range.upperUnbounded() ? "true" : "false") << ", "
+          << (range.upperExclusive() ? "true" : "false") << ", "
+          << (filter.nullAllowed() ? "true" : "false") << ")";
+      break;
+    }
+
+    case common::FilterKind::kFloatRange: {
+      auto& range = static_cast<const common::FloatRange&>(filter);
+      oss << "std::make_unique<common::FloatRange>("
+          << range.lower() << "f, " << (range.lowerUnbounded() ? "true" : "false") << ", "
+          << (range.lowerExclusive() ? "true" : "false") << ", "
+          << range.upper() << "f, " << (range.upperUnbounded() ? "true" : "false") << ", "
+          << (range.upperExclusive() ? "true" : "false") << ", "
+          << (filter.nullAllowed() ? "true" : "false") << ")";
+      break;
+    }
+
+    case common::FilterKind::kBytesRange: {
+      auto& range = static_cast<const common::BytesRange&>(filter);
+      oss << "std::make_unique<common::BytesRange>(";
+      oss << "\"" << escapeString(range.lower()) << "\", "
+          << (range.lowerUnbounded() ? "true" : "false") << ", "
+          << (range.lowerExclusive() ? "true" : "false") << ", "
+          << "\"" << escapeString(range.upper()) << "\", "
+          << (range.upperUnbounded() ? "true" : "false") << ", "
+          << (range.upperExclusive() ? "true" : "false") << ", "
+          << (filter.nullAllowed() ? "true" : "false") << ")";
+      break;
+    }
+
+    case common::FilterKind::kNegatedBytesRange: {
+      auto& negRange = static_cast<const common::NegatedBytesRange&>(filter);
+      oss << "std::make_unique<common::NegatedBytesRange>(";
+      oss << "\"" << escapeString(negRange.lower()) << "\", "
+          << (negRange.lowerUnbounded() ? "true" : "false") << ", "
+          << (negRange.lowerExclusive() ? "true" : "false") << ", "
+          << "\"" << escapeString(negRange.upper()) << "\", "
+          << (negRange.upperUnbounded() ? "true" : "false") << ", "
+          << (negRange.upperExclusive() ? "true" : "false") << ", "
+          << (filter.nullAllowed() ? "true" : "false") << ")";
+      break;
+    }
+
+    case common::FilterKind::kBytesValues: {
+      auto& values = static_cast<const common::BytesValues&>(filter);
+      oss << "std::make_unique<common::BytesValues>(std::vector<std::string>{";
+      bool first = true;
+      for (const auto& val : values.values()) {
+        if (!first) oss << ", ";
+        oss << "\"" << escapeString(val) << "\"";
+        first = false;
+      }
+      oss << "}, " << (filter.nullAllowed() ? "true" : "false") << ")";
+      break;
+    }
+
+    case common::FilterKind::kNegatedBytesValues: {
+      auto& negValues = static_cast<const common::NegatedBytesValues&>(filter);
+      oss << "std::make_unique<common::NegatedBytesValues>(std::vector<std::string>{";
+      bool first = true;
+      for (const auto& val : negValues.values()) {
+        if (!first) oss << ", ";
+        oss << "\"" << escapeString(val) << "\"";
+        first = false;
+      }
+      oss << "}, " << (filter.nullAllowed() ? "true" : "false") << ")";
+      break;
+    }
+
+    case common::FilterKind::kHugeintRange: {
+      auto& range = static_cast<const common::HugeintRange&>(filter);
+      oss << "std::make_unique<common::HugeintRange>("
+          << "int128_t(" << range.lower() << "), "
+          << "int128_t(" << range.upper() << "), "
+          << (filter.nullAllowed() ? "true" : "false") << ")";
+      break;
+    }
+
+    case common::FilterKind::kTimestampRange: {
+      auto& range = static_cast<const common::TimestampRange&>(filter);
+      oss << "std::make_unique<common::TimestampRange>("
+          << "Timestamp(" << range.lower().getSeconds() << ", "
+          << range.lower().getNanos() << "), "
+          << "Timestamp(" << range.upper().getSeconds() << ", "
+          << range.upper().getNanos() << "), "
+          << (filter.nullAllowed() ? "true" : "false") << ")";
+      break;
+    }
+
+    default:
+      oss << "/* Unsupported filter kind: " << static_cast<int>(filter.kind()) << " */";
+      break;
+  }
+
+  return oss.str();
+}
+
+/// Generates C++ code to create a SubfieldFilters map.
+std::string generateSubfieldFiltersCode(
+    const common::SubfieldFilters& subfieldFilters) {
+  if (subfieldFilters.empty()) {
+    return "{}";
+  }
+
+  std::ostringstream oss;
+  oss << "common::test::SubfieldFiltersBuilder()";
+
+  for (const auto& [subfield, filter] : subfieldFilters) {
+    oss << "\n        .add(\"" << escapeString(subfield.toString()) << "\", "
+        << generateFilterCode(*filter) << ")";
+  }
+
+  oss << "\n        .build()";
+
+  return oss.str();
+}
+
 /// Generates a vector literal from a vector of strings.
 std::string generateVectorLiteral(const std::vector<std::string>& items) {
   if (items.empty()) {
@@ -70,10 +296,34 @@ std::string generateVectorLiteral(const std::vector<std::string>& items) {
 std::string generateTableScanCode(const TableScanNode& node) {
   const auto& tableName = node.tableHandle()->name();
 
-  // Get the column names and types
+  // Check if this is a HiveTableHandle
+  const auto* hiveTableHandle =
+      dynamic_cast<const connector::hive::HiveTableHandle*>(
+          node.tableHandle().get());
 
   std::ostringstream oss;
-  oss << ".tableScan(\"" << escapeString(tableName) << "\")";
+
+  if (hiveTableHandle != nullptr) {
+    // Generate hiveScan call with subfield filters and remaining filter
+    const auto& subfieldFilters = hiveTableHandle->subfieldFilters();
+    const auto& remainingFilter = hiveTableHandle->remainingFilter();
+
+    oss << ".hiveScan(\"" << escapeString(tableName) << "\", ";
+
+    // Generate subfield filters
+    oss << generateSubfieldFiltersCode(subfieldFilters);
+
+    // Generate remaining filter
+    if (remainingFilter != nullptr) {
+      oss << ", \"" << escapeString(ITypedExprPrinter::toText(*remainingFilter))
+          << "\"";
+    }
+
+    oss << ")";
+  } else {
+    // Use the standard tableScan for non-Hive table handles
+    oss << ".tableScan(\"" << escapeString(tableName) << "\")";
+  }
 
   return oss.str();
 }
@@ -87,7 +337,7 @@ std::string generateValuesCode(const ValuesNode& node) {
 std::string generateFilterCode(const FilterNode& node) {
   const auto& predicate = node.filter();
   std::ostringstream oss;
-  oss << ".filter(\"" << escapeString(predicate->toString()) << "\")";
+  oss << ".filter(\"" << escapeString(ITypedExprPrinter::toText(*predicate)) << "\")";
   return oss.str();
 }
 
@@ -98,7 +348,7 @@ std::string generateProjectCode(const ProjectNode& node) {
 
   std::vector<std::string> expressions;
   for (size_t i = 0; i < projections.size(); ++i) {
-    std::string exprStr = projections[i]->toString();
+    std::string exprStr = ITypedExprPrinter::toText(*projections[i]);
     // Add alias if the name differs from the expression
     if (names[i] != exprStr) {
       exprStr += " AS " + names[i];
@@ -118,7 +368,7 @@ std::string generateParallelProjectCode(const ParallelProjectNode& node) {
 
   std::vector<std::string> expressions;
   for (size_t i = 0; i < projections.size(); ++i) {
-    std::string exprStr = projections[i]->toString();
+    std::string exprStr = ITypedExprPrinter::toText(*projections[i]);
     if (names[i] != exprStr) {
       exprStr += " AS " + names[i];
     }
@@ -139,12 +389,12 @@ std::string generateAggregationCode(const AggregationNode& node) {
 
   std::vector<std::string> groupingKeyStrs;
   for (const auto& key : groupingKeys) {
-    groupingKeyStrs.push_back(key->toString());
+    groupingKeyStrs.push_back(ITypedExprPrinter::toText(*key));
   }
 
   std::vector<std::string> aggregateStrs;
   for (size_t i = 0; i < aggregates.size(); ++i) {
-    std::string aggStr = aggregates[i].call->toString();
+    std::string aggStr = ITypedExprPrinter::toText(*aggregates[i].call);
     if (aggregateNames[i] != aggStr) {
       aggStr += " AS " + aggregateNames[i];
     }
@@ -186,12 +436,12 @@ std::string generateUnnestCode(const UnnestNode& node) {
 
   std::vector<std::string> replicateStrs;
   for (const auto& var : replicateVars) {
-    replicateStrs.push_back(var->toString());
+    replicateStrs.push_back(ITypedExprPrinter::toText(*var));
   }
 
   std::vector<std::string> unnestStrs;
   for (const auto& var : unnestVars) {
-    unnestStrs.push_back(var->toString());
+    unnestStrs.push_back(ITypedExprPrinter::toText(*var));
   }
 
   std::ostringstream oss;
@@ -238,7 +488,7 @@ std::string generateOrderByCode(const OrderByNode& node) {
   std::vector<std::string> orderingStrs;
   for (size_t i = 0; i < sortingKeys.size(); ++i) {
     std::ostringstream oss;
-    oss << sortingKeys[i]->toString();
+    oss << ITypedExprPrinter::toText(*sortingKeys[i]);
     oss << " " << (sortingOrders[i].isAscending() ? "ASC" : "DESC");
     oss << " NULLS " << (sortingOrders[i].isNullsFirst() ? "FIRST" : "LAST");
     orderingStrs.push_back(oss.str());

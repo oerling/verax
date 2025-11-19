@@ -56,7 +56,9 @@ auto builder = core::PlanMatcherBuilder()
 The generator supports the following PlanNode types:
 
 ### Leaf Nodes
-- **TableScanNode**: Generates `.tableScan("table_name")`
+- **TableScanNode**:
+  - For Hive tables with filters: Generates `.hiveScan("table_name", subfieldFilters, "remainingFilter")`
+  - For other tables: Generates `.tableScan("table_name")`
 - **ValuesNode**: Generates `.values()`
 - **ExchangeNode**: Generates `.exchange()`
 - **MergeExchangeNode**: Generates `.mergeExchange()`
@@ -170,16 +172,35 @@ For each node type, the generator:
 
 1. **Expression Fidelity**: The generator uses `toString()` on expressions, which may not exactly match the original SQL syntax
 2. **Type Information**: Currently doesn't generate detailed type information for table scans
-3. **Complex Filters**: Subfield filters in HiveScan nodes are not yet supported
-4. **Unknown Node Types**: Generates a comment for unsupported node types
+3. **Unknown Node Types**: Generates a comment for unsupported node types
+
+## Subfield Filter Support
+
+The generator now supports HiveScan nodes with subfield filters. For each filter type, it generates the appropriate constructor call:
+
+- **BigintRange**: `std::make_unique<common::BigintRange>(lower, upper, nullAllowed)`
+- **BytesValues**: `std::make_unique<common::BytesValues>(std::vector<std::string>{"val1", "val2"}, nullAllowed)`
+- **BytesRange**: `std::make_unique<common::BytesRange>(lower, lowerUnbounded, lowerExclusive, upper, upperUnbounded, upperExclusive, nullAllowed)`
+- **IsNull/IsNotNull**: `std::make_unique<common::IsNull>()` or `std::make_unique<common::IsNotNull>()`
+- And many more filter types...
+
+Example generated code:
+```cpp
+auto matcher = core::PlanMatcherBuilder()
+  .hiveScan("lineitem", common::test::SubfieldFiltersBuilder()
+        .add("l_shipinstruct", std::make_unique<common::BytesValues>(std::vector<std::string>{"DELIVER IN PERSON"}, false))
+        .add("l_quantity", std::make_unique<common::BigintRange>(10, 20, false))
+        .build(), "l_shipmode IN ('AIR', 'AIR REG')")
+  .build();
+```
 
 ## Future Enhancements
 
 Potential improvements:
-- Add support for more specialized matchers (e.g., `hiveScan` with filters)
 - Include output type information where relevant
 - Better formatting for complex expressions
 - Support for window functions and other advanced features
+- Support for MultiRange filters and BigintMultiRange filters
 
 ## Files
 

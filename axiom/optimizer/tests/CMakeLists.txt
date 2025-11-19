@@ -68,6 +68,15 @@ target_link_libraries(
   axiom_runner_tests_utils
 )
 
+add_library(axiom_optimizer_tests_expr_printers ExprPrinters.cpp)
+
+target_link_libraries(
+  axiom_optimizer_tests_expr_printers
+  velox_core
+  velox_parse_expression
+  velox_vector
+)
+
 add_executable(axiom_optimizer_tpch_plan_test TpchPlanTest.cpp TpchPlanStability.cpp)
 
 add_test(
@@ -193,6 +202,23 @@ target_link_libraries(
   axiom_model_test
   axiom_optimizer
   Boost::headers
+  glog::glog
+  GTest::gtest
+  GTest::gtest_main
+  pthread
+)
+
+add_executable(axiom_expr_printers_test ExprPrintersTest.cpp)
+
+add_test(axiom_expr_printers_test axiom_expr_printers_test)
+
+target_link_libraries(
+  axiom_expr_printers_test
+  axiom_optimizer_tests_expr_printers
+  velox_core
+  velox_memory
+  velox_parse_parser
+  velox_parse_expression
   glog::glog
   GTest::gtest
   GTest::gtest_main
