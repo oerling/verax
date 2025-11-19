@@ -667,17 +667,17 @@ Aggregation::Aggregation(
   }
 }
 
-void Aggregation::setCostWithGroups(
+  void Aggregation::setCostWithGroups(
     int64_t inputBeforePartial,
     int32_t width,
     float maxPartialAggregationMemory,
     float abandonPartialAggregationMinRows,
     float abandonPartialAggregationMinPct) {
-  // Avoid division by zero
-  float safeInputBeforePartial =
+  // Avoid division by zero.
+  const float safeInputBeforePartial =
       std::max(1.0f, static_cast<float>(inputBeforePartial));
 
-  auto numKeys = groupingKeys.size();
+  const auto numKeys = groupingKeys.size();
 
   double maxCardinality = 1;
   for (auto key : groupingKeys) {
@@ -690,27 +690,43 @@ void Aggregation::setCostWithGroups(
   // potentially distinct keys and n is the number of elements in the
   // input. This approaches d as n goes to infinity. The chance of one in d
   // being unique after n values is 1 - (1/d)^n.
-  auto nOut = expectedNumDistincts(maxCardinality, safeInputBeforePartial);
+  const auto nOut =
+      expectedNumDistincts(maxCardinality, safeInputBeforePartial);
 
   float rowBytes =
       byteSize(groupingKeys) + byteSize(aggregates) + Costs::kHashRowBytes;
+  if (step == velox::core::AggregationNode::Step::kSingle) {
+    // Aggregation i one step, no estimate of reduction from partial.
+    cost_.unitCost = aggregates.size() * Costs::kSimpleAggregateCost +
+      Costs::hashTableCost(nOut) +
+      2 * Costs::hashRowCost(nOut, rowBytes);
+  cost_.fanout = nOut / safeInputBeforePartial;
+  cost_.totalBytes = nOut * rowBytes;
+  VELOX_CHECK_LE(cost_.fanout, 1.0f);
+  return;
+}
+
   float partialCapacity = maxPartialAggregationMemory / rowBytes;
   if (partialCapacity > nOut) {
     partialCapacity = nOut;
   }
-  auto maxInTable = step == velox::core::AggregationNode::Step::kPartial
-      ? partialCapacity
-      : nOut;
+
+  const bool isPartial = (step == velox::core::AggregationNode::Step::kPartial);
+  const auto maxInTable = isPartial ? partialCapacity : nOut;
+
   auto aggCost = aggregates.size() * Costs::kSimpleAggregateCost +
       Costs::hashTableCost(maxInTable) +
       2 * Costs::hashRowCost(maxInTable, rowBytes);
 
+
+  // The number of distinct  keys we expect to see in the initial sample before we consider abandoning partial aggregation.
   auto initialDistincts =
       expectedNumDistincts(abandonPartialAggregationMinRows, nOut);
+  // The number of input rows expected for each flush of partial aggregation.
   auto partialInput =
-      partialFlushInterval(safeInputBeforePartial, nOut, partialCapacity);
+    std::min<double>(safeInputBeforePartial,
+	     partialFlushInterval(safeInputBeforePartial, nOut, partialCapacity));
   auto partialFanout = partialCapacity / partialInput;
-
   if ((safeInputBeforePartial > abandonPartialAggregationMinRows * width &&
        initialDistincts > abandonPartialAggregationMinRows *
                (abandonPartialAggregationMinPct / 100)) ||
@@ -719,7 +735,8 @@ void Aggregation::setCostWithGroups(
     // Partial agg does not reduce.
     partialFanout = 1;
   }
-  if (step == velox::core::AggregationNode::Step::kPartial) {
+
+  if (isPartial) {
     cost_.fanout = partialFanout;
     if (partialFanout == 1) {
       cost_.unitCost = 0.1 * rowBytes;
@@ -730,10 +747,10 @@ void Aggregation::setCostWithGroups(
     }
   } else {
     cost_.totalBytes = nOut * rowBytes;
-    // auto in = cost_.inputCardinality / partialFanout;
     cost_.unitCost =
         Costs::kHashColumnCost * numKeys + Costs::hashTableCost(nOut) + aggCost;
-    cost_.fanout = nOut / (safeInputBeforePartial * partialFanout);
+    auto finalInput = safeInputBeforePartial * partialFanout;
+    cost_.fanout = nOut / finalInput;
   }
 }
 
