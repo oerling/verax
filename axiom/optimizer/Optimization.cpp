@@ -1310,13 +1310,14 @@ void Optimization::joinByHashRight(
   float fanout = -1;
   switch (rightJoinType) {
     case velox::core::JoinType::kRightSemiFilter:
-      fanout = 1.0 / candidate.fanout;
+      fanout = (state.cost.cardinality /
+                std::max(1.0f, probePlan->cost.cardinality)) *
+          std::min<float>(1, candidate.fanout);
       break;
     case velox::core::JoinType::kRightSemiProject:
-      markTrueFraction = 1 / fanout;
-      fanout = state.cost.cardinality < 1
-          ? 1
-          : state.cost.cardinality / probePlan->cost.cardinality;
+      markTrueFraction = std::min<float>(1, candidate.fanout);
+      fanout =
+          state.cost.cardinality / std::max(1.0f, probePlan->cost.cardinality);
       break;
     case velox::core::JoinType::kRight:
       // A right oj produces every probe side row plus unhit build side rows.

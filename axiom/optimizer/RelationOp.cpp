@@ -667,7 +667,7 @@ Aggregation::Aggregation(
   }
 }
 
-  void Aggregation::setCostWithGroups(
+void Aggregation::setCostWithGroups(
     int64_t inputBeforePartial,
     int32_t width,
     float maxPartialAggregationMemory,
@@ -698,13 +698,12 @@ Aggregation::Aggregation(
   if (step == velox::core::AggregationNode::Step::kSingle) {
     // Aggregation i one step, no estimate of reduction from partial.
     cost_.unitCost = aggregates.size() * Costs::kSimpleAggregateCost +
-      Costs::hashTableCost(nOut) +
-      2 * Costs::hashRowCost(nOut, rowBytes);
-  cost_.fanout = nOut / safeInputBeforePartial;
-  cost_.totalBytes = nOut * rowBytes;
-  VELOX_CHECK_LE(cost_.fanout, 1.0f);
-  return;
-}
+        Costs::hashTableCost(nOut) + 2 * Costs::hashRowCost(nOut, rowBytes);
+    cost_.fanout = nOut / safeInputBeforePartial;
+    cost_.totalBytes = nOut * rowBytes;
+    VELOX_CHECK_LE(cost_.fanout, 1.0f);
+    return;
+  }
 
   float partialCapacity = maxPartialAggregationMemory / rowBytes;
   if (partialCapacity > nOut) {
@@ -718,14 +717,14 @@ Aggregation::Aggregation(
       Costs::hashTableCost(maxInTable) +
       2 * Costs::hashRowCost(maxInTable, rowBytes);
 
-
-  // The number of distinct  keys we expect to see in the initial sample before we consider abandoning partial aggregation.
+  // The number of distinct  keys we expect to see in the initial sample before
+  // we consider abandoning partial aggregation.
   auto initialDistincts =
       expectedNumDistincts(abandonPartialAggregationMinRows, nOut);
   // The number of input rows expected for each flush of partial aggregation.
-  auto partialInput =
-    std::min<double>(safeInputBeforePartial,
-	     partialFlushInterval(safeInputBeforePartial, nOut, partialCapacity));
+  auto partialInput = std::min<double>(
+      safeInputBeforePartial,
+      partialFlushInterval(safeInputBeforePartial, nOut, partialCapacity));
   auto partialFanout = partialCapacity / partialInput;
   if ((safeInputBeforePartial > abandonPartialAggregationMinRows * width &&
        initialDistincts > abandonPartialAggregationMinRows *
@@ -868,6 +867,14 @@ void HashBuild::accept(
 std::optional<float> filterCardinality(ExprCP expr) {
   // Covers the special case of a mark semijoin cardinality passed in
   // trueFraction of mark column.
+  if (expr->is(PlanType::kCallExpr)) {
+    auto call = expr->as<Call>();
+    if (call->name() == toName("not")) {
+      if (call->args()[0]->value().trueFraction != Value::kUnknown) {
+        return 1 - call->args()[0]->value().trueFraction;
+      }
+    }
+  }
   if (expr->value().trueFraction != Value::kUnknown) {
     return expr->value().trueFraction;
   }

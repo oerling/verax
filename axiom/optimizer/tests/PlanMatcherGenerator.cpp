@@ -21,6 +21,7 @@
 #include "axiom/optimizer/tests/ExprPrinters.h"
 #include "velox/connectors/hive/TableHandle.h"
 #include "velox/core/PlanNode.h"
+#include "velox/expression/ExprToSubfieldFilter.h"
 #include "velox/type/Filter.h"
 #include "velox/type/tests/SubfieldFiltersBuilder.h"
 
@@ -55,199 +56,497 @@ std::string escapeString(const std::string& str) {
 /// Generates C++ code to create a Filter object.
 std::string generateFilterCode(const common::Filter& filter) {
   std::ostringstream oss;
+  bool nullAllowed = filter.nullAllowed();
+  std::string nullArg = nullAllowed ? ", true" : "";
 
   switch (filter.kind()) {
     case common::FilterKind::kIsNull:
-      oss << "std::make_unique<common::IsNull>()";
+      oss << "exec::isNull()";
       break;
 
     case common::FilterKind::kIsNotNull:
-      oss << "std::make_unique<common::IsNotNull>()";
+      oss << "exec::isNotNull()";
       break;
 
     case common::FilterKind::kBoolValue: {
       auto& boolFilter = static_cast<const common::BoolValue&>(filter);
       // Access value through testBool - true passes if value matches
       bool value = boolFilter.testBool(true);
-      oss << "std::make_unique<common::BoolValue>(" << (value ? "true" : "false")
-          << ", " << (filter.nullAllowed() ? "true" : "false") << ")";
+      oss << "exec::boolEqual(" << (value ? "true" : "false") << nullArg << ")";
       break;
     }
 
     case common::FilterKind::kBigintRange: {
       auto& range = static_cast<const common::BigintRange&>(filter);
-      oss << "std::make_unique<common::BigintRange>("
-          << range.lower() << ", " << range.upper() << ", "
-          << (filter.nullAllowed() ? "true" : "false") << ")";
+      int64_t lower = range.lower();
+      int64_t upper = range.upper();
+
+      if (lower == upper) {
+        // Equal
+        oss << "exec::equal(" << lower << "LL" << nullArg << ")";
+      } else if (
+          lower == std::numeric_limits<int64_t>::min() &&
+          upper == std::numeric_limits<int64_t>::max()) {
+        // This shouldn't happen, but handle it
+        oss << "std::make_unique<common::BigintRange>(" << lower << "LL, "
+            << upper << "LL, " << (nullAllowed ? "true" : "false") << ")";
+      } else if (lower == std::numeric_limits<int64_t>::min()) {
+        // LessThanOrEqual
+        oss << "exec::lessThanOrEqual(" << upper << "LL" << nullArg << ")";
+      } else if (upper == std::numeric_limits<int64_t>::max()) {
+        // GreaterThanOrEqual
+        oss << "exec::greaterThanOrEqual(" << lower << "LL" << nullArg << ")";
+      } else {
+        // Between
+        oss << "exec::between(" << lower << "LL, " << upper << "LL" << nullArg
+            << ")";
+      }
       break;
     }
 
     case common::FilterKind::kNegatedBigintRange: {
       auto& negRange = static_cast<const common::NegatedBigintRange&>(filter);
-      oss << "std::make_unique<common::NegatedBigintRange>("
-          << negRange.lower() << ", " << negRange.upper() << ", "
-          << (filter.nullAllowed() ? "true" : "false") << ")";
-      break;
-    }
+      int64_t lower = negRange.lower();
+      int64_t upper = negRange.upper();
 
-    case common::FilterKind::kBigintValuesUsingHashTable: {
-      auto& values = static_cast<const common::BigintValuesUsingHashTable&>(filter);
-      oss << "std::make_unique<common::BigintValuesUsingHashTable>("
-          << values.min() << ", " << values.max() << ", "
-          << "std::vector<int64_t>{";
-      bool first = true;
-      for (auto val : values.values()) {
-        if (!first) oss << ", ";
-        oss << val;
-        first = false;
+      if (lower == upper) {
+        // NotEqual
+        oss << "exec::notEqual(" << lower << "LL" << nullArg << ")";
+      } else {
+        // NotBetween
+        oss << "exec::notBetween(" << lower << "LL, " << upper << "LL"
+            << nullArg << ")";
       }
-      oss << "}, " << (filter.nullAllowed() ? "true" : "false") << ")";
       break;
     }
 
+    case common::FilterKind::kBigintValuesUsingHashTable:
     case common::FilterKind::kBigintValuesUsingBitmask: {
-      auto& values = static_cast<const common::BigintValuesUsingBitmask&>(filter);
-      auto valVec = values.values();
-      oss << "std::make_unique<common::BigintValuesUsingBitmask>("
-          << values.min() << ", " << values.max() << ", "
-          << "std::vector<int64_t>{";
+      // Both use the same shorthand function exec::in()
+      std::vector<int64_t> valVec;
+      if (filter.kind() == common::FilterKind::kBigintValuesUsingHashTable) {
+        auto& values =
+            static_cast<const common::BigintValuesUsingHashTable&>(filter);
+        valVec = values.values();
+      } else {
+        auto& values =
+            static_cast<const common::BigintValuesUsingBitmask&>(filter);
+        valVec = values.values();
+      }
+
+      oss << "exec::in(std::vector<int64_t>{";
       bool first = true;
       for (auto val : valVec) {
-        if (!first) oss << ", ";
-        oss << val;
+        if (!first)
+          oss << ", ";
+        oss << val << "LL";
         first = false;
       }
-      oss << "}, " << (filter.nullAllowed() ? "true" : "false") << ")";
+      oss << "}" << nullArg << ")";
       break;
     }
 
-    case common::FilterKind::kNegatedBigintValuesUsingHashTable: {
-      auto& negValues = static_cast<const common::NegatedBigintValuesUsingHashTable&>(filter);
-      oss << "std::make_unique<common::NegatedBigintValuesUsingHashTable>("
-          << negValues.min() << ", " << negValues.max() << ", "
-          << "std::vector<int64_t>{";
-      bool first = true;
-      for (auto val : negValues.values()) {
-        if (!first) oss << ", ";
-        oss << val;
-        first = false;
-      }
-      oss << "}, " << (filter.nullAllowed() ? "true" : "false") << ")";
-      break;
-    }
-
+    case common::FilterKind::kNegatedBigintValuesUsingHashTable:
     case common::FilterKind::kNegatedBigintValuesUsingBitmask: {
-      auto& negValues = static_cast<const common::NegatedBigintValuesUsingBitmask&>(filter);
-      auto valVec = negValues.values();
-      oss << "std::make_unique<common::NegatedBigintValuesUsingBitmask>("
-          << negValues.min() << ", " << negValues.max() << ", "
-          << "std::vector<int64_t>{";
+      // Both use the same shorthand function exec::notIn()
+      std::vector<int64_t> valVec;
+      if (filter.kind() ==
+          common::FilterKind::kNegatedBigintValuesUsingHashTable) {
+        auto& negValues =
+            static_cast<const common::NegatedBigintValuesUsingHashTable&>(
+                filter);
+        valVec = negValues.values();
+      } else {
+        auto& negValues =
+            static_cast<const common::NegatedBigintValuesUsingBitmask&>(filter);
+        valVec = negValues.values();
+      }
+
+      oss << "exec::notIn(std::vector<int64_t>{";
       bool first = true;
       for (auto val : valVec) {
-        if (!first) oss << ", ";
-        oss << val;
+        if (!first)
+          oss << ", ";
+        oss << val << "LL";
         first = false;
       }
-      oss << "}, " << (filter.nullAllowed() ? "true" : "false") << ")";
+      oss << "}" << nullArg << ")";
       break;
     }
 
     case common::FilterKind::kDoubleRange: {
       auto& range = static_cast<const common::DoubleRange&>(filter);
-      oss << "std::make_unique<common::DoubleRange>("
-          << range.lower() << ", " << (range.lowerUnbounded() ? "true" : "false") << ", "
-          << (range.lowerExclusive() ? "true" : "false") << ", "
-          << range.upper() << ", " << (range.upperUnbounded() ? "true" : "false") << ", "
-          << (range.upperExclusive() ? "true" : "false") << ", "
-          << (filter.nullAllowed() ? "true" : "false") << ")";
+      double lower = range.lower();
+      double upper = range.upper();
+      bool lowerUnbounded = range.lowerUnbounded();
+      bool upperUnbounded = range.upperUnbounded();
+      bool lowerExclusive = range.lowerExclusive();
+      bool upperExclusive = range.upperExclusive();
+
+      if (!lowerUnbounded && !upperUnbounded && !lowerExclusive &&
+          !upperExclusive) {
+        // Between (inclusive on both ends)
+        oss << "exec::betweenDouble(" << lower << ", " << upper << nullArg
+            << ")";
+      } else if (!lowerUnbounded && upperUnbounded && lowerExclusive) {
+        // GreaterThan
+        oss << "exec::greaterThanDouble(" << lower << nullArg << ")";
+      } else if (!lowerUnbounded && upperUnbounded && !lowerExclusive) {
+        // GreaterThanOrEqual
+        oss << "exec::greaterThanOrEqualDouble(" << lower << nullArg << ")";
+      } else if (lowerUnbounded && !upperUnbounded && upperExclusive) {
+        // LessThan
+        oss << "exec::lessThanDouble(" << upper << nullArg << ")";
+      } else if (lowerUnbounded && !upperUnbounded && !upperExclusive) {
+        // LessThanOrEqual
+        oss << "exec::lessThanOrEqualDouble(" << upper << nullArg << ")";
+      } else {
+        // Complex case, use constructor
+        oss << "std::make_unique<common::DoubleRange>(" << lower << ", "
+            << (lowerUnbounded ? "true" : "false") << ", "
+            << (lowerExclusive ? "true" : "false") << ", " << upper << ", "
+            << (upperUnbounded ? "true" : "false") << ", "
+            << (upperExclusive ? "true" : "false") << ", "
+            << (nullAllowed ? "true" : "false") << ")";
+      }
       break;
     }
 
     case common::FilterKind::kFloatRange: {
       auto& range = static_cast<const common::FloatRange&>(filter);
-      oss << "std::make_unique<common::FloatRange>("
-          << range.lower() << "f, " << (range.lowerUnbounded() ? "true" : "false") << ", "
-          << (range.lowerExclusive() ? "true" : "false") << ", "
-          << range.upper() << "f, " << (range.upperUnbounded() ? "true" : "false") << ", "
-          << (range.upperExclusive() ? "true" : "false") << ", "
-          << (filter.nullAllowed() ? "true" : "false") << ")";
+      float lower = range.lower();
+      float upper = range.upper();
+      bool lowerUnbounded = range.lowerUnbounded();
+      bool upperUnbounded = range.upperUnbounded();
+      bool lowerExclusive = range.lowerExclusive();
+      bool upperExclusive = range.upperExclusive();
+
+      if (!lowerUnbounded && !upperUnbounded && !lowerExclusive &&
+          !upperExclusive) {
+        // Between (inclusive on both ends)
+        oss << "exec::betweenFloat(" << lower << "f, " << upper << "f"
+            << nullArg << ")";
+      } else if (!lowerUnbounded && upperUnbounded && lowerExclusive) {
+        // GreaterThan
+        oss << "exec::greaterThanFloat(" << lower << "f" << nullArg << ")";
+      } else if (!lowerUnbounded && upperUnbounded && !lowerExclusive) {
+        // GreaterThanOrEqual
+        oss << "exec::greaterThanOrEqualFloat(" << lower << "f" << nullArg
+            << ")";
+      } else if (lowerUnbounded && !upperUnbounded && upperExclusive) {
+        // LessThan
+        oss << "exec::lessThanFloat(" << upper << "f" << nullArg << ")";
+      } else if (lowerUnbounded && !upperUnbounded && !upperExclusive) {
+        // LessThanOrEqual
+        oss << "exec::lessThanOrEqualFloat(" << upper << "f" << nullArg << ")";
+      } else {
+        // Complex case, use constructor
+        oss << "std::make_unique<common::FloatRange>(" << lower << "f, "
+            << (lowerUnbounded ? "true" : "false") << ", "
+            << (lowerExclusive ? "true" : "false") << ", " << upper << "f, "
+            << (upperUnbounded ? "true" : "false") << ", "
+            << (upperExclusive ? "true" : "false") << ", "
+            << (nullAllowed ? "true" : "false") << ")";
+      }
       break;
     }
 
     case common::FilterKind::kBytesRange: {
       auto& range = static_cast<const common::BytesRange&>(filter);
-      oss << "std::make_unique<common::BytesRange>(";
-      oss << "\"" << escapeString(range.lower()) << "\", "
-          << (range.lowerUnbounded() ? "true" : "false") << ", "
-          << (range.lowerExclusive() ? "true" : "false") << ", "
-          << "\"" << escapeString(range.upper()) << "\", "
-          << (range.upperUnbounded() ? "true" : "false") << ", "
-          << (range.upperExclusive() ? "true" : "false") << ", "
-          << (filter.nullAllowed() ? "true" : "false") << ")";
+      std::string lower = range.lower();
+      std::string upper = range.upper();
+      bool lowerUnbounded = range.lowerUnbounded();
+      bool upperUnbounded = range.upperUnbounded();
+      bool lowerExclusive = range.lowerExclusive();
+      bool upperExclusive = range.upperExclusive();
+
+      if (range.isSingleValue()) {
+        // Equal
+        oss << "exec::equal(std::string(\"" << escapeString(lower) << "\")"
+            << nullArg << ")";
+      } else if (
+          !lowerUnbounded && !upperUnbounded && !lowerExclusive &&
+          !upperExclusive) {
+        // Between (inclusive on both ends)
+        oss << "exec::between(std::string(\"" << escapeString(lower) << "\"), "
+            << "std::string(\"" << escapeString(upper) << "\")" << nullArg
+            << ")";
+      } else if (
+          !lowerUnbounded && !upperUnbounded && lowerExclusive &&
+          upperExclusive) {
+        // BetweenExclusive
+        oss << "exec::betweenExclusive(std::string(\"" << escapeString(lower)
+            << "\"), "
+            << "std::string(\"" << escapeString(upper) << "\")" << nullArg
+            << ")";
+      } else if (!lowerUnbounded && upperUnbounded && lowerExclusive) {
+        // GreaterThan
+        oss << "exec::greaterThan(std::string(\"" << escapeString(lower)
+            << "\")" << nullArg << ")";
+      } else if (!lowerUnbounded && upperUnbounded && !lowerExclusive) {
+        // GreaterThanOrEqual
+        oss << "exec::greaterThanOrEqual(std::string(\"" << escapeString(lower)
+            << "\")" << nullArg << ")";
+      } else if (lowerUnbounded && !upperUnbounded && upperExclusive) {
+        // LessThan
+        oss << "exec::lessThan(std::string(\"" << escapeString(upper) << "\")"
+            << nullArg << ")";
+      } else if (lowerUnbounded && !upperUnbounded && !upperExclusive) {
+        // LessThanOrEqual
+        oss << "exec::lessThanOrEqual(std::string(\"" << escapeString(upper)
+            << "\")" << nullArg << ")";
+      } else {
+        // Complex case, use constructor
+        oss << "std::make_unique<common::BytesRange>(";
+        oss << "std::string(\"" << escapeString(lower) << "\"), "
+            << (lowerUnbounded ? "true" : "false") << ", "
+            << (lowerExclusive ? "true" : "false") << ", "
+            << "std::string(\"" << escapeString(upper) << "\"), "
+            << (upperUnbounded ? "true" : "false") << ", "
+            << (upperExclusive ? "true" : "false") << ", "
+            << (nullAllowed ? "true" : "false") << ")";
+      }
       break;
     }
 
     case common::FilterKind::kNegatedBytesRange: {
       auto& negRange = static_cast<const common::NegatedBytesRange&>(filter);
-      oss << "std::make_unique<common::NegatedBytesRange>(";
-      oss << "\"" << escapeString(negRange.lower()) << "\", "
-          << (negRange.lowerUnbounded() ? "true" : "false") << ", "
-          << (negRange.lowerExclusive() ? "true" : "false") << ", "
-          << "\"" << escapeString(negRange.upper()) << "\", "
-          << (negRange.upperUnbounded() ? "true" : "false") << ", "
-          << (negRange.upperExclusive() ? "true" : "false") << ", "
-          << (filter.nullAllowed() ? "true" : "false") << ")";
+      std::string lower = negRange.lower();
+      std::string upper = negRange.upper();
+      bool lowerUnbounded = negRange.isLowerUnbounded();
+      bool upperUnbounded = negRange.isUpperUnbounded();
+      bool lowerExclusive = negRange.isLowerExclusive();
+      bool upperExclusive = negRange.isUpperExclusive();
+
+      if (!lowerUnbounded && !upperUnbounded && !lowerExclusive &&
+          !upperExclusive) {
+        // NotBetween (inclusive on both ends)
+        oss << "exec::notBetween(std::string(\"" << escapeString(lower)
+            << "\"), "
+            << "std::string(\"" << escapeString(upper) << "\")" << nullArg
+            << ")";
+      } else if (
+          !lowerUnbounded && !upperUnbounded && lowerExclusive &&
+          upperExclusive) {
+        // NotBetweenExclusive
+        oss << "exec::notBetweenExclusive(std::string(\"" << escapeString(lower)
+            << "\"), std::string(\"" << escapeString(upper) << "\")" << nullArg
+            << ")";
+      } else {
+        // Complex case, use constructor
+        oss << "std::make_unique<common::NegatedBytesRange>(";
+        oss << "std::string(\"" << escapeString(lower) << "\"), "
+            << (lowerUnbounded ? "true" : "false") << ", "
+            << (lowerExclusive ? "true" : "false") << ", "
+            << "std::string(\"" << escapeString(upper) << "\"), "
+            << (upperUnbounded ? "true" : "false") << ", "
+            << (upperExclusive ? "true" : "false") << ", "
+            << (nullAllowed ? "true" : "false") << ")";
+      }
       break;
     }
 
     case common::FilterKind::kBytesValues: {
       auto& values = static_cast<const common::BytesValues&>(filter);
-      oss << "std::make_unique<common::BytesValues>(std::vector<std::string>{";
+      oss << "exec::in(std::vector<std::string>{";
       bool first = true;
       for (const auto& val : values.values()) {
-        if (!first) oss << ", ";
-        oss << "\"" << escapeString(val) << "\"";
+        if (!first)
+          oss << ", ";
+        oss << "std::string(\"" << escapeString(val) << "\")";
         first = false;
       }
-      oss << "}, " << (filter.nullAllowed() ? "true" : "false") << ")";
+      oss << "}" << nullArg << ")";
       break;
     }
 
     case common::FilterKind::kNegatedBytesValues: {
       auto& negValues = static_cast<const common::NegatedBytesValues&>(filter);
-      oss << "std::make_unique<common::NegatedBytesValues>(std::vector<std::string>{";
+      oss << "exec::notIn(std::vector<std::string>{";
       bool first = true;
       for (const auto& val : negValues.values()) {
-        if (!first) oss << ", ";
-        oss << "\"" << escapeString(val) << "\"";
+        if (!first)
+          oss << ", ";
+        oss << "std::string(\"" << escapeString(val) << "\")";
         first = false;
       }
-      oss << "}, " << (filter.nullAllowed() ? "true" : "false") << ")";
+      oss << "}" << nullArg << ")";
       break;
     }
 
     case common::FilterKind::kHugeintRange: {
       auto& range = static_cast<const common::HugeintRange&>(filter);
-      oss << "std::make_unique<common::HugeintRange>("
-          << "int128_t(" << range.lower() << "), "
-          << "int128_t(" << range.upper() << "), "
-          << (filter.nullAllowed() ? "true" : "false") << ")";
+      int128_t lower = range.lower();
+      int128_t upper = range.upper();
+      // int128_t needs special handling for string conversion
+      auto lowerStr = std::to_string(static_cast<int64_t>(lower));
+      auto upperStr = std::to_string(static_cast<int64_t>(upper));
+
+      if (lower == upper) {
+        // Equal
+        oss << "exec::equalHugeint(int128_t(" << lowerStr << ")" << nullArg
+            << ")";
+      } else if (
+          lower == std::numeric_limits<int128_t>::min() &&
+          upper == std::numeric_limits<int128_t>::max()) {
+        // This shouldn't happen, but handle it
+        oss << "std::make_unique<common::HugeintRange>(int128_t(" << lowerStr
+            << "), int128_t(" << upperStr << "), "
+            << (nullAllowed ? "true" : "false") << ")";
+      } else if (lower == std::numeric_limits<int128_t>::min()) {
+        // LessThanOrEqual
+        oss << "exec::lessThanOrEqualHugeint(int128_t(" << upperStr << ")"
+            << nullArg << ")";
+      } else if (upper == std::numeric_limits<int128_t>::max()) {
+        // GreaterThanOrEqual
+        oss << "exec::greaterThanOrEqualHugeint(int128_t(" << lowerStr << ")"
+            << nullArg << ")";
+      } else {
+        // Between
+        oss << "exec::betweenHugeint(int128_t(" << lowerStr << "), int128_t("
+            << upperStr << ")" << nullArg << ")";
+      }
       break;
     }
 
     case common::FilterKind::kTimestampRange: {
       auto& range = static_cast<const common::TimestampRange&>(filter);
-      oss << "std::make_unique<common::TimestampRange>("
-          << "Timestamp(" << range.lower().getSeconds() << ", "
-          << range.lower().getNanos() << "), "
-          << "Timestamp(" << range.upper().getSeconds() << ", "
-          << range.upper().getNanos() << "), "
-          << (filter.nullAllowed() ? "true" : "false") << ")";
+      auto lower = range.lower();
+      auto upper = range.upper();
+
+      if (range.isSingleValue()) {
+        // Equal
+        oss << "exec::equal(Timestamp(" << lower.getSeconds() << ", "
+            << lower.getNanos() << ")" << nullArg << ")";
+      } else if (lower == std::numeric_limits<Timestamp>::min()) {
+        // LessThanOrEqual
+        oss << "exec::lessThanOrEqual(Timestamp(" << upper.getSeconds() << ", "
+            << upper.getNanos() << ")" << nullArg << ")";
+      } else if (upper == std::numeric_limits<Timestamp>::max()) {
+        // GreaterThanOrEqual
+        oss << "exec::greaterThanOrEqual(Timestamp(" << lower.getSeconds()
+            << ", " << lower.getNanos() << ")" << nullArg << ")";
+      } else {
+        // Between
+        oss << "exec::between(Timestamp(" << lower.getSeconds() << ", "
+            << lower.getNanos() << "), Timestamp(" << upper.getSeconds() << ", "
+            << upper.getNanos() << ")" << nullArg << ")";
+      }
       break;
     }
 
+    case common::FilterKind::kBigintMultiRange: {
+      auto& multiRange = static_cast<const common::BigintMultiRange&>(filter);
+      const auto& ranges = multiRange.ranges();
+
+      if (ranges.size() == 2) {
+        // Use bigintOr for two ranges
+        oss << "exec::bigintOr(";
+        for (size_t i = 0; i < ranges.size(); ++i) {
+          if (i > 0)
+            oss << ", ";
+          const auto& r = ranges[i];
+          if (r->lower() == r->upper()) {
+            oss << "exec::equal(" << r->lower() << "LL)";
+          } else {
+            oss << "exec::between(" << r->lower() << "LL, " << r->upper()
+                << "LL)";
+          }
+        }
+        oss << nullArg << ")";
+      } else if (ranges.size() == 3) {
+        // Use bigintOr for three ranges
+        oss << "exec::bigintOr(";
+        for (size_t i = 0; i < ranges.size(); ++i) {
+          if (i > 0)
+            oss << ", ";
+          const auto& r = ranges[i];
+          if (r->lower() == r->upper()) {
+            oss << "exec::equal(" << r->lower() << "LL)";
+          } else {
+            oss << "exec::between(" << r->lower() << "LL, " << r->upper()
+                << "LL)";
+          }
+        }
+        oss << nullArg << ")";
+      } else {
+        // Use constructor for more than 3 ranges
+        oss << "std::make_unique<common::BigintMultiRange>("
+            << "std::vector<std::unique_ptr<common::BigintRange>>{";
+        bool first = true;
+        for (const auto& r : ranges) {
+          if (!first)
+            oss << ", ";
+          if (r->lower() == r->upper()) {
+            oss << "exec::equal(" << r->lower() << "LL)";
+          } else {
+            oss << "exec::between(" << r->lower() << "LL, " << r->upper()
+                << "LL)";
+          }
+          first = false;
+        }
+        oss << "}, " << (nullAllowed ? "true" : "false") << ")";
+      }
+      break;
+    }
+
+    case common::FilterKind::kMultiRange: {
+      auto& multiRange = static_cast<const common::MultiRange&>(filter);
+      const auto& filters = multiRange.filters();
+
+      if (filters.size() == 2) {
+        // Use orFilter for two filters
+        oss << "exec::orFilter(";
+        for (size_t i = 0; i < filters.size(); ++i) {
+          if (i > 0)
+            oss << ", ";
+          oss << generateFilterCode(*filters[i]);
+        }
+        oss << nullArg << ")";
+      } else {
+        // Use constructor for more filters
+        oss << "std::make_unique<common::MultiRange>("
+            << "std::vector<std::unique_ptr<common::Filter>>{";
+        bool first = true;
+        for (const auto& f : filters) {
+          if (!first)
+            oss << ", ";
+          oss << generateFilterCode(*f);
+          first = false;
+        }
+        oss << "}, " << (nullAllowed ? "true" : "false") << ")";
+      }
+      break;
+    }
+
+    case common::FilterKind::kHugeintValuesUsingHashTable: {
+      // No shorthand function for hugeint values, use constructor
+      auto& values =
+          static_cast<const common::HugeintValuesUsingHashTable&>(filter);
+      oss << "common::createHugeintValues(std::vector<int128_t>{";
+      bool first = true;
+      for (const auto& val : values.values()) {
+        if (!first)
+          oss << ", ";
+        auto valStr = std::to_string(static_cast<int64_t>(val));
+        oss << "int128_t(" << valStr << ")";
+        first = false;
+      }
+      oss << "}, " << (nullAllowed ? "true" : "false") << ")";
+      break;
+    }
+
+    case common::FilterKind::kAlwaysFalse:
+      oss << "std::make_unique<common::AlwaysFalse>()";
+      break;
+
+    case common::FilterKind::kAlwaysTrue:
+      oss << "std::make_unique<common::AlwaysTrue>()";
+      break;
+
     default:
-      oss << "/* Unsupported filter kind: " << static_cast<int>(filter.kind()) << " */";
+      oss << "/* Unsupported filter kind: " << static_cast<int>(filter.kind())
+          << " */";
       break;
   }
 
@@ -337,7 +636,8 @@ std::string generateValuesCode(const ValuesNode& node) {
 std::string generateFilterCode(const FilterNode& node) {
   const auto& predicate = node.filter();
   std::ostringstream oss;
-  oss << ".filter(\"" << escapeString(ITypedExprPrinter::toText(*predicate)) << "\")";
+  oss << ".filter(\"" << escapeString(ITypedExprPrinter::toText(*predicate))
+      << "\")";
   return oss.str();
 }
 
