@@ -84,8 +84,10 @@ SchemaTableCP Schema::findTable(
   auto& tableColumns = connectorTable->columnMap();
   schemaColumns.reserve(tableColumns.size());
   for (const auto& [columnName, tableColumn] : tableColumns) {
-    const auto cardinality = static_cast<float>(tableColumn->approxNumDistinct(
-        static_cast<int64_t>(connectorTable->numRows())));
+    const auto cardinality = std::max<float>(
+        1,
+        tableColumn->approxNumDistinct(
+            static_cast<int64_t>(connectorTable->numRows())));
     Value value(toType(tableColumn->type()), cardinality);
     auto* column = make<Column>(toName(columnName), nullptr, value);
     schemaColumns[column->name()] = column;
@@ -132,15 +134,16 @@ SchemaTableCP Schema::findTable(
 
 float tableCardinality(PlanObjectCP table) {
   if (table->is(PlanType::kTableNode)) {
-    return table->as<BaseTable>()
-        ->schemaTable->columnGroups[0]
-        ->table->cardinality;
+    return table->as<BaseTable>()->schemaTable->cardinality;
   }
   if (table->is(PlanType::kValuesTableNode)) {
     return table->as<ValuesTable>()->cardinality();
-  } else if (table->is(PlanType::kUnnestTableNode)) {
+  }
+
+  if (table->is(PlanType::kUnnestTableNode)) {
     return table->as<UnnestTable>()->cardinality();
   }
+
   VELOX_CHECK(table->is(PlanType::kDerivedTableNode));
   return table->as<DerivedTable>()->cardinality;
 }

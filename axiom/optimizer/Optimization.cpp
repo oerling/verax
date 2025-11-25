@@ -422,20 +422,21 @@ bool isSingleWorker() {
   return queryCtx()->optimization()->runnerOptions().numWorkers == 1;
 }
 
-RelationOpPtr repartitionForAgg(const RelationOpPtr& plan, PlanState& state) {
+RelationOpPtr repartitionForAgg(
+    AggregationPlanCP const agg,
+    const RelationOpPtr& plan,
+    PlanCost& cost) {
   // No shuffle if all grouping keys are in partitioning.
   if (isSingleWorker() || plan->distribution().isGather()) {
     return plan;
   }
-
-  const auto* agg = state.dt->aggregation;
 
   // If no grouping and not yet gathered on a single node,
   // add a gather before final agg.
   if (agg->groupingKeys().empty()) {
     auto* gather =
         make<Repartition>(plan, Distribution::gather(), plan->columns());
-    state.addCost(*gather);
+    cost.add(*gather);
     return gather;
   }
 
@@ -462,7 +463,7 @@ RelationOpPtr repartitionForAgg(const RelationOpPtr& plan, PlanState& state) {
       plan->distribution().distributionType, std::move(keyValues)};
   auto* repartition =
       make<Repartition>(plan, std::move(distribution), plan->columns());
-  state.addCost(*repartition);
+  cost.add(*repartition);
   return repartition;
 }
 
@@ -905,6 +906,7 @@ void Optimization::addAggregation(
   }
 
   plan = std::move(precompute).maybeProject();
+  state.placed.add(aggPlan);
 
   if (isSingleWorker_ && isSingleDriver_) {
     auto* singleAgg = make<Aggregation>(
@@ -914,39 +916,73 @@ void Optimization::addAggregation(
         velox::core::AggregationNode::Step::kSingle,
         aggPlan->columns());
 
-    state.placed.add(aggPlan);
     state.addCost(*singleAgg);
     plan = singleAgg;
-  } else {
-    auto* partialAgg = make<Aggregation>(
-        plan,
-        std::move(groupingKeys),
-        aggregates,
-        velox::core::AggregationNode::Step::kPartial,
-        aggPlan->intermediateColumns());
-
-    state.placed.add(aggPlan);
-    state.addCost(*partialAgg);
-    plan = repartitionForAgg(partialAgg, state);
-
-    const auto numKeys = aggPlan->groupingKeys().size();
-
-    ExprVector finalGroupingKeys;
-    finalGroupingKeys.reserve(numKeys);
-    for (auto i = 0; i < numKeys; ++i) {
-      finalGroupingKeys.push_back(aggPlan->intermediateColumns()[i]);
-    }
-
-    auto* finalAgg = make<Aggregation>(
-        plan,
-        std::move(finalGroupingKeys),
-        std::move(aggregates),
-        velox::core::AggregationNode::Step::kFinal,
-        aggPlan->columns());
-
-    state.addCost(*finalAgg);
-    plan = finalAgg;
+    return;
   }
+
+  // We make a plan with partial agg and one without and pick the better
+  // according to cost model. We use the cost functions of the RelationOps to
+  // get details of the width of intermediate results, shuffles and so forth. A
+  // simpler but less precise way would be to simply not make a partial agg if
+  // expected total cardinality is more than so much. But the capacity of
+  // partial agg also depends on the width of the data and configs so instead of
+  // unbundling the cost functions we make different kinds of plans and use the
+  // plan's functions.
+  const auto planBeforeAgg = plan;
+  auto* partialAgg = make<Aggregation>(
+      plan,
+      groupingKeys,
+      aggregates,
+      velox::core::AggregationNode::Step::kPartial,
+      aggPlan->intermediateColumns());
+
+  PlanCost splitAggCost;
+  splitAggCost.add(*partialAgg);
+  plan = repartitionForAgg(aggPlan, partialAgg, splitAggCost);
+
+  const auto numKeys = aggPlan->groupingKeys().size();
+
+  ExprVector finalGroupingKeys;
+  finalGroupingKeys.reserve(numKeys);
+  for (auto i = 0; i < numKeys; ++i) {
+    finalGroupingKeys.push_back(aggPlan->intermediateColumns()[i]);
+  }
+
+  auto* splitAggPlan = make<Aggregation>(
+      plan,
+      std::move(finalGroupingKeys),
+      aggregates,
+      velox::core::AggregationNode::Step::kFinal,
+      aggPlan->columns());
+  splitAggCost.add(*splitAggPlan);
+
+  if (numKeys == 0) {
+    // If there is no grouping, we always make partial + final.
+    plan = splitAggPlan;
+    state.cost.add(splitAggCost);
+    return;
+  }
+
+  // Now we make a plan without partial aggregation.
+  PlanCost singleAggCost;
+  plan = repartitionForAgg(aggPlan, planBeforeAgg, singleAggCost);
+  auto* singleAgg = make<Aggregation>(
+      plan,
+      groupingKeys,
+      aggregates,
+      velox::core::AggregationNode::Step::kSingle,
+      aggPlan->columns());
+  singleAggCost.add(*singleAgg);
+
+  if (singleAggCost.cost < splitAggCost.cost) {
+    plan = singleAgg;
+    state.cost.add(singleAggCost);
+    return;
+  }
+
+  state.cost.add(splitAggCost);
+  plan = splitAggPlan;
 }
 
 void Optimization::addOrderBy(

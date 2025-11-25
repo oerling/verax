@@ -221,7 +221,9 @@ struct PlanState {
   std::vector<int32_t> debugPlacedTables;
 
   /// Updates 'cost' to reflect 'op' being placed on top of the partial plan.
-  void addCost(RelationOp& op);
+  void addCost(RelationOp& op) {
+    cost.add(op);
+  }
 
   /// Specifies that the plan-to-make only produces 'target' expressions and.
   /// These refer to 'exprs' of 'dt'.

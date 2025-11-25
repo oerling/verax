@@ -285,7 +285,7 @@ float baseSelectivity(PlanObjectCP object);
 struct SchemaTable {
   explicit SchemaTable(const connector::Table& connectorTable)
       : connectorTable{&connectorTable},
-        cardinality{static_cast<float>(connectorTable.numRows())} {}
+        cardinality{std::max<float>(1, connectorTable.numRows())} {}
 
   ColumnGroupCP addIndex(
       const connector::TableLayout& layout,

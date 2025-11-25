@@ -18,6 +18,7 @@
 
 #include "axiom/optimizer/QueryGraph.h"
 #include "axiom/optimizer/Schema.h"
+#include "axiom/runner/MultiFragmentPlan.h"
 
 /// Plan candidates.
 /// A candidate plan is constructed based on the join graph/derived table tree.
@@ -26,6 +27,7 @@ namespace facebook::axiom::optimizer {
 
 class RelationOpVisitorContext;
 class RelationOpVisitor;
+class RelationOp;
 
 /// Represents the cost of a plan.
 struct PlanCost {
@@ -34,6 +36,13 @@ struct PlanCost {
 
   /// Number of output rows.
   float cardinality{1};
+
+  void add(RelationOp& op);
+
+  void add(const PlanCost& other) {
+    cost += other.cost;
+    cardinality = other.cardinality;
+  }
 
   std::string toString() const {
     return fmt::format("cost: {}, cardinality: {}", cost, cardinality);
@@ -133,7 +142,9 @@ class RelationOp {
       : relType_(type),
         distribution_(std::move(distribution)),
         columns_(std::move(columns)),
-        input_(std::move(input)) {}
+        input_(std::move(input)) {
+    checkInputCardinality();
+  }
 
   /// Convenience constructor for operators that project all input columns as
   /// is. E.g. Repartition or OrderBy.
@@ -144,7 +155,9 @@ class RelationOp {
       : relType_{type},
         distribution_{std::move(distribution)},
         columns_{input->columns()},
-        input_{std::move(input)} {}
+        input_{std::move(input)} {
+    checkInputCardinality();
+  }
 
   /// Convenience constructor for operators that preserve input's distribution.
   /// E.g. Join or Project.
@@ -155,7 +168,9 @@ class RelationOp {
       : relType_{type},
         distribution_{input->distribution()},
         columns_{std::move(columns)},
-        input_{std::move(input)} {}
+        input_{std::move(input)} {
+    checkInputCardinality();
+  }
 
   /// Convenience constructor for operators that preserve input's distribution
   /// and project all input columns as is. E.g. Filter.
@@ -163,7 +178,9 @@ class RelationOp {
       : relType_{type},
         distribution_{input->distribution()},
         columns_{input->columns()},
-        input_{std::move(input)} {}
+        input_{std::move(input)} {
+    checkInputCardinality();
+  }
 
   virtual ~RelationOp() = default;
 
@@ -276,6 +293,8 @@ class RelationOp {
   mutable QGString key_;
 
  private:
+  void checkInputCardinality() const;
+
   // thread local reference count. PlanObjects are freed when the
   // QueryGraphContext arena is freed, candidate plans are freed when no longer
   // referenced.
@@ -542,6 +561,9 @@ struct Aggregation : public RelationOp {
   void accept(
       const RelationOpVisitor& visitor,
       RelationOpVisitorContext& context) const override;
+
+ private:
+  void setCostWithGroups(int64_t inputBeforePartial);
 };
 
 /// Represents an order by. The order is given by the distribution.

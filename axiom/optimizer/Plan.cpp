@@ -118,11 +118,6 @@ std::string Plan::toString(bool detail) const {
   return result;
 }
 
-void PlanState::addCost(RelationOp& op) {
-  cost.cost += op.cost().totalCost();
-  cost.cardinality = op.cost().resultCardinality();
-}
-
 bool PlanState::mayConsiderNext(PlanObjectCP table) const {
   if (!syntacticJoinOrder_) {
     return true;
