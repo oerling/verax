@@ -809,11 +809,12 @@ void Aggregation::setCostWithGroups(int64_t inputBeforePartial) {
       localExchangeCost = shuffleCost(input_->columns()) / 3;
     }
 
-    // Aggregation in one step, no estimate of reduction from partial.
+    // Final or single aggregation. For final, reduction from partial
+    // is reflected in inputCardinality().
     cost_.unitCost =
         aggregationCost(numKeys, aggregates.size(), rowBytes, numGroups) +
         localExchangeCost;
-    cost_.fanout = numGroups / inputBeforePartial;
+    cost_.fanout = numGroups / std::max<float>(inputCardinality(), 1.0f);
     cost_.totalBytes = numGroups * rowBytes;
     return;
   }
