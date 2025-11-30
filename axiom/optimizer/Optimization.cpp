@@ -1168,6 +1168,23 @@ folly::F14FastMap<PlanObjectCP, ExprCP> makeJoinColumnMapping(
 
 namespace {
 
+// Translates columns from outside the join to columns below the join if there
+// is a rename, as in the case of optional sides of outer joins.
+PlanObjectSet translateToJoinInput(
+    const PlanObjectSet& columns,
+    const folly::F14FastMap<PlanObjectCP, ExprCP>& mapping) {
+  PlanObjectSet result;
+  columns.forEach([&](PlanObjectCP object) {
+    auto it = mapping.find(object);
+    if (it != mapping.end()) {
+      result.add(it->second);
+    } else {
+      result.add(object);
+    }
+  });
+  return result;
+}
+
 // Check if 'mark' column produced by a SemiProject join is used only to filter
 // the results using 'mark' or 'not(mark)' condition. If so, replace the join
 // with a SemiFilter and remove the filter.
@@ -1233,13 +1250,16 @@ void Optimization::joinByHash(
     buildColumns.unionSet(availableColumns(buildTable));
     buildTables.add(buildTable);
   }
+  // Mapping from join output column to probe or build side input.
+  auto joinColumnMapping = makeJoinColumnMapping(candidate.join);
 
   // The build side dt does not need to produce columns that it uses
   // internally, only the columns that are downstream if we consider
   // the build to be placed. So, provisionally mark build side tables
   // as placed for the downstreamColumns().
   state.placed.unionSet(buildTables);
-  buildColumns.intersect(state.downstreamColumns());
+  buildColumns.intersect(
+      translateToJoinInput(state.downstreamColumns(), joinColumnMapping));
   state.placed.except(buildTables);
   buildColumns.unionColumns(build.keys);
   buildColumns.unionSet(buildFilterColumns);
@@ -1326,9 +1346,6 @@ void Optimization::joinByHash(
   PlanObjectSet joinColumns;
   joinColumns.unionObjects(joinEdge->leftColumns());
   joinColumns.unionObjects(joinEdge->rightColumns());
-
-  // Mapping from join output column to probe or build side input.
-  auto joinColumnMapping = makeJoinColumnMapping(joinEdge);
 
   ProjectionBuilder projectionBuilder;
   bool needsProjection = false;
