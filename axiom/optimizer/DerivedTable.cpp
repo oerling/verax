@@ -244,7 +244,60 @@ void DerivedTable::linkTablesToJoins() {
   }
 }
 
+// Saves the size of joinedBy vector for a table.
+size_t saveJoinedBySize(PlanObjectCP table) {
+  if (table->is(PlanType::kTableNode)) {
+    return table->as<BaseTable>()->joinedBy.size();
+  } else if (table->is(PlanType::kValuesTableNode)) {
+    return table->as<ValuesTable>()->joinedBy.size();
+  } else if (table->is(PlanType::kUnnestTableNode)) {
+    return table->as<UnnestTable>()->joinedBy.size();
+  } else if (table->is(PlanType::kDerivedTableNode)) {
+    return table->as<DerivedTable>()->joinedBy.size();
+  }
+  return 0;
+}
+
+// Restores the size of joinedBy vector for a table.
+void restoreJoinedBySize(PlanObjectCP table, size_t size) {
+  if (table->is(PlanType::kTableNode)) {
+    const_cast<BaseTable*>(table->as<BaseTable>())->joinedBy.resize(size);
+  } else if (table->is(PlanType::kValuesTableNode)) {
+    const_cast<ValuesTable*>(table->as<ValuesTable>())->joinedBy.resize(size);
+  } else if (table->is(PlanType::kUnnestTableNode)) {
+    const_cast<UnnestTable*>(table->as<UnnestTable>())->joinedBy.resize(size);
+  } else if (table->is(PlanType::kDerivedTableNode)) {
+    const_cast<DerivedTable*>(table->as<DerivedTable>())->joinedBy.resize(size);
+  }
+}
+
+JoinedBySizeGuard::JoinedBySizeGuard(
+    const PlanObjectSet& superTables,
+    const std::vector<PlanObjectSet>& existences) {
+  // Save sizes for tables in superTables
+  superTables.forEach([&](PlanObjectCP table) {
+    savedSizes_[table] = saveJoinedBySize(table);
+  });
+
+  // Save sizes for tables in existences
+  for (const auto& exists : existences) {
+    exists.forEach([&](PlanObjectCP table) {
+      if (savedSizes_.find(table) == savedSizes_.end()) {
+        savedSizes_[table] = saveJoinedBySize(table);
+      }
+    });
+  }
+}
+
+JoinedBySizeGuard::~JoinedBySizeGuard() {
+  // Restore all saved sizes
+  for (const auto& [table, size] : savedSizes_) {
+    restoreJoinedBySize(table, size);
+  }
+}
+
 namespace {
+
 std::pair<DerivedTableP, JoinEdgeP> makeExistsDtAndJoin(
     const DerivedTable& super,
     PlanObjectCP firstTable,

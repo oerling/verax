@@ -465,8 +465,10 @@ bool hasEqual(ExprCP key, const ExprVector& keys) {
 }
 } // namespace
 
-void JoinCandidate::addEdge(PlanState& state, JoinEdgeP edge) {
-  auto* joined = tables[0];
+void JoinCandidate::addEdge(
+    PlanState& state,
+    JoinEdgeP edge,
+    PlanObjectCP joined) {
   auto newTableSide = edge->sideOf(joined);
   auto newPlacedSide = edge->sideOf(joined, true);
   VELOX_CHECK_NOT_NULL(newPlacedSide.table);
@@ -474,27 +476,34 @@ void JoinCandidate::addEdge(PlanState& state, JoinEdgeP edge) {
     return;
   }
 
-  auto tableSide = join->sideOf(joined);
-  auto placedSide = join->sideOf(joined, true);
+  const auto* joinSideKeys = compositeEdge        ? &compositeEdge->rightKeys()
+      : state.placed.contains(join->rightTable()) ? &join->leftKeys()
+                                                  : &join->rightKeys();
+
+  bool newEdgeCounted = false;
   for (auto i = 0; i < newPlacedSide.keys.size(); ++i) {
     auto* key = newPlacedSide.keys[i];
-    if (!hasEqual(key, tableSide.keys)) {
+    if (!hasEqual(key, *joinSideKeys)) {
       if (!compositeEdge) {
+        // We make the coposite edge with the placed on the left and unplaced on
+        // the right.
         compositeEdge = make<JoinEdge>(*join);
+        if (state.placed.contains(join->rightTable())) {
+          compositeEdge = JoinEdge::reverse(*compositeEdge);
+        }
         join = compositeEdge;
       }
-      auto [other, preFanout] = join->otherTable(placedSide.table);
-      // do not recompute a fanout after adding more equalities. This makes the
-      // join edge non-binary and it cannot be sampled.
-      join->setFanouts(join->rlFanout(), join->lrFanout());
-      if (joined == join->rightTable()) {
-        join->addEquality(key, newTableSide.keys[i]);
-      } else {
-        join->addEquality(newTableSide.keys[i], key);
+      if (!newEdgeCounted) {
+        newEdgeCounted = true;
+        auto preFanout = join->lrFanout();
+        auto [other, newFanout] = edge->otherTable(newPlacedSide.table);
+        // We update the lr fanout. The rl fanout will not be used for an inner
+        // join, so we set this to 1.
+        join->setFanouts(
+            std::min(newFanout * preFanout, std::min(preFanout, newFanout)), 1);
+        fanout = join->lrFanout();
       }
-      auto [other2, postFanout] = join->otherTable(placedSide.table);
-      auto change = postFanout > 0 ? preFanout / postFanout : 0;
-      fanout = change > 0 ? fanout / change : preFanout / 2;
+      join->addEquality(key, newTableSide.keys[i]);
     }
   }
 }

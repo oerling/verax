@@ -113,6 +113,10 @@ class TpchPlanTest : public virtual test::HiveQueriesTestBase {
     return toSingleNodePlan(parseTpchSql(query));
   }
 
+  void needChecker(const core::PlanNodePtr& plan) {
+    LOG(INFO) << "ff";
+  }
+
   std::unique_ptr<exec::test::TpchQueryBuilder> referenceBuilder_;
 };
 
@@ -225,7 +229,76 @@ TEST_F(TpchPlanTest, q04) {
 TEST_F(TpchPlanTest, q05) {
   checkTpchSql(5);
 
-  // TODO Verify the plan.
+  auto plan = planTpch(5);
+  needChecker(plan);
+  auto rightMatcher =
+      core::PlanMatcherBuilder().hiveScan("customer", {}).build();
+
+  auto rightMatcher1 =
+      core::PlanMatcherBuilder()
+          .hiveScan(
+              "region",
+              common::test::SubfieldFiltersBuilder()
+                  .add(
+                      "r_name",
+                      exec::in(std::vector<std::string>{std::string("ASIA")}))
+                  .build())
+          .build();
+
+  auto rightMatcher2 =
+      core::PlanMatcherBuilder()
+          .hiveScan("nation", {})
+          .hashJoin(rightMatcher1, velox::core::JoinType::kInner)
+          .build();
+
+  auto rightMatcher3 =
+      core::PlanMatcherBuilder()
+          .hiveScan(
+              "orders",
+              common::test::SubfieldFiltersBuilder()
+                  .add("o_orderdate", exec::between(8766LL, 9130LL))
+                  .build())
+          .hashJoin(rightMatcher, velox::core::JoinType::kInner)
+          .hashJoin(rightMatcher2, velox::core::JoinType::kInner)
+          .build();
+
+  auto rightMatcher4 =
+      core::PlanMatcherBuilder()
+          .hiveScan(
+              "region",
+              common::test::SubfieldFiltersBuilder()
+                  .add(
+                      "r_name",
+                      exec::in(std::vector<std::string>{std::string("ASIA")}))
+                  .build())
+          .build();
+
+  auto rightMatcher5 =
+      core::PlanMatcherBuilder()
+          .hiveScan("nation", {})
+          .hashJoin(rightMatcher4, velox::core::JoinType::kInner)
+          .project({"n_nationkey AS \"edt23.edt23.t6.n_nationkey\""})
+          .build();
+
+  auto rightMatcher6 =
+      core::PlanMatcherBuilder()
+          .hiveScan("supplier", {})
+          .hashJoin(rightMatcher5, velox::core::JoinType::kLeftSemiFilter)
+          .build();
+
+  auto matcher =
+      core::PlanMatcherBuilder()
+          .hiveScan("lineitem", {})
+          .hashJoin(rightMatcher3, velox::core::JoinType::kInner)
+          .hashJoin(rightMatcher6, velox::core::JoinType::kInner)
+          .project(
+              {"n_name",
+               "multiply(l_extendedprice,minus(1,l_discount)) AS \"dt1.__p91\""})
+          .singleAggregation({"n_name"}, {"sum(\"dt1.__p91\") AS revenue"})
+          .orderBy({"revenue DESC NULLS LAST"})
+          .build();
+
+  AXIOM_ASSERT_PLAN(plan, matcher);
 }
 
 TEST_F(TpchPlanTest, q06) {
@@ -256,7 +329,68 @@ TEST_F(TpchPlanTest, q06) {
 TEST_F(TpchPlanTest, q07) {
   checkTpchSql(7);
 
-  // TODO Verify the plan.
+  auto plan = planTpch(7);
+  auto rightMatcher =
+      core::PlanMatcherBuilder()
+          .hiveScan(
+              "nation", {}, "\"or\"(eq(n_name,'GERMANY'),eq(n_name,'FRANCE'))")
+          .build();
+
+  auto rightMatcher1 =
+      core::PlanMatcherBuilder()
+          .hiveScan("customer", {})
+          .hashJoin(rightMatcher, velox::core::JoinType::kInner)
+          .build();
+
+  auto rightMatcher2 =
+      core::PlanMatcherBuilder()
+          .hiveScan("orders", {})
+          .hashJoin(rightMatcher1, velox::core::JoinType::kInner)
+          .build();
+
+  auto rightMatcher3 =
+      core::PlanMatcherBuilder()
+          .hiveScan(
+              "nation", {}, "\"or\"(eq(n_name,'FRANCE'),eq(n_name,'GERMANY'))")
+          .build();
+
+  auto rightMatcher4 =
+      core::PlanMatcherBuilder()
+          .hiveScan("supplier", {})
+          .hashJoin(rightMatcher3, velox::core::JoinType::kInner)
+          .build();
+
+  auto matcher =
+      core::PlanMatcherBuilder()
+          .hiveScan(
+              "lineitem",
+              common::test::SubfieldFiltersBuilder()
+                  .add("l_shipdate", exec::between(9131LL, 9861LL))
+                  .build())
+          .hashJoin(rightMatcher2, velox::core::JoinType::kInner)
+          .hashJoin(rightMatcher4, velox::core::JoinType::kInner)
+          .filter(
+              "\"or\"(\"and\"(eq(n_name,'FRANCE'),eq(n_name_1,'GERMANY')),\"and\"(eq(n_name,'GERMANY'),eq(n_name_1,'FRANCE')))")
+          .project(
+              {"n_name",
+               "n_name_1",
+               "year(l_shipdate) AS l_year",
+               "multiply(l_extendedprice,minus(1,l_discount)) AS \"dt1.__p92\""})
+          .singleAggregation(
+              {"n_name", "n_name_1", "l_year"},
+              {"sum(\"dt1.__p92\") AS revenue"})
+          .orderBy(
+              {"n_name ASC NULLS LAST",
+               "n_name_1 ASC NULLS LAST",
+               "l_year ASC NULLS LAST"})
+          .project(
+              {"n_name AS supp_nation",
+               "n_name_1 AS cust_nation",
+               "l_year",
+               "revenue"})
+          .build();
+
+  AXIOM_ASSERT_PLAN(plan, matcher);
 }
 
 TEST_F(TpchPlanTest, q08) {
@@ -268,7 +402,46 @@ TEST_F(TpchPlanTest, q08) {
 TEST_F(TpchPlanTest, q09) {
   checkTpchSql(9);
 
-  // TODO Verify the plan.
+  auto plan = planTpch(9);
+  auto rightMatcher = core::PlanMatcherBuilder()
+                          .hiveScan("part", {}, "\"like\"(p_name,'%green%')")
+                          .build();
+
+  auto rightMatcher1 =
+      core::PlanMatcherBuilder()
+          .hiveScan("partsupp", {})
+          .hashJoin(rightMatcher, velox::core::JoinType::kInner)
+          .build();
+
+  auto rightMatcher2 =
+      core::PlanMatcherBuilder()
+          .hiveScan("lineitem", {})
+          .hashJoin(rightMatcher1, velox::core::JoinType::kInner)
+          .build();
+
+  auto rightMatcher3 =
+      core::PlanMatcherBuilder().hiveScan("supplier", {}).build();
+
+  auto rightMatcher4 =
+      core::PlanMatcherBuilder().hiveScan("nation", {}).build();
+
+  auto matcher =
+      core::PlanMatcherBuilder()
+          .hiveScan("orders", {})
+          .hashJoin(rightMatcher2, velox::core::JoinType::kInner)
+          .hashJoin(rightMatcher3, velox::core::JoinType::kInner)
+          .hashJoin(rightMatcher4, velox::core::JoinType::kInner)
+          .project(
+              {"n_name",
+               "year(o_orderdate) AS o_year",
+               "minus(multiply(l_extendedprice,minus(1,l_discount)),multiply(l_quantity,ps_supplycost)) AS \"dt1.__p89\""})
+          .singleAggregation(
+              {"n_name", "o_year"}, {"sum(\"dt1.__p89\") AS sum_profit"})
+          .orderBy({"n_name ASC NULLS LAST", "o_year DESC NULLS LAST"})
+          .project({"n_name AS nation", "o_year", "sum_profit"})
+          .build();
+
+  AXIOM_ASSERT_PLAN(plan, matcher);
 }
 
 TEST_F(TpchPlanTest, q10) {
@@ -486,7 +659,41 @@ TEST_F(TpchPlanTest, q18) {
 TEST_F(TpchPlanTest, q19) {
   checkTpchSql(19);
 
-  // TODO Verify the plan.
+  auto plan = planTpch(19);
+  auto rightMatcher =
+      core::PlanMatcherBuilder()
+          .hiveScan(
+              "part",
+              {},
+              "\"or\"(\"and\"(\"between\"(cast(p_size as BIGINT),1,15),\"and\"(eq(p_brand,'Brand#34'),\"in\"(p_container,array['LG CASE', 'LG BOX', 'LG PACK', 'LG PKG']))),\"or\"(\"and\"(\"between\"(cast(p_size as BIGINT),1,5),\"and\"(eq(p_brand,'Brand#12'),\"in\"(p_container,array['SM CASE', 'SM BOX', 'SM PACK', 'SM PKG']))),\"and\"(\"between\"(cast(p_size as BIGINT),1,10),\"and\"(eq(p_brand,'Brand#23'),\"in\"(p_container,array['MED BAG', 'MED BOX', 'MED PKG', 'MED PACK'])))))")
+          .build();
+
+  auto matcher =
+      core::PlanMatcherBuilder()
+          .hiveScan(
+              "lineitem",
+              common::test::SubfieldFiltersBuilder()
+                  .add(
+                      "l_shipinstruct",
+                      exec::in(
+                          std::vector<std::string>{
+                              std::string("DELIVER IN PERSON")}))
+                  .add(
+                      "l_shipmode",
+                      exec::in(
+                          std::vector<std::string>{
+                              std::string("AIR"), std::string("AIR REG")}))
+                  .build(),
+              "\"or\"(\"and\"(gte(l_quantity,20),lte(l_quantity,30)),\"or\"(\"and\"(gte(l_quantity,1),lte(l_quantity,11)),\"and\"(gte(l_quantity,10),lte(l_quantity,20))))")
+          .hashJoin(rightMatcher, velox::core::JoinType::kInner)
+          .filter(
+              "\"or\"(\"and\"(\"between\"(cast(p_size as BIGINT),1,15),\"and\"(lte(l_quantity,30),\"and\"(gte(l_quantity,20),\"and\"(eq(p_brand,'Brand#34'),\"in\"(p_container,array['LG CASE', 'LG BOX', 'LG PACK', 'LG PKG']))))),\"or\"(\"and\"(\"between\"(cast(p_size as BIGINT),1,5),\"and\"(lte(l_quantity,11),\"and\"(gte(l_quantity,1),\"and\"(eq(p_brand,'Brand#12'),\"in\"(p_container,array['SM CASE', 'SM BOX', 'SM PACK', 'SM PKG']))))),\"and\"(\"between\"(cast(p_size as BIGINT),1,10),\"and\"(lte(l_quantity,20),\"and\"(gte(l_quantity,10),\"and\"(eq(p_brand,'Brand#23'),\"in\"(p_container,array['MED BAG', 'MED BOX', 'MED PKG', 'MED PACK'])))))))")
+          .project(
+              {"multiply(l_extendedprice,minus(1,l_discount)) AS \"dt1.__p121\""})
+          .singleAggregation({}, {"sum(\"dt1.__p121\") AS revenue"})
+          .build();
+
+  AXIOM_ASSERT_PLAN(plan, matcher);
 }
 
 TEST_F(TpchPlanTest, q20) {
@@ -506,7 +713,59 @@ TEST_F(TpchPlanTest, q20) {
 TEST_F(TpchPlanTest, q21) {
   checkTpchSql(21);
 
-  // TODO Verify the plan.
+  auto plan = planTpch(21);
+  auto rightMatcher = core::PlanMatcherBuilder()
+                          .hiveScan(
+                              "nation",
+                              common::test::SubfieldFiltersBuilder()
+                                  .add(
+                                      "n_name",
+                                      exec::in(
+                                          std::vector<std::string>{
+                                              std::string("SAUDI ARABIA")}))
+                                  .build())
+                          .build();
+
+  auto rightMatcher1 =
+      core::PlanMatcherBuilder()
+          .hiveScan("supplier", {})
+          .hashJoin(rightMatcher, velox::core::JoinType::kInner)
+          .build();
+
+  auto rightMatcher2 =
+      core::PlanMatcherBuilder()
+          .hiveScan(
+              "orders",
+              common::test::SubfieldFiltersBuilder()
+                  .add(
+                      "o_orderstatus",
+                      exec::in(std::vector<std::string>{std::string("F")}))
+                  .build())
+          .build();
+
+  auto rightMatcher3 =
+      core::PlanMatcherBuilder()
+          .hiveScan("lineitem", {}, "lt(l_commitdate,l_receiptdate)")
+          .hashJoin(rightMatcher1, velox::core::JoinType::kInner)
+          .hashJoin(rightMatcher2, velox::core::JoinType::kInner)
+          .build();
+
+  auto rightMatcher4 =
+      core::PlanMatcherBuilder()
+          .hiveScan("lineitem", {}, "lt(l_commitdate,l_receiptdate)")
+          .hashJoin(rightMatcher3, velox::core::JoinType::kRightSemiProject)
+          .filter("\"not\"(\"dt1.__mark1\")")
+          .build();
+
+  auto matcher =
+      core::PlanMatcherBuilder()
+          .hiveScan("lineitem", {})
+          .hashJoin(rightMatcher4, velox::core::JoinType::kRightSemiFilter)
+          .singleAggregation({"s_name"}, {"count() AS numwait"})
+          .topN(100)
+          .build();
+
+  AXIOM_ASSERT_PLAN(plan, matcher);
 }
 
 TEST_F(TpchPlanTest, q22) {
@@ -610,7 +869,6 @@ TEST_F(TpchPlanTest, supplierAggregationJoin) {
     checkResults(sql, referencePlan);
 
     auto sqlPlan = toSingleNodePlan(sql);
-    LOG(INFO) << "ff";
     auto rightMatcher = core::PlanMatcherBuilder()
                             .hiveScan(
                                 "supplier",
@@ -680,7 +938,7 @@ TEST_F(TpchPlanTest, supplierAggregationJoin) {
 
     checkResults(sql, referencePlan);
     auto sqlPlan = toSingleNodePlan(sql);
-    LOG(INFO) << "ff";
+
     auto rightMatcher =
         core::PlanMatcherBuilder()
             .hiveScan(

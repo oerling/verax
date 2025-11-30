@@ -491,6 +491,9 @@ std::string Join::toString(bool recursive, bool detail) const {
       << joinTypeLabel(joinType);
   printCost(detail, out);
   if (detail) {
+    out << "left: " << itemsToString(leftKeys.data(), leftKeys.size())
+        << " = right: " << itemsToString(rightKeys.data(), rightKeys.size())
+        << std::endl;
     out << "columns: " << itemsToString(columns().data(), columns().size())
         << std::endl;
   }

@@ -677,6 +677,12 @@ class JoinEdge {
 
   void addEquality(ExprCP left, ExprCP right, bool update = false);
 
+  /// Creates a reversed copy of an inner join with left and right tables
+  /// swapped and left-to-right and right-to-left fanouts swapped.
+  /// @param join The join edge to reverse. Must be an inner join.
+  /// @return A new JoinEdge with swapped tables and fanouts.
+  static JoinEdge* reverse(JoinEdge& join);
+
   /// True if inner join.
   bool isInner() const {
     return !leftOptional_ && !rightOptional_ && !rightExists_ &&
@@ -748,10 +754,10 @@ class JoinEdge {
     return filter_;
   }
 
-  void setFanouts(float rightToLeft, float leftToRight) {
+  void setFanouts(float leftToRight, float rightToLeft) {
     fanoutsFixed_ = true;
-    lrFanout_ = rightToLeft;
-    rlFanout_ = leftToRight;
+    lrFanout_ = leftToRight;
+    rlFanout_ = rightToLeft;
   }
 
   std::string toString() const;

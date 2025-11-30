@@ -27,6 +27,27 @@ class JoinEdge;
 using JoinEdgeP = JoinEdge*;
 using JoinEdgeVector = QGVector<JoinEdgeP>;
 
+// Saves the size of joinedBy vector for a table.
+size_t saveJoinedBySize(PlanObjectCP table);
+
+// Restores the size of joinedBy vector for a table.
+void restoreJoinedBySize(PlanObjectCP table, size_t size);
+
+// RAII guard to save and restore joinedBy sizes for tables in import().
+// This prevents needless work when reading joinedBy vectors after import,
+// since import creates temporary joins that should not persist.
+class JoinedBySizeGuard {
+ public:
+  JoinedBySizeGuard(
+      const PlanObjectSet& superTables,
+      const std::vector<PlanObjectSet>& existences);
+
+  ~JoinedBySizeGuard();
+
+ private:
+  folly::F14FastMap<PlanObjectCP, size_t> savedSizes_;
+};
+
 class AggregationPlan;
 using AggregationPlanCP = const AggregationPlan*;
 

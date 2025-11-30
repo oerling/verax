@@ -332,23 +332,24 @@ void forJoinedTables(const PlanState& state, Func func) {
 }
 
 bool addExtraEdges(PlanState& state, JoinCandidate& candidate) {
-  // See if there are more join edges from the first of 'candidate' to already
-  // placed tables. Fill in the non-redundant equalities into the join edge.
-  // Make a new edge if the edge would be altered.
+  // See if there are more join edges from any of 'candidate' inner joined
+  // tables to already placed tables. Fill in the non-redundant equalities into
+  // the join edge. Make a new edge if the edge would be altered.
   auto* originalJoin = candidate.join;
-  auto* table = candidate.tables[0];
-  for (auto* otherJoin : joinedBy(table)) {
-    if (otherJoin == originalJoin || !otherJoin->isInner()) {
-      continue;
+  for (auto* table : candidate.tables) {
+    for (auto* otherJoin : joinedBy(table)) {
+      if (otherJoin == originalJoin || !otherJoin->isInner()) {
+        continue;
+      }
+      auto [otherTable, fanout] = otherJoin->otherTable(table);
+      if (!state.dt->hasTable(otherTable)) {
+        continue;
+      }
+      if (candidate.isDominantEdge(state, otherJoin)) {
+        break;
+      }
+      candidate.addEdge(state, otherJoin, table);
     }
-    auto [otherTable, fanout] = otherJoin->otherTable(table);
-    if (!state.dt->hasTable(otherTable)) {
-      continue;
-    }
-    if (candidate.isDominantEdge(state, otherJoin)) {
-      return false;
-    }
-    candidate.addEdge(state, otherJoin);
   }
   return true;
 }
@@ -357,10 +358,20 @@ bool addExtraEdges(PlanState& state, JoinCandidate& candidate) {
 std::vector<JoinCandidate> Optimization::nextJoins(PlanState& state) {
   std::vector<JoinCandidate> candidates;
   candidates.reserve(state.dt->tables.size());
+  // We do not make multiple candidates for the same table even if it
+  // is reached through multiple edges. Multipl incoming inner edges
+  // will be merged by addExtraEdges. Esistence or outer join edges
+  // can be multiple but then they are equivalent via equivalence
+  // classes and only one needs to be processed.
+  PlanObjectSet firstJoinedTables;
   forJoinedTables(
       state, [&](JoinEdgeP join, PlanObjectCP joined, float fanout) {
         if (!state.placed.contains(joined) && state.dt->hasJoin(join) &&
             state.dt->hasTable(joined)) {
+          if (firstJoinedTables.contains(joined)) {
+            return;
+          }
+          firstJoinedTables.add(joined);
           candidates.emplace_back(join, joined, fanout);
           if (join->isInner()) {
             if (!addExtraEdges(state, candidates.back())) {
@@ -392,6 +403,7 @@ std::vector<JoinCandidate> Optimization::nextJoins(PlanState& state) {
       if (auto bush = reducingJoins(
               state, candidate, options_.enableReducingExistences)) {
         bushes.push_back(std::move(bush.value()));
+        addExtraEdges(state, bushes.back());
       }
     }
     candidates.insert(candidates.end(), bushes.begin(), bushes.end());
@@ -1222,7 +1234,13 @@ void Optimization::joinByHash(
     buildTables.add(buildTable);
   }
 
+  // The build side dt does not need to produce columns that it uses
+  // internally, only the columns that are downstream if we consider
+  // the build to be placed. So, provisionally mark build side tables
+  // as placed for the downstreamColumns().
+  state.placed.unionSet(buildTables);
   buildColumns.intersect(state.downstreamColumns());
+  state.placed.except(buildTables);
   buildColumns.unionColumns(build.keys);
   buildColumns.unionSet(buildFilterColumns);
   state.columns.unionSet(buildColumns);
@@ -2123,6 +2141,11 @@ PlanP Optimization::makeDtPlan(
   auto it = memo_.find(key);
   PlanSet* plans{};
   if (it == memo_.end()) {
+    // Guard to save and restore joinedBy sizes for all tables involved.
+    // linkTablesToJoins() appends to joinedBy, but these additions should not
+    // persist after import completes.
+    JoinedBySizeGuard guard(key.tables, key.existences);
+
     // Allocate temp DT in the arena. The DT may get flattened and then
     // PrecomputeProjection may create columns that reference that DT. Hence,
     // the DT's lifetime must extend to the lifetime of the optimization.
