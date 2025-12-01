@@ -206,6 +206,16 @@ void reducingJoinsRecursive(
   }
 }
 
+bool allowReducingInnerJoins(const JoinCandidate& candidate) {
+  if (!candidate.join->isInner()) {
+    return false;
+  }
+  if (candidate.tables[0]->is(PlanType::kDerivedTableNode)) {
+    return false;
+  }
+  return true;
+}
+
 // For an inner join, see if can bundle reducing joins on the build.
 std::optional<JoinCandidate> reducingJoins(
     const PlanState& state,
@@ -216,7 +226,7 @@ std::optional<JoinCandidate> reducingJoins(
   float fanout = candidate.fanout;
 
   PlanObjectSet reducingSet;
-  if (candidate.join->isInner()) {
+  if (allowReducingInnerJoins(candidate)) {
     PlanObjectSet visited = state.placed;
     VELOX_DCHECK(!candidate.tables.empty());
     visited.add(candidate.tables[0]);
@@ -1655,7 +1665,8 @@ void Optimization::addJoin(
   }
 
   // If one is much better do not try the other.
-  if (toTry.size() == 2 && candidate.tables.size() == 1) {
+  if (!options_.makeAllPlans && toTry.size() == 2 &&
+      candidate.tables.size() == 1) {
     if (toTry[0].isWorse(toTry[1])) {
       toTry.erase(toTry.begin());
     } else if (toTry[1].isWorse(toTry[0])) {

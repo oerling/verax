@@ -262,9 +262,7 @@ struct PlanState {
 
   /// True if the costs accumulated so far are so high that this should not be
   /// explored further.
-  bool isOverBest() const {
-    return hasCutoff_ && cost.cost > plans.bestCostWithShuffle;
-  }
+  bool isOverBest() const;
 
   void debugSetFirstTable(int32_t id);
 

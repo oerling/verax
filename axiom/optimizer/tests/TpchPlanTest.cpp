@@ -114,7 +114,7 @@ class TpchPlanTest : public virtual test::HiveQueriesTestBase {
   }
 
   void needChecker(const core::PlanNodePtr& plan) {
-    LOG(INFO) << "ff";
+    LOG(INFO) << "Breakpoint here to run matcher generator.";
   }
 
   std::unique_ptr<exec::test::TpchQueryBuilder> referenceBuilder_;
@@ -230,10 +230,17 @@ TEST_F(TpchPlanTest, q05) {
   checkTpchSql(5);
 
   auto plan = planTpch(5);
-  needChecker(plan);
   auto rightMatcher =
       core::PlanMatcherBuilder().hiveScan("customer", {}).build();
 
+  // Lineitem is the driving scan. It is first joined to a join of
+  // orders x customer 8 nation 8x reagion. Then it is joned to a join
+  // of supplier filtered with exists of nation x region. The nation x
+  // region are used twice to reduce the two build sides because there
+  // is an edge c_nationkey = s_nationkey, so whatever restricts
+  // customer .c_nationkey also restricts supplier.  The first of the
+  // joins is more reducing because the nation x region produces a 1/5
+  // and the order date filter makes a further reduction.
   auto rightMatcher1 =
       core::PlanMatcherBuilder()
           .hiveScan(
@@ -330,6 +337,12 @@ TEST_F(TpchPlanTest, q07) {
   checkTpchSql(7);
 
   auto plan = planTpch(7);
+
+  // The filters are on the 2 nations and lineitem. The trick is to
+  // see that the top level OR can only be true if both nations are
+  // either Frange or Germany. So, any other nations can be eliminated
+  // at the leaf scan.
+
   auto rightMatcher =
       core::PlanMatcherBuilder()
           .hiveScan(
@@ -402,6 +415,14 @@ TEST_F(TpchPlanTest, q08) {
 TEST_F(TpchPlanTest, q09) {
   checkTpchSql(9);
 
+  // The query is a natural join of lineitem, orders, part, partsupp,
+  // supplier and nation. The only selection is 1/17 of part.  The
+  // outcome is actually quite ingenious. One would think we should
+  // begin with lineitem x part. Instead we get: orders x (lineitem x
+  // (partsupp x part)) x supplier x nation. The join of lineitem x
+  // 1/17 of partsupp ends up being smaller than prders, so orders as
+  // the probe is best. After this we have an:1 join with supplier and
+  // nation.
   auto plan = planTpch(9);
   auto rightMatcher = core::PlanMatcherBuilder()
                           .hiveScan("part", {}, "\"like\"(p_name,'%green%')")
@@ -660,6 +681,14 @@ TEST_F(TpchPlanTest, q19) {
   checkTpchSql(19);
 
   auto plan = planTpch(19);
+
+  // The trick is to extract common pieces to push down into the scan
+  // of lineitem and part from the or of three ands in the single
+  // where clause.  We extract the join condition that is present in
+  // all three disjuncts of the or. Then we extract an or to push
+  // dowbn into the scan of part and lineitem.  We build on part, as
+  // it is the smaller table.
+
   auto rightMatcher =
       core::PlanMatcherBuilder()
           .hiveScan(
@@ -706,6 +735,18 @@ TEST_F(TpchPlanTest, q21) {
   checkTpchSql(21);
 
   auto plan = planTpch(21);
+
+  // The key insight is that the exists and not exists will apply to
+  // only 1/50 or so of lineitem. The worst plan would be to build hash
+  // tables on the contents of the subqueries.
+
+  // The plan we get builds on lineitem l1 joined to supplier joined to nation
+  // joined to orders. This is probed in a right hand semijoin by the scan of
+  // lineite l2 and this is built and then probed by lineitem l3 in a right
+  // semijoin. The rigright semijoin flags marks the build side rows that get
+  // probed by the semijoined side and once the probe is complete, flags are
+  // produced for al build side rows to indicate if they were hit.
+
   auto rightMatcher = core::PlanMatcherBuilder()
                           .hiveScan(
                               "nation",

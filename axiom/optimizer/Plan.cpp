@@ -149,6 +149,13 @@ void PlanState::addNextJoin(
   }
 }
 
+bool PlanState::isOverBest() const {
+  if (optimization.options().makeAllPlans && dt == optimization.rootDt()) {
+    return false;
+  }
+  return hasCutoff_ && cost.cost > plans.bestCostWithShuffle;
+}
+
 void PlanState::setTargetExprsForDt(const PlanObjectSet& target) {
   for (auto i = 0; i < dt->columns.size(); ++i) {
     if (target.contains(dt->columns[i])) {
@@ -329,6 +336,7 @@ PlanP PlanSet::addPlan(RelationOpPtr plan, PlanState& state) {
   int32_t replaceIndex = -1;
   bool isSingle = isSingleWorker();
   bool isRoot = state.dt->id() == 0;
+  bool keepAllPlans = isRoot && state.optimization.options().makeAllPlans;
   const float shuffle =
       isSingle ? 0 : shuffleCost(plan->columns()) * state.cost.cardinality;
 
@@ -354,7 +362,9 @@ PlanP PlanSet::addPlan(RelationOpPtr plan, PlanState& state) {
           continue;
         }
         // There's a better one with same dist and partition.
-        return nullptr;
+        if (!keepAllPlans) {
+          return nullptr;
+        }
       }
 
       if (newIsBetterWithShuffle && old->op->distribution().orderKeys.empty()) {
@@ -373,7 +383,9 @@ PlanP PlanSet::addPlan(RelationOpPtr plan, PlanState& state) {
       if (plan->distribution().orderKeys.empty() &&
           !old->isStateBetter(state, -shuffle)) {
         // New has no order and old would beat it even after adding shuffle.
-        return nullptr;
+        if (!keepAllPlans) {
+          return nullptr;
+        }
       }
     }
   }

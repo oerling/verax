@@ -107,6 +107,10 @@ class Optimization {
     return existenceDts_;
   }
 
+  PlanState& topState() {
+    return topState_;
+  }
+
   /// Lists the possible joins based on 'state.placed' and adds each on top of
   /// 'plan'. This is a set of plans extending 'plan' by one join (single table
   /// or bush). Calls itself on the interesting next plans. If all tables have

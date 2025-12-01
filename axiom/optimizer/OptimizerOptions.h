@@ -70,6 +70,9 @@ struct OptimizerOptions {
   /// partial + final or not.
   bool alwaysPlanPartialAggregation = false;
 
+  /// Generate all possible plans instead of pruning suboptimal ones.
+  bool makeAllPlans{false};
+
   bool isMapAsStruct(std::string_view table, std::string_view column) const {
     if (allMapsAsStruct) {
       return true;

@@ -498,6 +498,9 @@ struct Join : public RelationOp {
   void accept(
       const RelationOpVisitor& visitor,
       RelationOpVisitorContext& context) const override;
+
+ private:
+  void validate() const;
 };
 
 using JoinCP = const Join*;

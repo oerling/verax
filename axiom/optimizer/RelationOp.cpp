@@ -419,6 +419,60 @@ Join::Join(
   const auto rowCost = Costs::hashRowCost(buildSize, rowBytes);
 
   cost_.unitCost = probeCost + cost_.fanout * rowCost;
+
+  validate();
+}
+
+void Join::validate() const {
+  // For hash joins, validate that the right keys match the HashBuild's keys
+  if (method == JoinMethod::kHash && right->is(RelType::kHashBuild)) {
+    const auto* hashBuild = right->as<HashBuild>();
+    VELOX_CHECK_EQ(
+        rightKeys.size(),
+        hashBuild->keys.size(),
+        "Join right keys size {} does not match HashBuild keys size {}",
+        rightKeys.size(),
+        hashBuild->keys.size());
+  }
+
+  // Validate that all output columns are either from input_ or right_, except
+  // for mark columns which are produced by semi-join operations.
+  const auto& inputColumns = input_->columns();
+  const auto& rightColumns = right->columns();
+
+  for (const auto* column : columns_) {
+    bool foundInInput = false;
+    bool foundInRight = false;
+
+    // Check if column is in input_->columns() using pointer equality
+    for (const auto* inputCol : inputColumns) {
+      if (inputCol == column) {
+        foundInInput = true;
+        break;
+      }
+    }
+
+    // Check if column is in right_->columns() using pointer equality
+    if (!foundInInput) {
+      for (const auto* rightCol : rightColumns) {
+        if (rightCol == column) {
+          foundInRight = true;
+          break;
+        }
+      }
+    }
+
+    // If not found in either input or right, it must be a mark column
+    if (!foundInInput && !foundInRight) {
+      // Mark columns are only allowed for semi-project joins
+      VELOX_CHECK(
+          joinType == velox::core::JoinType::kLeftSemiProject ||
+              joinType == velox::core::JoinType::kRightSemiProject,
+          "Column {} not found in input or right columns, and join type '{}' does not support mark columns",
+          column->toString(),
+          joinTypeLabel(joinType));
+    }
+  }
 }
 
 namespace {

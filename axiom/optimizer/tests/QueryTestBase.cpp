@@ -33,6 +33,8 @@ DEFINE_string(
     "",
     "Path to save sampling after the test suite");
 
+DEFINE_bool(test_all_plans, false, "Test all generated plans in checkSame");
+
 using namespace facebook::velox;
 
 namespace facebook::axiom::optimizer::test {
@@ -50,6 +52,8 @@ void QueryTestBase::SetUp() {
 
   optimizerOptions_ = OptimizerOptions();
   optimizerOptions_.traceFlags = FLAGS_optimizer_trace;
+
+  testAllPlans_ = FLAGS_test_all_plans;
 
   optimizer::FunctionRegistry::registerPrestoFunctions();
 }
@@ -197,6 +201,99 @@ optimizer::PlanAndStats QueryTestBase::planVelox(
   return planAndStats;
 }
 
+std::vector<optimizer::PlanAndStats> QueryTestBase::makeAllVeloxPlans(
+    const logical_plan::LogicalPlanNodePtr& plan,
+    const runner::MultiFragmentPlan::Options& options,
+    const std::optional<std::string>& planFilePathPrefix) {
+  connector::SchemaResolver schemaResolver;
+  return makeAllVeloxPlans(plan, schemaResolver, options, planFilePathPrefix);
+}
+
+std::vector<optimizer::PlanAndStats> QueryTestBase::makeAllVeloxPlans(
+    const logical_plan::LogicalPlanNodePtr& plan,
+    const connector::SchemaResolver& schemaResolver,
+    const runner::MultiFragmentPlan::Options& options,
+    const std::optional<std::string>& planFilePathPrefix) {
+  auto& queryCtx = getQueryCtx();
+
+  auto allocator = std::make_unique<HashStringAllocator>(optimizerPool_.get());
+  auto context = std::make_unique<optimizer::QueryGraphContext>(*allocator);
+  optimizer::queryCtx() = context.get();
+  SCOPE_EXIT {
+    optimizer::queryCtx() = nullptr;
+  };
+  exec::SimpleExpressionEvaluator evaluator(
+      queryCtx.get(), optimizerPool_.get());
+
+  auto session = std::make_shared<Session>(queryCtx->queryId());
+
+  std::unique_ptr<std::ofstream> planPath;
+  if (planFilePathPrefix.has_value()) {
+    planPath = std::make_unique<std::ofstream>(
+        fmt::format("{}.plans", planFilePathPrefix.value()));
+
+    *planPath << "numWorkers: " << options.numWorkers << "\n";
+    *planPath << "numDrivers: " << options.numDrivers << "\n\n";
+  }
+
+  SCOPE_EXIT {
+    if (planPath != nullptr) {
+      planPath->close();
+    }
+  };
+
+  // Save original options and set makeAllPlans to true
+  auto savedOptions = optimizerOptions_;
+  optimizerOptions_.makeAllPlans = true;
+  SCOPE_EXIT {
+    optimizerOptions_ = savedOptions;
+  };
+
+  optimizer::Optimization opt(
+      session,
+      *plan,
+      schemaResolver,
+      *history_,
+      queryCtx,
+      evaluator,
+      optimizerOptions_,
+      options);
+
+  if (planPath != nullptr) {
+    *planPath << "Query Graph:\n\n" << opt.rootDt()->toString() << "\n\n";
+  }
+  // Make all possible top level plans in opt.
+  opt.bestPlan();
+
+  // Convert all plans from topState().plans to Velox plans
+  std::vector<optimizer::PlanAndStats> results;
+  int planIndex = 0;
+  for (const auto& plan : opt.topState().plans.plans) {
+    if (planPath != nullptr) {
+      *planPath << "Optimized plan " << planIndex << " (oneline):\n\n"
+                << plan->op->toOneline() << "\n\n";
+      *planPath << "Optimized plan " << planIndex << ":\n\n"
+                << plan->op->toString() << "\n\n";
+    }
+
+    auto planAndStats = opt.toVeloxPlan(plan->op);
+    if (planPath != nullptr) {
+      *planPath << "Executable Velox plan " << planIndex << ":\n\n"
+                << planAndStats.plan->toString();
+      *planPath << "\n\n";
+    }
+
+    results.push_back(std::move(planAndStats));
+    ++planIndex;
+  }
+
+  if (planPath != nullptr) {
+    *planPath << "___END___\n";
+  }
+
+  return results;
+}
+
 TestResult QueryTestBase::runVelox(
     const logical_plan::LogicalPlanNodePtr& plan,
     const runner::MultiFragmentPlan::Options& options) {
@@ -263,11 +360,22 @@ void QueryTestBase::checkSame(
         fmt::format(
             "workers: {}, drivers: {}", test.numWorkers, test.numDrivers));
 
-    auto plan = planVelox(planNode, test);
-
-    SCOPED_TRACE("plan:\n" + plan.plan->toString());
-    auto result = runFragmentedPlan(plan);
-    velox::exec::test::assertEqualResults(referenceResult, result.results);
+    if (testAllPlans_) {
+      // Test all generated plans
+      auto plans = makeAllVeloxPlans(planNode, test);
+      for (size_t i = 0; i < plans.size(); ++i) {
+        SCOPED_TRACE(fmt::format("plan {}/{}", i + 1, plans.size()));
+        SCOPED_TRACE("plan:\n" + plans[i].plan->toString());
+        auto result = runFragmentedPlan(plans[i]);
+        velox::exec::test::assertEqualResults(referenceResult, result.results);
+      }
+    } else {
+      // Test only the best plan
+      auto plan = planVelox(planNode, test);
+      SCOPED_TRACE("plan:\n" + plan.plan->toString());
+      auto result = runFragmentedPlan(plan);
+      velox::exec::test::assertEqualResults(referenceResult, result.results);
+    }
   }
 }
 

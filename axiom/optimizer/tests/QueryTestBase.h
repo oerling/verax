@@ -69,6 +69,27 @@ class QueryTestBase : public runner::test::LocalRunnerTestBase {
           },
       const std::optional<std::string>& planFilePathPrefix = std::nullopt);
 
+  /// @param planFilePathPrefix If specified, writes the query graph and all
+  /// optimized plans to files with specified path prefix.
+  std::vector<optimizer::PlanAndStats> makeAllVeloxPlans(
+      const logical_plan::LogicalPlanNodePtr& plan,
+      const runner::MultiFragmentPlan::Options& options =
+          {
+              .numWorkers = 4,
+              .numDrivers = 4,
+          },
+      const std::optional<std::string>& planFilePathPrefix = std::nullopt);
+
+  std::vector<optimizer::PlanAndStats> makeAllVeloxPlans(
+      const logical_plan::LogicalPlanNodePtr& plan,
+      const connector::SchemaResolver& schemaResolver,
+      const runner::MultiFragmentPlan::Options& options =
+          {
+              .numWorkers = 4,
+              .numDrivers = 4,
+          },
+      const std::optional<std::string>& planFilePathPrefix = std::nullopt);
+
   TestResult runVelox(
       const logical_plan::LogicalPlanNodePtr& plan,
       const runner::MultiFragmentPlan::Options& options = {
@@ -156,6 +177,8 @@ class QueryTestBase : public runner::test::LocalRunnerTestBase {
   static std::string getTestDataPath(const std::string& filename);
 
   OptimizerOptions optimizerOptions_;
+
+  bool testAllPlans_{false};
 
  private:
   std::shared_ptr<velox::memory::MemoryPool> optimizerPool_;
