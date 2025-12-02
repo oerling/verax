@@ -180,12 +180,13 @@ class QueryTestBase : public runner::test::LocalRunnerTestBase {
 
   bool testAllPlans_{false};
 
- private:
   std::shared_ptr<velox::memory::MemoryPool> optimizerPool_;
 
+  std::unique_ptr<optimizer::VeloxHistory> history_;
+
+ private:
   // A QueryCtx created for each compiled query.
   std::shared_ptr<velox::core::QueryCtx> queryCtx_;
-  std::unique_ptr<optimizer::VeloxHistory> history_;
 
   inline static int32_t gQueryCounter{0};
   inline static std::unique_ptr<VeloxHistory> gSuiteHistory;

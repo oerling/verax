@@ -46,7 +46,6 @@ target_link_libraries(
 
 add_library(
   axiom_optimizer_tests_plan_matcher
-  OBJECT
   PlanMatcher.cpp
   PlanMatcherGenerator.cpp
   ExprPrinters.cpp
@@ -88,7 +87,23 @@ target_link_libraries(
   axiom_optimizer_tests_parquet_tpch
   axiom_optimizer_tests_query_test_base
   axiom_optimizer_tests_hive_queries_test_base
-  axiom_optimizer_tests_plan_matcher
+  axiom_runner_tests_utils
+)
+
+add_executable(axiom_optimizer_filters_test FiltersTest.cpp)
+
+add_test(
+  NAME axiom_optimizer_filters_test
+  COMMAND axiom_optimizer_filters_test
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(
+  axiom_optimizer_filters_test
+  velox_dwio_common_test_utils
+  axiom_optimizer_tests_parquet_tpch
+  axiom_optimizer_tests_query_test_base
+  axiom_optimizer_tests_hive_queries_test_base
   axiom_runner_tests_utils
 )
 

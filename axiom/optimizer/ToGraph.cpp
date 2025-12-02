@@ -109,6 +109,12 @@ ToGraph::ToGraph(
   if (auto cardinality = registry->cardinality()) {
     cardinality_ = toName(cardinality.value());
   }
+
+  // Initialize between, and, gte, lte for rewriting between to and(gte, lte)
+  between_ = toName("between");
+  and_ = toName(SpecialFormCallNames::kAnd);
+  gte_ = toName("gte");
+  lte_ = toName("lte");
 }
 
 void ToGraph::addDtColumn(DerivedTableP dt, std::string_view name) {
@@ -177,7 +183,13 @@ void ToGraph::translateConjuncts(const lp::ExprPtr& input, ExprVector& flat) {
   } else {
     auto translatedExpr = translateExpr(input);
     if (!isConstantTrue(translatedExpr)) {
-      flat.push_back(translatedExpr);
+      // If the translated expression is an 'and' call, flatten it
+      if (translatedExpr->is(PlanType::kCallExpr) &&
+          translatedExpr->as<Call>()->name() == and_) {
+        flattenAll(translatedExpr, and_, flat);
+      } else {
+        flat.push_back(translatedExpr);
+      }
     }
   }
 }
@@ -626,20 +638,36 @@ bool shouldInvert(ExprCP left, ExprCP right) {
 
 } // namespace
 
-void ToGraph::canonicalizeCall(Name& name, ExprVector& args) {
+std::optional<ExprCP> ToGraph::canonicalizeCall(Name& name, ExprVector& args) {
+  // Rewrite between(x, a, b) to and(gte(x, a), lte(x, b))
+  if (args.size() == 3 && name == between_) {
+    auto* boolType = toType(velox::BOOLEAN());
+    // Build gte(args[0], args[1])
+    auto* gteExpr =
+        deduppedCall(gte_, Value(boolType, 2), {args[0], args[1]}, {});
+    // Build lte(args[0], args[2])
+    auto* lteExpr =
+        deduppedCall(lte_, Value(boolType, 2), {args[0], args[2]}, {});
+    // Build and(gteExpr, lteExpr)
+    auto* andExpr =
+        deduppedCall(and_, Value(boolType, 2), {gteExpr, lteExpr}, {});
+    return andExpr;
+  }
+
   if (args.size() != 2) {
-    return;
+    return std::nullopt;
   }
 
   auto it = reversibleFunctions_.find(name);
   if (it == reversibleFunctions_.end()) {
-    return;
+    return std::nullopt;
   }
 
   if (shouldInvert(args[0], args[1])) {
     std::swap(args[0], args[1]);
     name = it->second;
   }
+  return std::nullopt;
 }
 
 ExprCP ToGraph::deduppedCall(
@@ -647,7 +675,11 @@ ExprCP ToGraph::deduppedCall(
     Value value,
     ExprVector args,
     FunctionSet flags) {
-  canonicalizeCall(name, args);
+  // Check if canonicalizeCall returns a rewritten expression
+  if (auto rewritten = canonicalizeCall(name, args)) {
+    return rewritten.value();
+  }
+
   ExprDedupKey key = {name, args};
 
   auto [it, emplaced] = functionDedup_.try_emplace(key);
