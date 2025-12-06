@@ -24,7 +24,18 @@ struct PlanState;
 
 using ConstraintMap = folly::F14FastMap<int32_t, Value>;
 
+struct Selectivity {
+  double trueFraction;
+  double nullFraction;
+};
+
 bool isName(Name name, const char* functionName);
+
+Selectivity combineConjuncts(std::span<const Selectivity> selectivities);
+
+Selectivity combineDisjuncts(std::span<const Selectivity> selectivities);
+
+void validateSelectivity(const Selectivity& sel);
 
 float combineSelectivities(
     float minLimit,
@@ -32,37 +43,42 @@ float combineSelectivities(
 
 const Value& value(const PlanState& state, ExprCP expr);
 
-float exprSelectivity(
+Selectivity columnComparisonSelectivity(
+    const Value& leftValue,
+    const Value& rightValue,
+    Name funcName);
+
+Selectivity exprSelectivity(
     const PlanState& state,
     ExprCP expr,
     bool updateConstraints,
     ConstraintMap& newConstraints);
 
-float conjunctsSelectivity(
+Selectivity conjunctsSelectivity(
     const PlanState& state,
     std::span<const ExprCP> conjuncts,
     bool updateConstraints,
     ConstraintMap& newConstraints);
 
-float comparisonSelectivity(
+Selectivity comparisonSelectivity(
     const PlanState& state,
     ExprCP expr,
     bool updateConstraints,
     ConstraintMap& newConstraints);
 
-float functionSelectivity(
+Selectivity functionSelectivity(
     const PlanState& state,
     ExprCP expr,
     bool updateConstraints,
     ConstraintMap& newConstraints);
 
-float rangeSelectivity(
+Selectivity rangeSelectivity(
     const PlanState& state,
     ExprCP expr,
-    const std::optional<velox::Variant>& lower,
-    const std::optional<velox::Variant>& upper);
+    const velox::Variant* lower,
+    const velox::Variant* upper);
 
-float rangeSelectivity(
+Selectivity rangeSelectivity(
     const PlanState& state,
     std::span<const ExprCP> exprs,
     bool updateConstraints,

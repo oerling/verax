@@ -46,6 +46,7 @@ target_link_libraries(
 
 add_library(
   axiom_optimizer_tests_plan_matcher
+  OBJECT
   PlanMatcher.cpp
   PlanMatcherGenerator.cpp
   ExprPrinters.cpp
@@ -87,6 +88,7 @@ target_link_libraries(
   axiom_optimizer_tests_parquet_tpch
   axiom_optimizer_tests_query_test_base
   axiom_optimizer_tests_hive_queries_test_base
+  axiom_optimizer_tests_plan_matcher
   axiom_runner_tests_utils
 )
 
@@ -140,6 +142,7 @@ target_link_libraries(
   axiom_optimizer
   axiom_logical_plan_builder
   axiom_optimizer_tests_hive_queries_test_base
+  axiom_optimizer_tests_plan_matcher
   axiom_optimizer_tests_parquet_tpch
   axiom_optimizer_tests_plan_matcher
   axiom_optimizer_tests_query_test_base

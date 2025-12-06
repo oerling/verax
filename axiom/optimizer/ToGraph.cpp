@@ -112,7 +112,6 @@ ToGraph::ToGraph(
 
   // Initialize between, and, gte, lte for rewriting between to and(gte, lte)
   between_ = toName("between");
-  and_ = toName(SpecialFormCallNames::kAnd);
   gte_ = toName("gte");
   lte_ = toName("lte");
 }
@@ -185,8 +184,8 @@ void ToGraph::translateConjuncts(const lp::ExprPtr& input, ExprVector& flat) {
     if (!isConstantTrue(translatedExpr)) {
       // If the translated expression is an 'and' call, flatten it
       if (translatedExpr->is(PlanType::kCallExpr) &&
-          translatedExpr->as<Call>()->name() == and_) {
-        flattenAll(translatedExpr, and_, flat);
+          translatedExpr->as<Call>()->name() == SpecialFormCallNames::kAnd) {
+        flattenAll(translatedExpr, SpecialFormCallNames::kAnd, flat);
       } else {
         flat.push_back(translatedExpr);
       }
@@ -649,8 +648,8 @@ std::optional<ExprCP> ToGraph::canonicalizeCall(Name& name, ExprVector& args) {
     auto* lteExpr =
         deduppedCall(lte_, Value(boolType, 2), {args[0], args[2]}, {});
     // Build and(gteExpr, lteExpr)
-    auto* andExpr =
-        deduppedCall(and_, Value(boolType, 2), {gteExpr, lteExpr}, {});
+    auto* andExpr = deduppedCall(
+        SpecialFormCallNames::kAnd, Value(boolType, 2), {gteExpr, lteExpr}, {});
     return andExpr;
   }
 

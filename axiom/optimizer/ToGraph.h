@@ -435,7 +435,6 @@ class ToGraph {
   Name subscript_{nullptr};
   Name cardinality_{nullptr};
   Name between_{nullptr};
-  Name and_{nullptr};
   Name gte_{nullptr};
   Name lte_{nullptr};
 

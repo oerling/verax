@@ -618,38 +618,42 @@ TEST_F(PlanTest, filterBreakup) {
 
   {
     // Expect the per table filters to be extracted from the OR.
-    // TODO Verify remaining filters.
-    auto lineitemFilters =
-        common::test::SubfieldFiltersBuilder()
-            .add("l_shipinstruct", exec::equal("DELIVER IN PERSON"))
-            .add(
-                "l_shipmode",
-                exec::in(std::vector<std::string>{"AIR", "AIR REG"}))
+    // Expect the join condition and the lower bound p_size >= 1 to be
+    // recognized as existing in all the disjuncts.
+    auto plan = toSingleNodePlan(logicalPlan);
+    auto rightMatcher =
+        core::PlanMatcherBuilder()
+            .hiveScan(
+                "part",
+                common::test::SubfieldFiltersBuilder()
+                    .add("p_size", exec::greaterThanOrEqual(1LL))
+                    .build(),
+                "\"or\"(\"and\"(lte(p_size,15),\"and\"(eq(p_brand,'Brand#34'),\"like\"(p_container,'LG%'))),\"or\"(\"and\"(lte(p_size,5),\"and\"(eq(p_brand,'Brand#12'),\"like\"(p_container,'SM%'))),\"and\"(lte(p_size,10),\"and\"(eq(p_brand,'Brand#23'),\"like\"(p_container,'MED%')))))")
             .build();
 
-    auto plan = toSingleNodePlan(logicalPlan);
     auto matcher =
         core::PlanMatcherBuilder()
             .hiveScan(
                 "lineitem",
-                std::move(lineitemFilters),
-                // TODO Fix this plan. Compact the filter to between(1, 30) and
-                // push down as subfield filter.
-                "\"or\"(l_quantity >= 20.0 AND l_quantity <= 30.0, "
-                "   \"or\"(l_quantity >= 1.0 AND l_quantity <= 11.0, "
-                "          l_quantity >= 10.0 AND l_quantity <= 20.0))")
-            .hashJoin(
-                core::PlanMatcherBuilder()
-                    .hiveScan(
-                        "part",
-                        {},
-                        "\"or\"(\"and\"(p_size between 1 and 15, (p_brand = 'Brand#34' AND p_container LIKE 'LG%')), "
-                        "   \"or\"(\"and\"(p_size between 1 and 5, (p_brand = 'Brand#12' AND p_container LIKE 'SM%')), "
-                        "          \"and\"(p_size between 1 and 10, (p_brand = 'Brand#23' AND p_container LIKE 'MED%'))))")
-                    .build())
-            .filter()
-            .project()
-            .singleAggregation()
+                common::test::SubfieldFiltersBuilder()
+                    .add(
+                        "l_shipinstruct",
+                        exec::in(
+                            std::vector<std::string>{
+                                std::string("DELIVER IN PERSON")}))
+                    .add(
+                        "l_shipmode",
+                        exec::in(
+                            std::vector<std::string>{
+                                std::string("AIR"), std::string("AIR REG")}))
+                    .build(),
+                "\"or\"(\"and\"(gte(l_quantity,20),lte(l_quantity,30)),\"or\"(\"and\"(gte(l_quantity,1),lte(l_quantity,11)),\"and\"(gte(l_quantity,10),lte(l_quantity,20))))")
+            .hashJoin(rightMatcher, velox::core::JoinType::kInner)
+            .filter(
+                "\"or\"(\"and\"(lte(p_size,15),\"and\"(lte(l_quantity,30),\"and\"(gte(l_quantity,20),\"and\"(eq(p_brand,'Brand#34'),\"like\"(p_container,'LG%'))))),\"or\"(\"and\"(lte(p_size,5),\"and\"(lte(l_quantity,11),\"and\"(gte(l_quantity,1),\"and\"(eq(p_brand,'Brand#12'),\"like\"(p_container,'SM%'))))),\"and\"(lte(p_size,10),\"and\"(lte(l_quantity,20),\"and\"(gte(l_quantity,10),\"and\"(eq(p_brand,'Brand#23'),\"like\"(p_container,'MED%')))))))")
+            .project(
+                {"multiply(l_extendedprice,minus(1,l_discount)) AS \"dt1.__p115\""})
+            .singleAggregation({}, {"sum(\"dt1.__p115\") AS sum"})
             .build();
 
     AXIOM_ASSERT_PLAN(plan, matcher);

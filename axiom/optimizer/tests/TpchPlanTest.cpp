@@ -52,6 +52,8 @@ class TpchPlanTest : public virtual test::HiveQueriesTestBase {
     referenceBuilder_ = std::make_unique<exec::test::TpchQueryBuilder>(
         LocalRunnerTestBase::localFileFormat_);
     referenceBuilder_->initialize(LocalRunnerTestBase::localDataPath_);
+    optimizerOptions_.sampleFilters = false;
+    optimizerOptions_.sampleJoins = false;
   }
 
   void TearDown() override {
@@ -673,7 +675,6 @@ TEST_F(TpchPlanTest, q17) {
 
 TEST_F(TpchPlanTest, q18) {
   checkTpchSql(18);
-
   // TODO Verify the plan.
 }
 
@@ -684,17 +685,17 @@ TEST_F(TpchPlanTest, q19) {
 
   // The trick is to extract common pieces to push down into the scan
   // of lineitem and part from the or of three ands in the single
-  // where clause.  We extract the join condition that is present in
-  // all three disjuncts of the or. Then we extract an or to push
-  // dowbn into the scan of part and lineitem.  We build on part, as
-  // it is the smaller table.
+  // where clause.  We extract the join condition and the lower bound
+  // p_size >= 1 that is present in all three disjuncts of the
+  // or. Then we extract an or to push dowbn into the scan of part and
+  // lineitem.  We build on part, as it is the smaller table.
 
   auto rightMatcher =
       core::PlanMatcherBuilder()
           .hiveScan(
               "part",
               {},
-              "\"or\"(\"and\"(\"between\"(cast(p_size as BIGINT),1,15),\"and\"(eq(p_brand,'Brand#34'),\"in\"(p_container,array['LG CASE', 'LG BOX', 'LG PACK', 'LG PKG']))),\"or\"(\"and\"(\"between\"(cast(p_size as BIGINT),1,5),\"and\"(eq(p_brand,'Brand#12'),\"in\"(p_container,array['SM CASE', 'SM BOX', 'SM PACK', 'SM PKG']))),\"and\"(\"between\"(cast(p_size as BIGINT),1,10),\"and\"(eq(p_brand,'Brand#23'),\"in\"(p_container,array['MED BAG', 'MED BOX', 'MED PKG', 'MED PACK'])))))")
+              "\"and\"(gte(cast(p_size as BIGINT),1),\"or\"(\"and\"(lte(cast(p_size as BIGINT),15),\"and\"(eq(p_brand,'Brand#34'),\"in\"(p_container,array['LG CASE', 'LG BOX', 'LG PACK', 'LG PKG']))),\"or\"(\"and\"(lte(cast(p_size as BIGINT),5),\"and\"(eq(p_brand,'Brand#12'),\"in\"(p_container,array['SM CASE', 'SM BOX', 'SM PACK', 'SM PKG']))),\"and\"(lte(cast(p_size as BIGINT),10),\"and\"(eq(p_brand,'Brand#23'),\"in\"(p_container,array['MED BAG', 'MED BOX', 'MED PKG', 'MED PACK']))))))")
           .build();
 
   auto matcher =
@@ -716,10 +717,10 @@ TEST_F(TpchPlanTest, q19) {
               "\"or\"(\"and\"(gte(l_quantity,20),lte(l_quantity,30)),\"or\"(\"and\"(gte(l_quantity,1),lte(l_quantity,11)),\"and\"(gte(l_quantity,10),lte(l_quantity,20))))")
           .hashJoin(rightMatcher, velox::core::JoinType::kInner)
           .filter(
-              "\"or\"(\"and\"(\"between\"(cast(p_size as BIGINT),1,15),\"and\"(lte(l_quantity,30),\"and\"(gte(l_quantity,20),\"and\"(eq(p_brand,'Brand#34'),\"in\"(p_container,array['LG CASE', 'LG BOX', 'LG PACK', 'LG PKG']))))),\"or\"(\"and\"(\"between\"(cast(p_size as BIGINT),1,5),\"and\"(lte(l_quantity,11),\"and\"(gte(l_quantity,1),\"and\"(eq(p_brand,'Brand#12'),\"in\"(p_container,array['SM CASE', 'SM BOX', 'SM PACK', 'SM PKG']))))),\"and\"(\"between\"(cast(p_size as BIGINT),1,10),\"and\"(lte(l_quantity,20),\"and\"(gte(l_quantity,10),\"and\"(eq(p_brand,'Brand#23'),\"in\"(p_container,array['MED BAG', 'MED BOX', 'MED PKG', 'MED PACK'])))))))")
+              "\"or\"(\"and\"(lte(cast(p_size as BIGINT),15),\"and\"(lte(l_quantity,30),\"and\"(gte(l_quantity,20),\"and\"(eq(p_brand,'Brand#34'),\"in\"(p_container,array['LG CASE', 'LG BOX', 'LG PACK', 'LG PKG']))))),\"or\"(\"and\"(lte(cast(p_size as BIGINT),5),\"and\"(lte(l_quantity,11),\"and\"(gte(l_quantity,1),\"and\"(eq(p_brand,'Brand#12'),\"in\"(p_container,array['SM CASE', 'SM BOX', 'SM PACK', 'SM PKG']))))),\"and\"(lte(cast(p_size as BIGINT),10),\"and\"(lte(l_quantity,20),\"and\"(gte(l_quantity,10),\"and\"(eq(p_brand,'Brand#23'),\"in\"(p_container,array['MED BAG', 'MED BOX', 'MED PKG', 'MED PACK'])))))))")
           .project(
-              {"multiply(l_extendedprice,minus(1,l_discount)) AS \"dt1.__p121\""})
-          .singleAggregation({}, {"sum(\"dt1.__p121\") AS revenue"})
+              {"multiply(l_extendedprice,minus(1,l_discount)) AS \"dt1.__p125\""})
+          .singleAggregation({}, {"sum(\"dt1.__p125\") AS revenue"})
           .build();
 
   AXIOM_ASSERT_PLAN(plan, matcher);
