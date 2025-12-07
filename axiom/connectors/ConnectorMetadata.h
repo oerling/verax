@@ -95,6 +95,18 @@ struct ColumnStatistics {
   std::vector<ColumnStatistics> children;
 };
 
+/// Abstract representation of statistics per data covered by a PartitionHandle.
+struct PartitionStatistics {
+  int32_t numRows{0};
+  int64_t numFiles{0};
+
+  /// Column names.
+  std::vector<std::string> columns;
+
+  /// Column statistics, 1:1 to column names.
+  std::vector<ColumnStatistics> columnStatistics;
+};
+
 /// Base class for column. The column's name and type are immutable but the
 /// stats may be set multiple times.
 class Column {

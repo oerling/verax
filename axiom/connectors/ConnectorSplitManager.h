@@ -63,6 +63,9 @@ class PartitionHandle {
 
 using PartitionHandlePtr = std::shared_ptr<const PartitionHandle>;
 
+struct PartitionStatistics;
+using PartitionStatisticsPtr = std::shared_ptr<PartitionStatistics>;
+
 class ConnectorSplitManager {
  public:
   virtual ~ConnectorSplitManager() = default;
@@ -72,6 +75,16 @@ class ConnectorSplitManager {
   virtual std::vector<PartitionHandlePtr> listPartitions(
       const ConnectorSessionPtr& session,
       const velox::connector::ConnectorTableHandlePtr& tableHandle) = 0;
+
+  /// Returns per-partition statistics for the 'partitions' and
+  /// 'columns'. This is a separate function because split enumeration
+  /// for reading files transfers less data. Typically use only a
+  /// subset of the partitions to get stats.
+  std::vector<PartitionStatisticsPtr> getPartitionStatistics(
+      std::span<const PartitionHandlePtr> partitions,
+      const std::vector<std::string>& columns) {
+    return {};
+  }
 
   /// Returns a SplitSource that covers the contents of 'partitions'. The set of
   /// partitions is exposed separately so that the caller may process the

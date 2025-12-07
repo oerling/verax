@@ -33,6 +33,14 @@ struct FileInfo {
   std::optional<int32_t> bucketNumber;
 };
 
+/// Describes a partition (leaf directory) in a partitioned table.
+struct LocalHivePartition : public PartitionHandle {
+  std::string name;
+  std::string path;
+  std::unordered_map<std::string, std::string> partitionKeys;
+  mutable PartitionStatistics stats;
+};
+
 class LocalHiveSplitSource : public SplitSource {
  public:
   LocalHiveSplitSource(
@@ -70,6 +78,10 @@ class LocalHiveSplitManager : public ConnectorSplitManager {
   std::vector<PartitionHandlePtr> listPartitions(
       const ConnectorSessionPtr& session,
       const velox::connector::ConnectorTableHandlePtr& tableHandle) override;
+
+  std::vector<PartitionStatisticsPtr> getPartitionStatistics(
+      std::span<const PartitionHandlePtr> partitions,
+      const std::vector<std::string>& columns);
 
   std::shared_ptr<SplitSource> getSplitSource(
       const ConnectorSessionPtr& session,
@@ -126,6 +138,16 @@ class LocalHiveTableLayout : public HiveTableLayout {
     files_ = std::move(files);
   }
 
+  const std::vector<std::shared_ptr<const LocalHivePartition>>& partitions()
+      const {
+    return partitions_;
+  }
+
+  void setPartitions(
+      std::vector<std::shared_ptr<const LocalHivePartition>> partitions) {
+    partitions_ = std::move(partitions);
+  }
+
   const std::unordered_map<std::string, std::string>& serdeParameters()
       const override {
     return serdeParameters_;
@@ -140,9 +162,32 @@ class LocalHiveTableLayout : public HiveTableLayout {
       velox::HashStringAllocator* allocator,
       std::vector<std::unique_ptr<StatisticsBuilder>>* statsBuilders) const;
 
+  /// Samples partitions individually, updating both table-level and
+  /// partition-level statistics.
+  std::pair<int64_t, int64_t> samplePartitions(
+      const velox::connector::ConnectorTableHandlePtr& handle,
+      float pct,
+      velox::RowTypePtr scanType,
+      const std::vector<velox::common::Subfield>& fields,
+      velox::HashStringAllocator* allocator,
+      std::vector<std::unique_ptr<StatisticsBuilder>>* statsBuilders);
+
  private:
+  /// Reads a single file and updates statistics builders.
+  /// Returns (scannedRows, passingRows) for the file.
+  std::pair<int64_t, int64_t> sampleFile(
+      const std::string& filePath,
+      const velox::RowTypePtr& outputType,
+      const velox::connector::ConnectorTableHandlePtr& tableHandle,
+      const velox::connector::ColumnHandleMap& columnHandles,
+      velox::connector::ConnectorQueryCtx* connectorQueryCtx,
+      std::vector<std::unique_ptr<StatisticsBuilder>>& builders,
+      int64_t maxRowsToScan,
+      int64_t& currentScannedRows) const;
+
   std::vector<std::unique_ptr<const FileInfo>> files_;
   std::vector<std::unique_ptr<const FileInfo>> ownedFiles_;
+  std::vector<std::shared_ptr<const LocalHivePartition>> partitions_;
   std::unordered_map<std::string, std::string> serdeParameters_;
 };
 
