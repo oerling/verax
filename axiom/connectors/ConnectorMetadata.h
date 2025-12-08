@@ -93,6 +93,10 @@ struct ColumnStatistics {
   /// map, may have one element for each key. In all cases, stats may be
   /// missing.
   std::vector<ColumnStatistics> children;
+
+  /// Returns a string representation of the statistics in the form
+  /// <field1=value1,...> containing only fields that have values.
+  std::string toString() const;
 };
 
 /// Abstract representation of statistics per data covered by a PartitionHandle.

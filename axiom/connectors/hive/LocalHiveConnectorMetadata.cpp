@@ -113,6 +113,82 @@ bool testPartitionValue(
   }
 }
 
+// Structure to hold separated data and partition column information.
+struct SeparatedColumns {
+  // Data columns
+  std::vector<std::string> dataNames;
+  std::vector<velox::TypePtr> dataTypes;
+  std::vector<size_t> dataFieldIndices;
+
+  // Partition columns
+  std::vector<std::string> partitionNames;
+  std::vector<velox::TypePtr> partitionTypes;
+  std::vector<size_t> partitionFieldIndices;
+};
+
+// Helper function to separate fields into data and partition columns.
+SeparatedColumns separateDataAndPartitionColumns(
+    const std::vector<velox::common::Subfield>& fields,
+    const velox::RowTypePtr& rowType,
+    const std::vector<const Column*>& hivePartitionColumns) {
+  // Build a set of partition column names for quick lookup
+  std::unordered_set<std::string> partitionColumnNames;
+  for (const auto* partCol : hivePartitionColumns) {
+    partitionColumnNames.insert(partCol->name());
+  }
+
+  SeparatedColumns result;
+
+  for (size_t i = 0; i < fields.size(); ++i) {
+    const auto& name = fields[i].baseName();
+    const auto& type = rowType->findChild(name);
+
+    if (partitionColumnNames.count(name)) {
+      result.partitionNames.push_back(name);
+      result.partitionTypes.push_back(type);
+      result.partitionFieldIndices.push_back(i);
+    } else {
+      result.dataNames.push_back(name);
+      result.dataTypes.push_back(type);
+      result.dataFieldIndices.push_back(i);
+    }
+  }
+
+  return result;
+}
+
+// Helper function to create statistics builders for a list of fields.
+std::vector<std::unique_ptr<StatisticsBuilder>> makeStatisticsBuilders(
+    const std::vector<velox::common::Subfield>& fields,
+    const velox::RowTypePtr& rowType,
+    velox::HashStringAllocator* allocator) {
+  StatisticsBuilderOptions options = {
+      .maxStringLength = 100, .countDistincts = true, .allocator = allocator};
+
+  std::vector<std::unique_ptr<StatisticsBuilder>> builders;
+  builders.reserve(fields.size());
+  for (size_t i = 0; i < fields.size(); ++i) {
+    const auto& type = rowType->findChild(fields[i].baseName());
+    builders.push_back(StatisticsBuilder::create(type, options));
+  }
+  return builders;
+}
+
+// Overload for creating builders from a RowType directly (by index).
+std::vector<std::unique_ptr<StatisticsBuilder>> makeStatisticsBuilders(
+    const velox::RowTypePtr& rowType,
+    velox::HashStringAllocator* allocator) {
+  StatisticsBuilderOptions options = {
+      .maxStringLength = 100, .countDistincts = true, .allocator = allocator};
+
+  std::vector<std::unique_ptr<StatisticsBuilder>> builders;
+  builders.reserve(rowType->size());
+  for (size_t i = 0; i < rowType->size(); ++i) {
+    builders.push_back(StatisticsBuilder::create(rowType->childAt(i), options));
+  }
+  return builders;
+}
+
 } // namespace
 
 std::vector<PartitionHandlePtr> LocalHiveSplitManager::listPartitions(
@@ -287,10 +363,8 @@ LocalHiveSplitManager::getPartitionStatistics(
 std::shared_ptr<SplitSource> LocalHiveSplitManager::getSplitSource(
     const ConnectorSessionPtr& session,
     const velox::connector::ConnectorTableHandlePtr& tableHandle,
-    const std::vector<PartitionHandlePtr>& /*partitions*/,
+    const std::vector<PartitionHandlePtr>& partitions,
     SplitOptions options) {
-  // Since there are only unpartitioned tables now, always makes a SplitSource
-  // that goes over all the files in the handle's layout.
   auto tableName = tableHandle->name();
   auto* metadata = ConnectorMetadata::metadata(tableHandle->connectorId());
   auto table = metadata->findTable(tableName);
@@ -298,11 +372,28 @@ std::shared_ptr<SplitSource> LocalHiveSplitManager::getSplitSource(
       table, "Could not find {} in its ConnectorMetadata", tableName);
   auto* layout = dynamic_cast<const LocalHiveTableLayout*>(table->layouts()[0]);
   VELOX_CHECK_NOT_NULL(layout);
-  auto& files = layout->files();
+
   std::vector<const FileInfo*> selectedFiles;
-  for (auto& file : files) {
-    selectedFiles.push_back(file.get());
+
+  if (!partitions.empty()) {
+    // Use files from the provided partitions
+    for (const auto& partitionHandle : partitions) {
+      auto* localPartition =
+          dynamic_cast<const LocalHivePartition*>(partitionHandle.get());
+      if (localPartition) {
+        for (const auto* file : localPartition->files) {
+          selectedFiles.push_back(file);
+        }
+      }
+    }
+  } else {
+    // No partitions provided, use all files from the layout
+    auto& files = layout->files();
+    for (auto& file : files) {
+      selectedFiles.push_back(file.get());
+    }
   }
+
   return std::make_shared<LocalHiveSplitSource>(
       std::move(selectedFiles),
       layout->fileFormat(),
@@ -410,11 +501,16 @@ void LocalHiveConnectorMetadata::initialize() {
 }
 
 void LocalHiveConnectorMetadata::ensureInitialized() const {
+  if (initializing_) {
+    return;
+  }
   std::lock_guard<std::mutex> l(mutex_);
   if (initialized_) {
     return;
   }
+  initializing_ = true;
   const_cast<LocalHiveConnectorMetadata*>(this)->initialize();
+  initializing_ = false;
   initialized_ = true;
 }
 
@@ -506,93 +602,35 @@ std::pair<int64_t, int64_t> LocalHiveTableLayout::sample(
     std::vector<std::unique_ptr<StatisticsBuilder>>* statsBuilders) const {
   using namespace velox;
 
-  // Check if we should use partition filtering:
-  // 1. Table must have Hive partition columns
-  // 2. TableHandle must be a HiveTableHandle with filters on partition columns
-  bool usePartitionFiltering = false;
-  std::vector<PartitionHandlePtr> filteredPartitions;
+  // Get metadata and split manager
+  auto* metadata = ConnectorMetadata::metadata(tableHandle->connectorId());
+  auto* splitManager =
+      dynamic_cast<LocalHiveSplitManager*>(metadata->splitManager());
+  VELOX_CHECK_NOT_NULL(splitManager);
 
-  if (!hivePartitionColumns().empty() && !partitions_.empty()) {
-    // Try to cast to HiveTableHandle to access subfield filters
-    auto* hiveHandle =
-        dynamic_cast<const velox::connector::hive::HiveTableHandle*>(
-            tableHandle.get());
+  // Separate fields into data columns and partition columns using helper
+  auto separated = separateDataAndPartitionColumns(
+      fields, rowType(), hivePartitionColumns());
 
-    if (hiveHandle) {
-      const auto& subfieldFilters = hiveHandle->subfieldFilters();
-
-      // Check if any filter applies to partition columns
-      bool hasPartitionFilters = false;
-      for (const auto& partitionCol : hivePartitionColumns()) {
-        common::Subfield subfield(partitionCol->name());
-        if (subfieldFilters.find(subfield) != subfieldFilters.end()) {
-          hasPartitionFilters = true;
-          break;
-        }
-      }
-
-      if (hasPartitionFilters) {
-        // Get filtered partitions using listPartitions
-        auto* metadata =
-            ConnectorMetadata::metadata(tableHandle->connectorId());
-        auto* splitManager =
-            dynamic_cast<LocalHiveSplitManager*>(metadata->splitManager());
-        if (splitManager) {
-          filteredPartitions =
-              splitManager->listPartitions(nullptr, tableHandle);
-          usePartitionFiltering = !filteredPartitions.empty();
-        }
-      }
-    }
-  }
-
+  // Create builders for DATA columns only (no partition columns)
   StatisticsBuilderOptions options = {
       .maxStringLength = 100, .countDistincts = true, .allocator = allocator};
 
-  // Build a set of partition column names for quick lookup
-  std::unordered_set<std::string> partitionColumnNames;
-  for (const auto* partCol : hivePartitionColumns()) {
-    partitionColumnNames.insert(partCol->name());
-  }
-
-  // Separate fields into data columns and partition columns
-  std::vector<std::string> dataNames;
-  std::vector<TypePtr> dataTypes;
-  std::vector<size_t> dataFieldIndices;
-
-  std::vector<std::string> partitionNames;
-  std::vector<TypePtr> partitionTypes;
-  std::vector<size_t> partitionFieldIndices;
-
-  for (size_t i = 0; i < fields.size(); ++i) {
-    const auto& name = fields[i].baseName();
-    const auto& type = rowType()->findChild(name);
-
-    if (partitionColumnNames.count(name)) {
-      partitionNames.push_back(name);
-      partitionTypes.push_back(type);
-      partitionFieldIndices.push_back(i);
-    } else {
-      dataNames.push_back(name);
-      dataTypes.push_back(type);
-      dataFieldIndices.push_back(i);
-    }
-  }
-
-  // Create builders for ALL fields (data + partition)
-  std::vector<std::unique_ptr<StatisticsBuilder>> builders(fields.size());
-  for (size_t i = 0; i < fields.size(); ++i) {
-    const auto& type = rowType()->findChild(fields[i].baseName());
-    builders[i] = StatisticsBuilder::create(type, options);
+  std::vector<std::unique_ptr<StatisticsBuilder>> builders;
+  builders.reserve(separated.dataFieldIndices.size());
+  for (size_t idx : separated.dataFieldIndices) {
+    const auto& type = rowType()->findChild(fields[idx].baseName());
+    builders.push_back(StatisticsBuilder::create(type, options));
   }
 
   // Create output type for file reader (data columns only)
-  const auto outputType = ROW(std::move(dataNames), std::move(dataTypes));
+  const auto outputType =
+      ROW(std::move(separated.dataNames), std::move(separated.dataTypes));
 
   // Create column handles for data columns only
   velox::connector::ColumnHandleMap columnHandles;
-  for (size_t i = 0; i < dataFieldIndices.size(); ++i) {
-    const auto& name = fields[dataFieldIndices[i]].baseName();
+  for (size_t i = 0; i < separated.dataFieldIndices.size(); ++i) {
+    const auto& name = fields[separated.dataFieldIndices[i]].baseName();
     const auto& type = rowType()->findChild(name);
     columnHandles[name] =
         std::make_shared<velox::connector::hive::HiveColumnHandle>(
@@ -611,381 +649,66 @@ std::pair<int64_t, int64_t> LocalHiveTableLayout::sample(
   int64_t passingRows = 0;
   int64_t scannedRows = 0;
 
-  if (usePartitionFiltering) {
-    // Sample files from filtered partitions using their files lists
-    for (const auto& partitionHandle : filteredPartitions) {
-      auto* localPartition =
-          dynamic_cast<const LocalHivePartition*>(partitionHandle.get());
-      if (!localPartition) {
-        continue;
+  // Use split manager to list partitions
+  std::vector<PartitionHandlePtr> partitions =
+      splitManager->listPartitions(nullptr, tableHandle);
+
+  // Get split source from split manager
+  SplitOptions splitOptions;
+  auto splitSource = splitManager->getSplitSource(
+      nullptr, tableHandle, partitions, splitOptions);
+
+  // Enumerate splits using the split source
+  for (;;) {
+    // Get next batch of splits
+    constexpr uint64_t kTargetBytes = 256 << 20; // 256MB
+    auto splitsAndGroups = splitSource->getSplits(kTargetBytes);
+
+    bool done = false;
+    for (const auto& splitAndGroup : splitsAndGroups) {
+      if (!splitAndGroup.split) {
+        done = true;
+        break;
       }
 
-      // Iterate through files in this partition
-      for (const auto* filePtr : localPartition->files) {
-        // Sample this file
-        auto dataSource = connector()->createDataSource(
-            outputType, tableHandle, columnHandles, connectorQueryCtx.get());
+      // Sample this split using sampleFile
+      auto [splitScanned, splitPassed] = sampleFile(
+          splitAndGroup.split,
+          outputType,
+          tableHandle,
+          columnHandles,
+          connectorQueryCtx.get(),
+          builders,
+          maxRowsToScan,
+          scannedRows);
 
-        auto split =
-            std::make_shared<velox::connector::hive::HiveConnectorSplit>(
-                connector()->connectorId(), filePtr->path, fileFormat_);
-
-        dataSource->addSplit(split);
-
-        constexpr int32_t kBatchSize = 10'000;
-
-        for (;;) {
-          velox::ContinueFuture ignore{velox::ContinueFuture::makeEmpty()};
-          auto data = dataSource->next(kBatchSize, ignore).value();
-          if (data == nullptr) {
-            scannedRows += dataSource->getCompletedRows();
-            break;
-          }
-
-          const auto rowCount = data->size();
-
-          // Update data column builders
-          for (size_t i = 0; i < dataFieldIndices.size(); ++i) {
-            size_t fieldIdx = dataFieldIndices[i];
-            if (builders[fieldIdx]) {
-              builders[fieldIdx]->add(data->childAt(i));
-            }
-          }
-
-          // Create constant vectors for partition columns and update builders
-          for (size_t i = 0; i < partitionFieldIndices.size(); ++i) {
-            size_t fieldIdx = partitionFieldIndices[i];
-            const auto& partColName = fields[fieldIdx].baseName();
-            const auto& partColType = rowType()->findChild(partColName);
-
-            auto it = filePtr->partitionKeys.find(partColName);
-            if (it != filePtr->partitionKeys.end() && it->second.has_value()) {
-              auto partitionVector = makePartitionVector(
-                  it->second.value(),
-                  partColType,
-                  rowCount,
-                  connectorQueryCtx->memoryPool());
-
-              if (builders[fieldIdx]) {
-                builders[fieldIdx]->add(partitionVector);
-              }
-            }
-          }
-
-          passingRows += rowCount;
-
-          if (scannedRows >= maxRowsToScan) {
-            break;
-          }
-        }
-
-        if (scannedRows >= maxRowsToScan) {
-          break;
-        }
-      }
+      scannedRows += splitScanned;
+      passingRows += splitPassed;
 
       if (scannedRows >= maxRowsToScan) {
         break;
       }
     }
-  } else {
-    // Sample all files without partition filtering
-    for (const auto& file : files_) {
-      auto dataSource = connector()->createDataSource(
-          outputType, tableHandle, columnHandles, connectorQueryCtx.get());
 
-      auto split = std::make_shared<velox::connector::hive::HiveConnectorSplit>(
-          connector()->connectorId(), file->path, fileFormat_);
-
-      dataSource->addSplit(split);
-
-      constexpr int32_t kBatchSize = 10'000;
-
-      for (;;) {
-        velox::ContinueFuture ignore{velox::ContinueFuture::makeEmpty()};
-        auto data = dataSource->next(kBatchSize, ignore).value();
-        if (data == nullptr) {
-          scannedRows += dataSource->getCompletedRows();
-          break;
-        }
-
-        const auto rowCount = data->size();
-
-        // Update data column builders
-        for (size_t i = 0; i < dataFieldIndices.size(); ++i) {
-          size_t fieldIdx = dataFieldIndices[i];
-          if (builders[fieldIdx]) {
-            builders[fieldIdx]->add(data->childAt(i));
-          }
-        }
-
-        // Create constant vectors for partition columns and update builders
-        for (size_t i = 0; i < partitionFieldIndices.size(); ++i) {
-          size_t fieldIdx = partitionFieldIndices[i];
-          const auto& partColName = fields[fieldIdx].baseName();
-          const auto& partColType = rowType()->findChild(partColName);
-
-          auto it = file->partitionKeys.find(partColName);
-          if (it != file->partitionKeys.end() && it->second.has_value()) {
-            auto partitionVector = makePartitionVector(
-                it->second.value(),
-                partColType,
-                rowCount,
-                connectorQueryCtx->memoryPool());
-
-            if (builders[fieldIdx]) {
-              builders[fieldIdx]->add(partitionVector);
-            }
-          }
-        }
-
-        passingRows += rowCount;
-
-        if (scannedRows >= maxRowsToScan) {
-          break;
-        }
-      }
-
-      if (scannedRows >= maxRowsToScan) {
-        break;
-      }
+    if (done || scannedRows >= maxRowsToScan) {
+      break;
     }
   }
 
   if (statsBuilders) {
-    *statsBuilders = std::move(builders);
+    // Return builders for data columns only
+    // The caller expects builders for all fields, so create a sparse array
+    statsBuilders->resize(fields.size());
+    for (size_t i = 0; i < separated.dataFieldIndices.size(); ++i) {
+      size_t fieldIdx = separated.dataFieldIndices[i];
+      (*statsBuilders)[fieldIdx] = std::move(builders[i]);
+    }
   }
   return std::pair(scannedRows, passingRows);
 }
 
-std::pair<int64_t, int64_t> LocalHiveTableLayout::samplePartitions(
-    const velox::connector::ConnectorTableHandlePtr& tableHandle,
-    float pct,
-    velox::RowTypePtr scanType,
-    const std::vector<velox::common::Subfield>& fields,
-    velox::HashStringAllocator* allocator,
-    std::vector<std::unique_ptr<StatisticsBuilder>>* statsBuilders) {
-  using namespace velox;
-
-  StatisticsBuilderOptions options = {
-      .maxStringLength = 100, .countDistincts = true, .allocator = allocator};
-
-  // Build a set of partition column names for quick lookup
-  std::unordered_set<std::string> partitionColumnNames;
-  for (const auto* partCol : hivePartitionColumns()) {
-    partitionColumnNames.insert(partCol->name());
-  }
-
-  // Separate fields into data columns and partition columns
-  std::vector<std::string> dataNames;
-  std::vector<TypePtr> dataTypes;
-  std::vector<size_t> dataFieldIndices; // Map from data column to field index
-
-  std::vector<std::string> partitionNames;
-  std::vector<TypePtr> partitionTypes;
-  std::vector<size_t>
-      partitionFieldIndices; // Map from partition column to field index
-
-  for (size_t i = 0; i < fields.size(); ++i) {
-    const auto& name = fields[i].baseName();
-    const auto& type = rowType()->findChild(name);
-
-    if (partitionColumnNames.count(name)) {
-      partitionNames.push_back(name);
-      partitionTypes.push_back(type);
-      partitionFieldIndices.push_back(i);
-    } else {
-      dataNames.push_back(name);
-      dataTypes.push_back(type);
-      dataFieldIndices.push_back(i);
-    }
-  }
-
-  // Create statistics builders for ALL fields (data + partition)
-  // Keep them in the same order as the original fields
-  std::vector<std::unique_ptr<StatisticsBuilder>> tableBuilders(fields.size());
-  for (size_t i = 0; i < fields.size(); ++i) {
-    const auto& type = rowType()->findChild(fields[i].baseName());
-    tableBuilders[i] = StatisticsBuilder::create(type, options);
-  }
-
-  // Create output type for file reader (data columns only, no partition
-  // columns)
-  const auto outputType = ROW(std::move(dataNames), std::move(dataTypes));
-
-  // Create column handles for data columns only
-  velox::connector::ColumnHandleMap columnHandles;
-  for (size_t i = 0; i < dataFieldIndices.size(); ++i) {
-    const auto& name = fields[dataFieldIndices[i]].baseName();
-    const auto& type = rowType()->findChild(name);
-    columnHandles[name] =
-        std::make_shared<velox::connector::hive::HiveColumnHandle>(
-            name,
-            velox::connector::hive::HiveColumnHandle::ColumnType::kRegular,
-            type,
-            type);
-  }
-
-  auto connectorQueryCtx = reinterpret_cast<LocalHiveConnectorMetadata*>(
-                               ConnectorMetadata::metadata(connector()))
-                               ->connectorQueryCtx();
-
-  // Assert that there are no filters in the table handle
-  auto* hiveHandle =
-      dynamic_cast<const velox::connector::hive::HiveTableHandle*>(
-          tableHandle.get());
-  if (hiveHandle) {
-    VELOX_CHECK(
-        hiveHandle->subfieldFilters().empty(),
-        "samplePartitions does not support filters");
-  }
-
-  // Sample all partitions
-  std::vector<PartitionHandlePtr> partitionsToSample;
-  for (const auto& partition : partitions_) {
-    partitionsToSample.push_back(partition);
-  }
-
-  int64_t totalScannedRows = 0;
-  int64_t totalPassingRows = 0;
-
-  // Process each partition
-  for (auto& partitionHandle : partitionsToSample) {
-    auto* partition = dynamic_cast<LocalHivePartition*>(
-        const_cast<PartitionHandle*>(partitionHandle.get()));
-    if (!partition) {
-      continue;
-    }
-
-    // Create partition-level statistics builders for ALL fields
-    std::vector<std::unique_ptr<StatisticsBuilder>> partitionBuilders(
-        fields.size());
-    for (size_t i = 0; i < fields.size(); ++i) {
-      const auto& type = rowType()->findChild(fields[i].baseName());
-      partitionBuilders[i] = StatisticsBuilder::create(type, options);
-    }
-
-    // Determine how many rows to sample from this partition
-    const int64_t partitionRows = partition->stats.numRows;
-    const int64_t maxRowsToSample =
-        static_cast<int64_t>(partitionRows * (pct / 100));
-
-    int64_t partitionScannedRows = 0;
-    int64_t partitionPassingRows = 0;
-
-    // Sample files in this partition using partition->files
-    for (const auto* file : partition->files) {
-      // Read data from file - this will only return data columns
-      auto dataSource = connector()->createDataSource(
-          outputType, tableHandle, columnHandles, connectorQueryCtx.get());
-
-      auto split = std::make_shared<velox::connector::hive::HiveConnectorSplit>(
-          connector()->connectorId(), file->path, fileFormat_);
-
-      dataSource->addSplit(split);
-
-      constexpr int32_t kBatchSize = 10'000;
-      int64_t fileScannedRows = 0;
-
-      for (;;) {
-        velox::ContinueFuture ignore{velox::ContinueFuture::makeEmpty()};
-        auto data = dataSource->next(kBatchSize, ignore).value();
-        if (data == nullptr) {
-          fileScannedRows += dataSource->getCompletedRows();
-          break;
-        }
-
-        const auto rowCount = data->size();
-
-        // Update data column builders (partition-level only)
-        for (size_t i = 0; i < dataFieldIndices.size(); ++i) {
-          size_t fieldIdx = dataFieldIndices[i];
-          if (partitionBuilders[fieldIdx]) {
-            partitionBuilders[fieldIdx]->add(data->childAt(i));
-          }
-        }
-
-        // Create constant vectors for partition columns and update builders
-        // (partition-level only)
-        for (size_t i = 0; i < partitionFieldIndices.size(); ++i) {
-          size_t fieldIdx = partitionFieldIndices[i];
-          const auto& partColName = fields[fieldIdx].baseName();
-          const auto& partColType = rowType()->findChild(partColName);
-
-          // Get partition value from file's partition keys
-          auto it = file->partitionKeys.find(partColName);
-          if (it != file->partitionKeys.end() && it->second.has_value()) {
-            auto partitionVector = makePartitionVector(
-                it->second.value(),
-                partColType,
-                rowCount,
-                connectorQueryCtx->memoryPool());
-
-            if (partitionBuilders[fieldIdx]) {
-              partitionBuilders[fieldIdx]->add(partitionVector);
-            }
-          }
-        }
-
-        partitionPassingRows += rowCount;
-
-        if (partitionScannedRows + fileScannedRows +
-                dataSource->getCompletedRows() >
-            maxRowsToSample) {
-          fileScannedRows += dataSource->getCompletedRows();
-          break;
-        }
-      }
-
-      partitionScannedRows += fileScannedRows;
-
-      if (partitionScannedRows >= maxRowsToSample) {
-        break;
-      }
-    }
-
-    totalScannedRows += partitionScannedRows;
-    totalPassingRows += partitionPassingRows;
-
-    // Merge partition-level builders into table-level builders
-    for (size_t i = 0; i < partitionBuilders.size(); ++i) {
-      if (partitionBuilders[i] && tableBuilders[i]) {
-        tableBuilders[i]->merge(*partitionBuilders[i]);
-      }
-    }
-
-    // Build column stats for this partition from partition builders
-    auto* mutablePartition = partition;
-    mutablePartition->mutableStats()->columns.clear();
-    mutablePartition->mutableStats()->columnStatistics.clear();
-
-    // numFiles and numRows were already set during loadTable
-    // Just update column statistics from the sampled data
-    for (size_t i = 0; i < partitionBuilders.size(); ++i) {
-      if (partitionBuilders[i]) {
-        mutablePartition->mutableStats()->columns.push_back(
-            fields[i].baseName());
-
-        ColumnStatistics colStats;
-        colStats.name = fields[i].baseName();
-        // Build partition-level column statistics from the partition builder
-        // This sets numDistinct, min, max, nullPct, etc. from the sampled data
-        partitionBuilders[i]->build(colStats, 1.0f);
-        mutablePartition->mutableStats()->columnStatistics.push_back(
-            std::move(colStats));
-      }
-    }
-  }
-
-  if (statsBuilders) {
-    *statsBuilders = std::move(tableBuilders);
-  }
-
-  return std::pair(totalScannedRows, totalPassingRows);
-}
-
 std::pair<int64_t, int64_t> LocalHiveTableLayout::sampleFile(
-    const std::string& filePath,
+    const std::shared_ptr<velox::connector::ConnectorSplit>& split,
     const velox::RowTypePtr& outputType,
     const velox::connector::ConnectorTableHandlePtr& tableHandle,
     const velox::connector::ColumnHandleMap& columnHandles,
@@ -996,13 +719,9 @@ std::pair<int64_t, int64_t> LocalHiveTableLayout::sampleFile(
   auto dataSource = connector()->createDataSource(
       outputType, tableHandle, columnHandles, connectorQueryCtx);
 
-  auto split = velox::connector::hive::HiveConnectorSplitBuilder(filePath)
-                   .fileFormat(fileFormat_)
-                   .connectorId(connector()->connectorId())
-                   .build();
   dataSource->addSplit(split);
 
-  constexpr int32_t kBatchSize = 1'000;
+  constexpr int32_t kBatchSize = 10'000;
   int64_t passingRows = 0;
   int64_t scannedRows = 0;
 
@@ -1014,9 +733,14 @@ std::pair<int64_t, int64_t> LocalHiveTableLayout::sampleFile(
       break;
     }
 
-    passingRows += data->size();
-    if (!builders.empty()) {
-      StatisticsBuilder::updateBuilders(data, builders);
+    const auto rowCount = data->size();
+    passingRows += rowCount;
+
+    // Update builders
+    for (size_t i = 0; i < builders.size(); ++i) {
+      if (builders[i]) {
+        builders[i]->add(data->childAt(i));
+      }
     }
 
     if (currentScannedRows + scannedRows + dataSource->getCompletedRows() >
@@ -1162,10 +886,6 @@ void listFiles(
         std::string(path),
         std::move(partitionKeys),
         std::move(currentDirFiles));
-
-    // Trace created partition
-    std::cout << "Created partition: " << partition->toString() << std::endl;
-
     partitions->push_back(std::move(partition));
   }
 }
@@ -1771,11 +1491,230 @@ T numericValue(const velox::Variant& v) {
       VELOX_UNREACHABLE();
   }
 }
+
+/// Adjusts the numDistinct estimate based on sampling ratio and type
+/// constraints.
+///
+/// For sampled data, this function scales the distinct count estimate to
+/// account for rows that weren't sampled:
+/// - If the sampled distinct count is low (< sampledRows / 50), we assume the
+///   column has few distinct values (enumeration), so unsampled rows likely
+///   contain the same values. The distinct count is left as-is.
+/// - If the sampled distinct count is high, we assume unsampled rows will have
+///   new values, so we scale up by the inverse of the sampling ratio:
+///   estimatedDistinct = totalRows / (sampledRows / sampledDistinct)
+///
+/// For integer types, the number of distinct values cannot exceed 1 + max -
+/// min. This provides an upper bound when the range is known and smaller than
+/// the scaled estimate.
+void adjustNumDistincts(
+    const StatisticsBuilder& builder,
+    ColumnStatistics& stats,
+    int64_t numSampledRows,
+    int64_t numTotalRows) {
+  auto estimate = stats.numDistinct;
+  int64_t approxNumDistinct =
+      estimate.has_value() ? estimate.value() : numTotalRows;
+
+  // Only adjust if we sampled less than 100% of the data
+  if (numSampledRows < numTotalRows) {
+    // If distinct count is high relative to sample size, scale up
+    if (approxNumDistinct > numSampledRows / 50) {
+      // Calculate average duplicates per distinct value
+      float numDups = numSampledRows / static_cast<float>(approxNumDistinct);
+      // Scale to total rows assuming same duplication rate
+      approxNumDistinct = std::min<float>(numTotalRows, numTotalRows / numDups);
+
+      // For integer types, distinct count cannot exceed 1 + max - min
+      if (isInteger(builder.type()->kind())) {
+        auto min = stats.min;
+        auto max = stats.max;
+        if (min.has_value() && max.has_value() && isMixedOrder(builder)) {
+          auto range = numericValue<float>(max.value()) -
+              numericValue<float>(min.value());
+          approxNumDistinct = std::min<float>(approxNumDistinct, 1 + range);
+        }
+      }
+    }
+
+    stats.numDistinct = approxNumDistinct;
+  }
+}
 } // namespace
+
+std::pair<int64_t, int64_t> LocalHiveTableLayout::samplePartitions(
+    const velox::connector::ConnectorTableHandlePtr& tableHandle,
+    float pct,
+    velox::RowTypePtr scanType,
+    const std::vector<velox::common::Subfield>& fields,
+    velox::HashStringAllocator* allocator,
+    std::vector<std::unique_ptr<StatisticsBuilder>>* statsBuilders) {
+  using namespace velox;
+
+  // Separate fields into data columns and partition columns using helper
+  auto separated = separateDataAndPartitionColumns(
+      fields, rowType(), hivePartitionColumns());
+
+  // Create statistics builders for DATA columns only (no partition columns)
+  StatisticsBuilderOptions options = {
+      .maxStringLength = 100, .countDistincts = true, .allocator = allocator};
+
+  std::vector<std::unique_ptr<StatisticsBuilder>> tableBuilders;
+  tableBuilders.reserve(separated.dataFieldIndices.size());
+  for (size_t idx : separated.dataFieldIndices) {
+    const auto& type = rowType()->findChild(fields[idx].baseName());
+    tableBuilders.push_back(StatisticsBuilder::create(type, options));
+  }
+
+  // Create output type for file reader (data columns only, no partition
+  // columns)
+  const auto outputType =
+      ROW(std::move(separated.dataNames), std::move(separated.dataTypes));
+
+  // Create column handles for data columns only
+  velox::connector::ColumnHandleMap columnHandles;
+  for (size_t i = 0; i < separated.dataFieldIndices.size(); ++i) {
+    const auto& name = fields[separated.dataFieldIndices[i]].baseName();
+    const auto& type = rowType()->findChild(name);
+    columnHandles[name] =
+        std::make_shared<velox::connector::hive::HiveColumnHandle>(
+            name,
+            velox::connector::hive::HiveColumnHandle::ColumnType::kRegular,
+            type,
+            type);
+  }
+
+  auto connectorQueryCtx = reinterpret_cast<LocalHiveConnectorMetadata*>(
+                               ConnectorMetadata::metadata(connector()))
+                               ->connectorQueryCtx();
+
+  // Assert that there are no filters in the table handle
+  auto* hiveHandle =
+      dynamic_cast<const velox::connector::hive::HiveTableHandle*>(
+          tableHandle.get());
+  if (hiveHandle) {
+    VELOX_CHECK(
+        hiveHandle->subfieldFilters().empty(),
+        "samplePartitions does not support filters");
+  }
+
+  // Sample all partitions
+  std::vector<PartitionHandlePtr> partitionsToSample;
+  for (const auto& partition : partitions_) {
+    partitionsToSample.push_back(partition);
+  }
+
+  int64_t totalScannedRows = 0;
+  int64_t totalPassingRows = 0;
+
+  // Process each partition
+  for (auto& partitionHandle : partitionsToSample) {
+    auto* partition = dynamic_cast<LocalHivePartition*>(
+        const_cast<PartitionHandle*>(partitionHandle.get()));
+    if (!partition) {
+      continue;
+    }
+
+    // Create partition-level statistics builders for DATA columns only
+    std::vector<std::unique_ptr<StatisticsBuilder>> partitionBuilders;
+    partitionBuilders.reserve(separated.dataFieldIndices.size());
+    for (size_t idx : separated.dataFieldIndices) {
+      const auto& type = rowType()->findChild(fields[idx].baseName());
+      partitionBuilders.push_back(StatisticsBuilder::create(type, options));
+    }
+
+    // Determine how many rows to sample from this partition
+    const int64_t partitionRows = partition->stats.numRows;
+    const int64_t maxRowsToSample =
+        static_cast<int64_t>(partitionRows * (pct / 100));
+
+    int64_t partitionScannedRows = 0;
+    int64_t partitionPassingRows = 0;
+
+    // Sample files in this partition using partition->files
+    for (const auto* file : partition->files) {
+      // Create a split for this file
+      auto split = std::make_shared<velox::connector::hive::HiveConnectorSplit>(
+          connector()->connectorId(), file->path, fileFormat_);
+
+      // Use sampleFile to read and update stats
+      auto [fileScanned, filePassed] = sampleFile(
+          split,
+          outputType,
+          tableHandle,
+          columnHandles,
+          connectorQueryCtx.get(),
+          partitionBuilders,
+          maxRowsToSample,
+          partitionScannedRows);
+
+      partitionScannedRows += fileScanned;
+      partitionPassingRows += filePassed;
+
+      if (partitionScannedRows >= maxRowsToSample) {
+        break;
+      }
+    }
+
+    totalScannedRows += partitionScannedRows;
+    totalPassingRows += partitionPassingRows;
+
+    // Merge partition-level builders into table-level builders
+    for (size_t i = 0; i < partitionBuilders.size(); ++i) {
+      if (partitionBuilders[i] && tableBuilders[i]) {
+        tableBuilders[i]->merge(*partitionBuilders[i]);
+      }
+    }
+
+    // Build column stats for this partition from partition builders (data
+    // columns only)
+    auto* mutablePartition = partition;
+    mutablePartition->mutableStats()->columns.clear();
+    mutablePartition->mutableStats()->columnStatistics.clear();
+
+    // numFiles and numRows were already set during loadTable
+    // Just update column statistics from the sampled data (data columns only)
+    for (size_t i = 0; i < partitionBuilders.size(); ++i) {
+      if (partitionBuilders[i]) {
+        size_t fieldIdx = separated.dataFieldIndices[i];
+        const auto& colName = fields[fieldIdx].baseName();
+        mutablePartition->mutableStats()->columns.push_back(colName);
+
+        ColumnStatistics colStats;
+        colStats.name = colName;
+        // Build partition-level column statistics from the partition builder
+        // This sets numDistinct, min, max, nullPct, etc. from the sampled data
+        partitionBuilders[i]->build(colStats, 1.0f);
+        // Adjust numDistinct based on sampling ratio and type constraints
+        adjustNumDistincts(
+            *partitionBuilders[i],
+            colStats,
+            partitionScannedRows,
+            partitionRows);
+        mutablePartition->mutableStats()->columnStatistics.push_back(
+            std::move(colStats));
+      }
+    }
+  }
+
+  if (statsBuilders) {
+    // Return builders for data columns only
+    // The caller expects builders for all fields, so create a sparse array
+    statsBuilders->resize(fields.size());
+    for (size_t i = 0; i < separated.dataFieldIndices.size(); ++i) {
+      size_t fieldIdx = separated.dataFieldIndices[i];
+      (*statsBuilders)[fieldIdx] = std::move(tableBuilders[i]);
+    }
+  }
+
+  return std::pair(totalScannedRows, totalPassingRows);
+}
 
 void LocalTable::sampleNumDistincts(
     float samplePct,
     velox::memory::MemoryPool* pool) {
+  using namespace velox;
+
   std::vector<velox::common::Subfield> fields;
   fields.reserve(type_->size());
   for (auto i = 0; i < type_->size(); ++i) {
@@ -1786,7 +1725,13 @@ void LocalTable::sampleNumDistincts(
   auto allocator = std::make_unique<velox::HashStringAllocator>(pool);
   auto* layout = layouts_[0].get();
 
+  auto* localLayout = dynamic_cast<LocalHiveTableLayout*>(layout);
+  VELOX_CHECK_NOT_NULL(localLayout, "Expecting a local hive layout");
+
+  // Get metadata and create table handle (used by both paths)
   auto* metadata = ConnectorMetadata::metadata(layout->connector());
+  auto* localHiveMetadata = dynamic_cast<LocalHiveConnectorMetadata*>(metadata);
+  VELOX_CHECK_NOT_NULL(localHiveMetadata);
 
   std::vector<velox::connector::ColumnHandlePtr> columns;
   columns.reserve(type_->size());
@@ -1795,75 +1740,113 @@ void LocalTable::sampleNumDistincts(
         /*session=*/nullptr, type_->nameOf(i)));
   }
 
-  auto* localHiveMetadata =
-      dynamic_cast<const LocalHiveConnectorMetadata*>(metadata);
   auto& evaluator =
       *localHiveMetadata->connectorQueryCtx()->expressionEvaluator();
 
   std::vector<velox::core::TypedExprPtr> ignore;
-  auto handle = layout->createTableHandle(
+  auto tableHandle = layout->createTableHandle(
       /*session=*/nullptr, columns, evaluator, {}, ignore);
 
-  auto* localLayout = dynamic_cast<LocalHiveTableLayout*>(layout);
-  VELOX_CHECK_NOT_NULL(localLayout, "Expecting a local hive layout");
+  // If table has partition columns, delegate to samplePartitions
+  if (!localLayout->hivePartitionColumns().empty()) {
+    std::vector<std::unique_ptr<StatisticsBuilder>> statsBuilders;
+    localLayout->samplePartitions(
+        tableHandle, samplePct, type_, fields, allocator.get(), &statsBuilders);
 
-  std::vector<std::unique_ptr<StatisticsBuilder>> statsBuilders;
-
-  // Use samplePartitions if the layout has partition columns
-  int64_t sampled, passed;
-  if (!localLayout->partitionColumns().empty()) {
-    auto result = localLayout->samplePartitions(
-        handle, samplePct, type_, fields, allocator.get(), &statsBuilders);
-    sampled = result.first;
-    passed = result.second;
-  } else {
-    auto result = localLayout->sample(
-        handle, samplePct, type_, fields, allocator.get(), &statsBuilders);
-    sampled = result.first;
-    passed = result.second;
+    // Update numDistincts for all columns from the builders
+    numSampledRows_ = numRows_ * (samplePct / 100); // Approximate
+    for (auto i = 0; i < statsBuilders.size(); ++i) {
+      if (statsBuilders[i]) {
+        auto* column = columns_[type_->nameOf(i)].get();
+        ColumnStatistics& stats = *column->mutableStats();
+        statsBuilders[i]->build(stats);
+        adjustNumDistincts(*statsBuilders[i], stats, numSampledRows_, numRows_);
+      }
+    }
+    return;
   }
 
-  numSampledRows_ = sampled;
+  // No partition columns - proceed with regular sampling
+  // Get the split manager
+  auto* splitManager =
+      dynamic_cast<LocalHiveSplitManager*>(metadata->splitManager());
+  VELOX_CHECK_NOT_NULL(splitManager);
+
+  // Build statistics builders for all fields (no partition columns)
+  auto statsBuilders = makeStatisticsBuilders(type_, allocator.get());
+
+  // Create column handles map
+  velox::connector::ColumnHandleMap columnHandles;
+  for (auto i = 0; i < fields.size(); ++i) {
+    const auto& name = type_->nameOf(i);
+    const auto& colType = type_->childAt(i);
+    columnHandles[name] =
+        std::make_shared<velox::connector::hive::HiveColumnHandle>(
+            name,
+            velox::connector::hive::HiveColumnHandle::ColumnType::kRegular,
+            colType,
+            colType);
+  }
+
+  // Use split manager to list partitions
+  std::vector<PartitionHandlePtr> partitions =
+      splitManager->listPartitions(nullptr, tableHandle);
+
+  // Get split source from split manager
+  SplitOptions splitOptions;
+  auto splitSource = splitManager->getSplitSource(
+      nullptr, tableHandle, partitions, splitOptions);
+
+  const auto maxRowsToScan = numRows_ * (samplePct / 100);
+  int64_t scannedRows = 0;
+  int64_t passingRows = 0;
+
+  auto connectorQueryCtx = localHiveMetadata->connectorQueryCtx();
+
+  // Enumerate splits using the split source
+  for (;;) {
+    // Get next batch of splits
+    constexpr uint64_t kTargetBytes = 256 << 20; // 256MB
+    auto splitsAndGroups = splitSource->getSplits(kTargetBytes);
+
+    bool done = false;
+    for (const auto& splitAndGroup : splitsAndGroups) {
+      if (!splitAndGroup.split) {
+        done = true;
+        break;
+      }
+
+      // Sample this split using sampleFile
+      auto [splitScanned, splitPassed] = localLayout->sampleFile(
+          splitAndGroup.split,
+          type_,
+          tableHandle,
+          columnHandles,
+          connectorQueryCtx.get(),
+          statsBuilders,
+          maxRowsToScan,
+          scannedRows);
+
+      scannedRows += splitScanned;
+      passingRows += splitPassed;
+
+      if (scannedRows >= maxRowsToScan) {
+        break;
+      }
+    }
+
+    if (done || scannedRows >= maxRowsToScan) {
+      break;
+    }
+  }
+
+  numSampledRows_ = scannedRows;
   for (auto i = 0; i < statsBuilders.size(); ++i) {
     if (statsBuilders[i]) {
       auto* column = columns_[type_->nameOf(i)].get();
       ColumnStatistics& stats = *column->mutableStats();
       statsBuilders[i]->build(stats);
-      auto estimate = stats.numDistinct;
-      int64_t approxNumDistinct =
-          estimate.has_value() ? estimate.value() : numRows_;
-      // For tiny tables the sample is 100% and the approxNumDistinct is
-      // accurate. For partial samples, the distinct estimate is left to be the
-      // distinct estimate of the sample if there are few distincts. This is an
-      // enumeration where values in unsampled rows are likely the same. If
-      // there are many distincts, we multiply by 1/sample rate assuming that
-      // unsampled rows will mostly have new values.
-
-      if (numSampledRows_ < numRows_) {
-        if (approxNumDistinct > sampled / 50) {
-          float numDups =
-              numSampledRows_ / static_cast<float>(approxNumDistinct);
-          approxNumDistinct = std::min<float>(numRows_, numRows_ / numDups);
-
-          // If the type is an integer type, num distincts cannot be larger than
-          // max - min.
-
-          if (isInteger(statsBuilders[i]->type()->kind())) {
-            auto min = stats.min;
-            auto max = stats.max;
-            if (min.has_value() && max.has_value() &&
-                isMixedOrder(*statsBuilders[i])) {
-              auto range = numericValue<float>(max.value()) -
-                  numericValue<float>(min.value());
-              approxNumDistinct = std::min<float>(approxNumDistinct, range);
-            }
-          }
-        }
-
-        const_cast<Column*>(findColumn(type_->nameOf(i)))
-            ->mutableStats()
-            ->numDistinct = approxNumDistinct;
-      }
+      adjustNumDistincts(*statsBuilders[i], stats, numSampledRows_, numRows_);
     }
   }
 }
@@ -1881,6 +1864,9 @@ const folly::F14FastMap<std::string, const Column*>& LocalTable::columnMap()
 }
 
 TablePtr LocalHiveConnectorMetadata::findTable(std::string_view name) {
+  if (initializing_) {
+    return findTableLocked(name);
+  }
   ensureInitialized();
   std::lock_guard<std::mutex> l(mutex_);
   return findTableLocked(name);

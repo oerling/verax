@@ -206,11 +206,10 @@ class LocalHiveTableLayout : public HiveTableLayout {
       velox::HashStringAllocator* allocator,
       std::vector<std::unique_ptr<StatisticsBuilder>>* statsBuilders);
 
- private:
-  /// Reads a single file and updates statistics builders.
-  /// Returns (scannedRows, passingRows) for the file.
+  /// Reads a single split and updates statistics builders.
+  /// Returns (scannedRows, passingRows) for the split.
   std::pair<int64_t, int64_t> sampleFile(
-      const std::string& filePath,
+      const std::shared_ptr<velox::connector::ConnectorSplit>& split,
       const velox::RowTypePtr& outputType,
       const velox::connector::ConnectorTableHandlePtr& tableHandle,
       const velox::connector::ColumnHandleMap& columnHandles,
@@ -219,6 +218,7 @@ class LocalHiveTableLayout : public HiveTableLayout {
       int64_t maxRowsToScan,
       int64_t& currentScannedRows) const;
 
+ private:
   std::vector<std::unique_ptr<const FileInfo>> files_;
   std::vector<std::unique_ptr<const FileInfo>> ownedFiles_;
   std::vector<std::shared_ptr<const LocalHivePartition>> partitions_;
@@ -387,6 +387,7 @@ class LocalHiveConnectorMetadata : public HiveConnectorMetadata {
 
   mutable std::mutex mutex_;
   mutable bool initialized_{false};
+  mutable bool initializing_{false};
   std::shared_ptr<velox::memory::MemoryPool> rootPool_{
       velox::memory::memoryManager()->addRootPool()};
   std::shared_ptr<velox::memory::MemoryPool> schemaPool_;
