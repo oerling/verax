@@ -59,6 +59,10 @@ struct SplitOptions {
 class PartitionHandle {
  public:
   virtual ~PartitionHandle() = default;
+
+  virtual std::string toString() const {
+    return "PartitionHandle";
+  }
 };
 
 using PartitionHandlePtr = std::shared_ptr<const PartitionHandle>;
@@ -80,7 +84,7 @@ class ConnectorSplitManager {
   /// 'columns'. This is a separate function because split enumeration
   /// for reading files transfers less data. Typically use only a
   /// subset of the partitions to get stats.
-  std::vector<PartitionStatisticsPtr> getPartitionStatistics(
+  virtual std::vector<PartitionStatisticsPtr> getPartitionStatistics(
       std::span<const PartitionHandlePtr> partitions,
       const std::vector<std::string>& columns) {
     return {};

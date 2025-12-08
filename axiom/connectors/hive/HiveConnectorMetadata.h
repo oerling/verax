@@ -111,6 +111,10 @@ class HiveTableLayout : public TableLayout {
     return partitionType_.has_value() ? &partitionType_.value() : nullptr;
   }
 
+  std::span<const Column* const> discretePredicateColumns() const override {
+    return hivePartitionColumns_;
+  }
+
   /// Returns SerDe parameters for this layout. Default implementation returns
   /// empty map. Derived classes can override to provide actual parameters.
   virtual const std::unordered_map<std::string, std::string>& serdeParameters()

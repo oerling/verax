@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include <fmt/format.h>
+#include <folly/String.h>
 #include "axiom/connectors/hive/HiveConnectorMetadata.h"
 #include "axiom/connectors/hive/StatisticsBuilder.h"
 #include "velox/common/base/Fs.h"
@@ -35,10 +37,42 @@ struct FileInfo {
 
 /// Describes a partition (leaf directory) in a partitioned table.
 struct LocalHivePartition : public PartitionHandle {
+  LocalHivePartition() = default;
+
+  LocalHivePartition(
+      std::string partitionName,
+      std::string partitionPath,
+      std::unordered_map<std::string, std::string> keys,
+      std::vector<FileInfo*> partitionFiles = {})
+      : name(std::move(partitionName)),
+        path(std::move(partitionPath)),
+        partitionKeys(std::move(keys)),
+        files(std::move(partitionFiles)) {}
+
+  PartitionStatistics* mutableStats() {
+    return &stats;
+  }
+
+  const PartitionStatistics& getStats() const {
+    return stats;
+  }
+
+  std::string toString() const override {
+    std::vector<std::string> parts;
+    for (const auto& [key, value] : partitionKeys) {
+      parts.push_back(fmt::format("{}={}", key, value));
+    }
+    return fmt::format(
+        "<LocalHivePartition {} {} files>",
+        folly::join(", ", parts),
+        files.size());
+  }
+
   std::string name;
   std::string path;
   std::unordered_map<std::string, std::string> partitionKeys;
   mutable PartitionStatistics stats;
+  std::vector<FileInfo*> files;
 };
 
 class LocalHiveSplitSource : public SplitSource {
@@ -81,7 +115,7 @@ class LocalHiveSplitManager : public ConnectorSplitManager {
 
   std::vector<PartitionStatisticsPtr> getPartitionStatistics(
       std::span<const PartitionHandlePtr> partitions,
-      const std::vector<std::string>& columns);
+      const std::vector<std::string>& columns) override;
 
   std::shared_ptr<SplitSource> getSplitSource(
       const ConnectorSessionPtr& session,
