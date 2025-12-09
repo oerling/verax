@@ -385,9 +385,8 @@ class LocalHiveConnectorMetadata : public HiveConnectorMetadata {
 
   std::shared_ptr<LocalTable> findTableLocked(std::string_view name) const;
 
-  mutable std::mutex mutex_;
+  mutable std::recursive_mutex mutex_;
   mutable bool initialized_{false};
-  mutable bool initializing_{false};
   std::shared_ptr<velox::memory::MemoryPool> rootPool_{
       velox::memory::memoryManager()->addRootPool()};
   std::shared_ptr<velox::memory::MemoryPool> schemaPool_;

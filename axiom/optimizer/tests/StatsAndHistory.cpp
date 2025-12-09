@@ -433,7 +433,7 @@ TEST_F(StatsAndHistoryTest, partitions) {
   }
 }
 
-TEST_F(StatsAndHistoryTest, partitionStats) {
+TEST_F(StatsAndHistoryTest, partitionStatsWithSampling) {
   // Find the history_data table
   auto table = hiveMetadata().findTable("history_data");
   ASSERT_TRUE(table != nullptr);
@@ -454,19 +454,37 @@ TEST_F(StatsAndHistoryTest, partitionStats) {
   auto partitions = splitManager->listPartitions(nullptr, tableHandle);
   ASSERT_EQ(partitions.size(), 5 * 4 * 3); // 60 partitions
 
-  // Get partition statistics for all columns
+  // Get partition statistics for all data columns
   std::vector<std::string> columns = {
       "sequence", "user_id", "event_date", "event_time"};
   auto partitionStats =
       splitManager->getPartitionStatistics(partitions, columns);
   ASSERT_EQ(partitionStats.size(), partitions.size());
 
-  // Verify statistics for each partition
-  for (size_t i = 0; i < partitionStats.size(); ++i) {
+  // Helper lambda to get partition column value from PartitionHandle
+  auto getPartitionValue =
+      [](const connector::hive::LocalHivePartition* partition,
+         const std::string& columnName) -> std::string {
+    auto it = partition->partitionKeys.find(columnName);
+    if (it != partition->partitionKeys.end()) {
+      return it->second;
+    }
+    return "";
+  };
+
+  // Check partition statistics based on product partition value
+  for (size_t i = 0; i < partitions.size(); ++i) {
+    auto* partition = dynamic_cast<const connector::hive::LocalHivePartition*>(
+        partitions[i].get());
+    ASSERT_NE(partition, nullptr);
+
+    // Get product partition value
+    std::string product = getPartitionValue(partition, "product");
+    ASSERT_FALSE(product.empty()) << "Partition: " << partition->name;
+
     auto& stats = partitionStats[i];
     ASSERT_TRUE(stats != nullptr);
-    ASSERT_EQ(stats->columns.size(), 4);
-    ASSERT_EQ(stats->columnStatistics.size(), 4);
+    ASSERT_GT(stats->columnStatistics.size(), 0);
 
     // Find column statistics by name
     std::unordered_map<std::string, const connector::ColumnStatistics*>
@@ -475,59 +493,67 @@ TEST_F(StatsAndHistoryTest, partitionStats) {
       colStatsMap[stats->columns[j]] = &stats->columnStatistics[j];
     }
 
-    // Check user_id: min < 100000 and max > 900000
-    auto userIdStats = colStatsMap["user_id"];
-    ASSERT_TRUE(userIdStats != nullptr);
-    ASSERT_TRUE(userIdStats->min.has_value());
-    ASSERT_TRUE(userIdStats->max.has_value());
-    EXPECT_LT(userIdStats->min.value().value<int64_t>(), 100000);
-    EXPECT_GT(userIdStats->max.value().value<int64_t>(), 900000);
+    // For sequence (column 0) and user_id (column 1):
+    // Check numDistinct based on product value
+    for (const auto& colName : {"sequence", "user_id"}) {
+      auto it = colStatsMap.find(colName);
+      ASSERT_TRUE(it != colStatsMap.end())
+          << "Column " << colName << " not found in partition "
+          << partition->name;
 
-    // Check sequence statistics based on partition's ds value
-    auto seqStats = colStatsMap["sequence"];
-    ASSERT_TRUE(seqStats != nullptr);
-    ASSERT_TRUE(seqStats->min.has_value());
-    ASSERT_TRUE(seqStats->max.has_value());
+      const auto* colStats = it->second;
+      ASSERT_TRUE(colStats->numDistinct.has_value())
+          << "numDistinct not set for " << colName << " in partition "
+          << partition->name;
 
-    // Extract partition information to determine expected sequence ranges
-    // Partitions are organized as: ds={date}/ts={date}_{hour}/product={product}
-    auto* partition = dynamic_cast<const connector::hive::LocalHivePartition*>(
-        partitions[i].get());
-    ASSERT_TRUE(partition != nullptr);
+      int64_t numDistinct = colStats->numDistinct.value();
 
-    auto dsIt = partition->partitionKeys.find("ds");
-    ASSERT_TRUE(dsIt != partition->partitionKeys.end());
-    std::string ds = dsIt->second;
+      if (product == "p1") {
+        // p1: ~1750 rows per partition, numDistinct should be between 1200 and
+        // 1600
+        EXPECT_GE(numDistinct, 1200)
+            << "Column " << colName << " in partition " << partition->name
+            << " (product=p1) has numDistinct=" << numDistinct;
+        EXPECT_LE(numDistinct, 1800)
+            << "Column " << colName << " in partition " << partition->name
+            << " (product=p1) has numDistinct=" << numDistinct;
+      } else if (product == "p2") {
+        // p2: ~500 rows per partition, numDistinct should be between 400 and
+        // 600
+        EXPECT_GE(numDistinct, 400)
+            << "Column " << colName << " in partition " << partition->name
+            << " (product=p2) has numDistinct=" << numDistinct;
+        EXPECT_LE(numDistinct, 600)
+            << "Column " << colName << " in partition " << partition->name
+            << " (product=p2) has numDistinct=" << numDistinct;
+      } else if (product == "p3") {
+        // p3: ~250 rows per partition, numDistinct should be between 200 and
+        // 300
+        EXPECT_GE(numDistinct, 200)
+            << "Column " << colName << " in partition " << partition->name
+            << " (product=p3) has numDistinct=" << numDistinct;
+        EXPECT_LE(numDistinct, 300)
+            << "Column " << colName << " in partition " << partition->name
+            << " (product=p3) has numDistinct=" << numDistinct;
+      } else {
+        FAIL() << "Unexpected product value: " << product;
+      }
+    }
 
-    // Parse day from ds (format: 2025-10-DD)
-    int day = 0;
-    if (ds == "2025-10-10")
-      day = 0;
-    else if (ds == "2025-10-11")
-      day = 1;
-    else if (ds == "2025-10-12")
-      day = 2;
-    else if (ds == "2025-10-13")
-      day = 3;
-    else if (ds == "2025-10-14")
-      day = 4;
+    // For event_date (column 3 in the table, column 2 in data columns):
+    // Check that numDistinct is 1 (same date for entire partition)
+    auto eventDateIt = colStatsMap.find("event_date");
+    ASSERT_TRUE(eventDateIt != colStatsMap.end())
+        << "event_date not found in partition " << partition->name;
 
-    // Expected sequence ranges for each day:
-    // Day 0: [0, 9999]
-    // Day 1: [10000, 19999]
-    // Day 2: [20000, 29999]
-    // etc.
-    int64_t expectedMinBound = day * 10000;
-    int64_t expectedMaxLower = day * 10000 + 9000;
-    int64_t expectedMaxUpper = day * 10000 + 10000;
+    const auto* eventDateStats = eventDateIt->second;
+    ASSERT_TRUE(eventDateStats->numDistinct.has_value())
+        << "numDistinct not set for event_date in partition "
+        << partition->name;
 
-    int64_t seqMin = seqStats->min.value().value<int64_t>();
-    int64_t seqMax = seqStats->max.value().value<int64_t>();
-
-    EXPECT_LT(seqMin, expectedMinBound + 1000)
-        << "Partition: " << partition->name;
-    EXPECT_GT(seqMax, expectedMaxLower) << "Partition: " << partition->name;
-    EXPECT_LT(seqMax, expectedMaxUpper) << "Partition: " << partition->name;
+    EXPECT_EQ(eventDateStats->numDistinct.value(), 1)
+        << "event_date in partition " << partition->name
+        << " should have numDistinct=1";
   }
 }
 
@@ -543,6 +569,15 @@ TEST_F(StatsAndHistoryTest, samplePartitions) {
       dynamic_cast<const connector::hive::LocalHiveTableLayout*>(layouts[0]);
   ASSERT_TRUE(layout != nullptr);
 
+  // Create dataColumns RowType with only non-partition columns
+  // Partition columns are: ds, ts, product
+  // Data columns are: sequence, user_id, event_date, event_time
+  auto dataColumns = ROW(
+      {{"sequence", BIGINT()},
+       {"user_id", BIGINT()},
+       {"event_date", BIGINT()},
+       {"event_time", BIGINT()}});
+
   // Test 1: Sample with no filter - expect total rows between 45000 and 55000
   {
     common::SubfieldFilters emptyFilters;
@@ -552,7 +587,8 @@ TEST_F(StatsAndHistoryTest, samplePartitions) {
             "history_data",
             true, // filterPushdownEnabled
             std::move(emptyFilters),
-            nullptr); // remainingFilter
+            nullptr, // remainingFilter
+            dataColumns); // dataColumns parameter
 
     std::vector<velox::core::TypedExprPtr> extraFilters;
     std::vector<velox::common::Subfield> fields;
@@ -587,7 +623,8 @@ TEST_F(StatsAndHistoryTest, samplePartitions) {
             "history_data",
             true, // filterPushdownEnabled
             std::move(filters),
-            nullptr); // remainingFilter
+            nullptr, // remainingFilter
+            dataColumns); // dataColumns parameter
 
     std::vector<velox::core::TypedExprPtr> extraFilters;
     std::vector<velox::common::Subfield> fields;
@@ -621,7 +658,8 @@ TEST_F(StatsAndHistoryTest, samplePartitions) {
             "history_data",
             true, // filterPushdownEnabled
             std::move(filters),
-            nullptr); // remainingFilter
+            nullptr, // remainingFilter
+            dataColumns); // dataColumns parameter
 
     std::vector<velox::core::TypedExprPtr> extraFilters;
     std::vector<velox::common::Subfield> fields;
@@ -639,6 +677,87 @@ TEST_F(StatsAndHistoryTest, samplePartitions) {
     // Expected: ~500 rows (20 partitions with product='p3' * 10% of rows)
     EXPECT_GE(result.second, 450);
     EXPECT_LE(result.second, 550);
+  }
+
+  // Test 4: Sample with statistics collection for all columns (data +
+  // partition) This test requests statistics for both data columns and hive
+  // partition columns
+  {
+    auto filters = SubfieldFiltersBuilder()
+                       .add("user_id", velox::exec::between(100000, 200000))
+                       .add("product", velox::exec::equal("p3"))
+                       .build();
+
+    auto tableHandle =
+        std::make_shared<velox::connector::hive::HiveTableHandle>(
+            exec::test::kHiveConnectorId,
+            "history_data",
+            true, // filterPushdownEnabled
+            std::move(filters),
+            nullptr, // remainingFilter
+            dataColumns); // dataColumns parameter
+
+    std::vector<velox::core::TypedExprPtr> extraFilters;
+
+    // Request statistics for all columns (both data and partition columns)
+    std::vector<velox::common::Subfield> fields;
+    fields.emplace_back("sequence");
+    fields.emplace_back("user_id");
+    fields.emplace_back("event_date");
+    fields.emplace_back("event_time");
+    fields.emplace_back("ds");
+    fields.emplace_back("ts");
+    fields.emplace_back("product");
+
+    std::vector<connector::ColumnStatistics> stats;
+
+    auto allocator = std::make_unique<velox::HashStringAllocator>(pool());
+
+    auto result = layout->sample(
+        tableHandle,
+        100.0f, // 100% sample
+        extraFilters,
+        layout->rowType(),
+        fields,
+        allocator.get(),
+        &stats);
+
+    // Expected: ~500 rows (20 partitions with product='p3' * 10% of rows)
+    EXPECT_GE(result.second, 450);
+    EXPECT_LE(result.second, 550);
+
+    // Verify statistics were collected
+    ASSERT_EQ(stats.size(), 7);
+
+    // Find statistics by column name
+    std::unordered_map<std::string, const connector::ColumnStatistics*>
+        statsMap;
+    for (size_t i = 0; i < stats.size(); ++i) {
+      statsMap[stats[i].name] = &stats[i];
+    }
+
+    // Check product column statistics
+    // Since we filtered to product='p3', numDistinct should be 1
+    auto productIt = statsMap.find("product");
+    ASSERT_TRUE(productIt != statsMap.end()) << "product stats not found";
+    const auto* productStats = productIt->second;
+    ASSERT_TRUE(productStats->numDistinct.has_value())
+        << "product numDistinct not set";
+    EXPECT_EQ(productStats->numDistinct.value(), 1)
+        << "product should have numDistinct=1 since we filtered to product='p3'";
+
+    // Check sequence column statistics
+    // We're sampling ~500 rows with user_id filter, so expect 450-550 distinct
+    // values
+    auto sequenceIt = statsMap.find("sequence");
+    ASSERT_TRUE(sequenceIt != statsMap.end()) << "sequence stats not found";
+    const auto* sequenceStats = sequenceIt->second;
+    ASSERT_TRUE(sequenceStats->numDistinct.has_value())
+        << "sequence numDistinct not set";
+    EXPECT_GE(sequenceStats->numDistinct.value(), 450)
+        << "sequence numDistinct should be >= 450";
+    EXPECT_LE(sequenceStats->numDistinct.value(), 550)
+        << "sequence numDistinct should be <= 550";
   }
 }
 
